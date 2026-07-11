@@ -251,10 +251,67 @@ export function sfxHurt() {
   osc.stop(t + 0.2);
 }
 
-// Positional creature call. kind: 'prowler' | 'spitter' | 'juggernaut'
+// Positional creature call.
+// kind: 'prowler' | 'spitter' | 'juggernaut' | 'stingerwing' | 'shrike' | 'bloomcaller'
 export function sfxCreature(kind, pos, intensity = 1) {
   if (!ctx) return;
   const t = ctx.currentTime;
+  if (kind === 'stingerwing') {
+    // glassy wing-buzz: detuned saw pair with a tremolo wobble
+    const g = ctx.createGain();
+    env(g.gain, t, [[0, 0.001], [0.04, 0.09 * intensity], [0.5, 0.001]]);
+    for (const detune of [0, 9]) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.value = 210 + Math.random() * 60;
+      osc.detune.value = detune;
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = 1400;
+      bp.Q.value = 1.4;
+      osc.connect(bp).connect(g);
+      osc.start(t);
+      osc.stop(t + 0.55);
+    }
+    out(g, pos);
+    return;
+  }
+  if (kind === 'shrike') {
+    // whooping gibbon shriek: fast rising-falling sine whoops
+    const n = 3 + Math.floor(Math.random() * 2);
+    for (let i = 0; i < n; i++) {
+      const tt = t + i * 0.14;
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      env(osc.frequency, tt, [[0, 700], [0.06, 1500], [0.13, 800]]);
+      const g = ctx.createGain();
+      env(g.gain, tt, [[0, 0.001], [0.02, 0.22 * intensity], [0.13, 0.001]]);
+      osc.connect(g);
+      out(g, pos);
+      osc.start(tt);
+      osc.stop(tt + 0.15);
+    }
+    return;
+  }
+  if (kind === 'bloomcaller') {
+    // deep hollow croon, like wind over a giant bottle
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    env(osc.frequency, t, [[0, 130], [0.5, 190], [1.2, 110]]);
+    const osc2 = ctx.createOscillator();
+    osc2.type = 'triangle';
+    env(osc2.frequency, t, [[0, 262], [0.5, 382], [1.2, 222]]);
+    const g = ctx.createGain();
+    env(g.gain, t, [[0, 0.001], [0.2, 0.3 * intensity], [1.3, 0.001]]);
+    osc.connect(g);
+    osc2.connect(g);
+    out(g, pos);
+    osc.start(t);
+    osc.stop(t + 1.35);
+    osc2.start(t);
+    osc2.stop(t + 1.35);
+    return;
+  }
   if (kind === 'prowler') {
     // low feline growl: saw through wobbling lowpass
     const osc = ctx.createOscillator();
@@ -334,6 +391,144 @@ export function sfxAcidSplat(pos) {
   out(g, pos);
   n.start(t);
   n.stop(t + 0.2);
+}
+
+// The bloomcaller's summon pulse: a rising wail that breaks into a boom.
+export function sfxBloomPulse(pos) {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  osc.type = 'sawtooth';
+  env(osc.frequency, t, [[0, 300], [0.5, 980]]);
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 1600;
+  const g = ctx.createGain();
+  env(g.gain, t, [[0, 0.001], [0.4, 0.34], [0.55, 0.001]]);
+  osc.connect(lp).connect(g);
+  out(g, pos);
+  osc.start(t);
+  osc.stop(t + 0.6);
+  // the answering boom
+  const osc2 = ctx.createOscillator();
+  osc2.type = 'triangle';
+  env(osc2.frequency, t + 0.5, [[0, 90], [0.4, 34]]);
+  const g2 = ctx.createGain();
+  env(g2.gain, t + 0.5, [[0, 0.001], [0.03, 0.5], [0.5, 0.001]]);
+  osc2.connect(g2);
+  out(g2, pos);
+  osc2.start(t + 0.5);
+  osc2.stop(t + 1.05);
+}
+
+// Grenade: pin-flick throw whoosh.
+export function sfxThrow() {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const n = noiseSource();
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass';
+  env(bp.frequency, t, [[0, 400], [0.18, 1200]]);
+  bp.Q.value = 1.8;
+  const g = ctx.createGain();
+  env(g.gain, t, [[0, 0.18], [0.2, 0.001]]);
+  n.connect(bp).connect(g);
+  out(g);
+  n.start(t);
+  n.stop(t + 0.22);
+}
+
+// Grenade detonation: sub thump + crack + long rumble tail, positional.
+export function sfxExplosion(pos) {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  // sub thump
+  const osc = ctx.createOscillator();
+  osc.type = 'sine';
+  env(osc.frequency, t, [[0, 110], [0.25, 26]]);
+  const g1 = ctx.createGain();
+  env(g1.gain, t, [[0, 1.0], [0.3, 0.001]]);
+  osc.connect(g1);
+  out(g1, pos);
+  osc.start(t);
+  osc.stop(t + 0.32);
+  // crack
+  const n1 = noiseSource();
+  const hp = ctx.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.value = 700;
+  const g2 = ctx.createGain();
+  env(g2.gain, t, [[0, 0.9], [0.07, 0.001]]);
+  n1.connect(hp).connect(g2);
+  out(g2, pos);
+  n1.start(t);
+  n1.stop(t + 0.1);
+  // rumble tail
+  const n2 = noiseSource();
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  env(lp.frequency, t, [[0, 900], [0.9, 90]]);
+  const g3 = ctx.createGain();
+  env(g3.gain, t, [[0, 0.6], [1.0, 0.001]]);
+  n2.connect(lp).connect(g3);
+  out(g3, pos);
+  n2.start(t);
+  n2.stop(t + 1.05);
+}
+
+// Machete: a fast air-cut (miss) or wet chop (hit).
+export function sfxMelee(hit) {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const n = noiseSource();
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass';
+  env(bp.frequency, t, [[0, hit ? 900 : 2400], [0.09, hit ? 300 : 3400]]);
+  bp.Q.value = hit ? 1.2 : 3;
+  const g = ctx.createGain();
+  env(g.gain, t, [[0, hit ? 0.5 : 0.22], [hit ? 0.12 : 0.08, 0.001]]);
+  n.connect(bp).connect(g);
+  out(g);
+  n.start(t);
+  n.stop(t + 0.14);
+}
+
+// Razorfin bite: quick frantic ripples + a snap. The water is angry.
+export function sfxRazorfin() {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  for (let i = 0; i < 3; i++) {
+    const tt = t + i * 0.05;
+    const n = noiseSource();
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 900 + Math.random() * 900;
+    bp.Q.value = 3;
+    const g = ctx.createGain();
+    env(g.gain, tt, [[0, 0.22], [0.05, 0.001]]);
+    n.connect(bp).connect(g);
+    out(g);
+    n.start(tt);
+    n.stop(tt + 0.07);
+  }
+}
+
+// Ayahuasca: a shimmering upward gliss - the vine opens your eyes.
+export function sfxAyahuasca() {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  for (let i = 0; i < 5; i++) {
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    const f0 = 300 * Math.pow(1.335, i);
+    env(osc.frequency, t + i * 0.09, [[0, f0], [0.5, f0 * 1.5]]);
+    const g = ctx.createGain();
+    env(g.gain, t + i * 0.09, [[0, 0.001], [0.05, 0.12], [0.55, 0.001]]);
+    osc.connect(g);
+    out(g);
+    osc.start(t + i * 0.09);
+    osc.stop(t + i * 0.09 + 0.6);
+  }
 }
 
 export function sfxHeartbeat() {

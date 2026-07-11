@@ -9,7 +9,10 @@ export function createInput(canvas) {
   let lookDY = 0;
   let firing = false;
   let firedThisFrame = false; // single-click edge for semi-auto/pump
+  let aiming = false;         // RMB held = aim-down-sights
+  let grenadeReleased = false;
   const pressed = new Set(); // one-frame key edges
+  const released = new Set();
 
   const state = {
     locked: false,
@@ -22,8 +25,15 @@ export function createInput(canvas) {
     keys.add(e.code);
     pressed.add(e.code);
   });
-  document.addEventListener('keyup', (e) => keys.delete(e.code));
-  window.addEventListener('blur', () => keys.clear());
+  document.addEventListener('keyup', (e) => {
+    keys.delete(e.code);
+    if (e.code === 'KeyG') grenadeReleased = true;
+  });
+  window.addEventListener('blur', () => {
+    keys.clear();
+    firing = false;
+    aiming = false;
+  });
 
   document.addEventListener('mousemove', (e) => {
     if (!state.locked) return;
@@ -31,18 +41,29 @@ export function createInput(canvas) {
     lookDY += e.movementY;
   });
   document.addEventListener('mousedown', (e) => {
-    if (!state.locked || e.button !== 0) return;
-    firing = true;
-    firedThisFrame = true;
-    if (state.onFireDown) state.onFireDown();
+    if (!state.locked) return;
+    if (e.button === 0) {
+      firing = true;
+      firedThisFrame = true;
+      if (state.onFireDown) state.onFireDown();
+    } else if (e.button === 2) {
+      aiming = true;
+    }
   });
   document.addEventListener('mouseup', (e) => {
     if (e.button === 0) firing = false;
+    if (e.button === 2) aiming = false;
   });
+  // RMB is a game control, not a browser menu
+  document.addEventListener('contextmenu', (e) => e.preventDefault());
 
   document.addEventListener('pointerlockchange', () => {
     state.locked = document.pointerLockElement === canvas;
-    if (!state.locked) keys.clear();
+    if (!state.locked) {
+      keys.clear();
+      firing = false;
+      aiming = false;
+    }
     if (state.onLockChange) state.onLockChange(state.locked);
   });
 
@@ -72,15 +93,22 @@ export function createInput(canvas) {
         reload: pressed.has('KeyR'),
         weapon1: pressed.has('Digit1'),
         weapon2: pressed.has('Digit2'),
+        weapon3: pressed.has('Digit3'),
         swap: pressed.has('KeyQ'),
         interact: pressed.has('KeyE'),
+        melee: pressed.has('KeyV'),
+        grenadeHold: keys.has('KeyG'),
+        grenadeThrow: grenadeReleased,
+        aim: aiming,
         firing,
         fireDown: firedThisFrame,
       };
       lookDX = 0;
       lookDY = 0;
       firedThisFrame = false;
+      grenadeReleased = false;
       pressed.clear();
+      released.clear();
       return intent;
     },
   };

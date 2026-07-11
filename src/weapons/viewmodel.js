@@ -1,6 +1,11 @@
 // Procedural first-person gun models + all viewmodel animation: sway, bob,
-// recoil, reload dip, pump slide, weapon raise. Built from primitives -
-// silhouette and motion sell the gun, not polycount.
+// recoil, reload dip, pump slide, weapon raise, ADS raise, sprint carry,
+// machete swing. Built from primitives - silhouette and motion sell the gun.
+//
+// Pose model (round-2 rework): every frame composes ONE pose from smooth
+// blend factors - hip <-> ads (from weapons.state.adsBlend) and a sprint
+// blend eased here - instead of round 1's per-frame lerp fighting absolute
+// assignments (which is what made the gun glitch while sprinting).
 
 import * as THREE from 'three';
 import { lerp, clamp } from '../core/noise.js';
@@ -9,6 +14,11 @@ const GUNMETAL = new THREE.MeshStandardMaterial({ color: 0x555d63, roughness: 0.
 const POLYMER = new THREE.MeshStandardMaterial({ color: 0x4c544a, roughness: 0.9, metalness: 0.0 });
 const WOOD = new THREE.MeshStandardMaterial({ color: 0x6e5232, roughness: 0.85 });
 const ACCENT = new THREE.MeshStandardMaterial({ color: 0x2e3330, roughness: 0.6, metalness: 0.1 });
+const BLADE = new THREE.MeshStandardMaterial({ color: 0xb8c4c8, roughness: 0.25, metalness: 0.7 });
+
+const HIP = new THREE.Vector3(0.17, -0.16, -0.32);
+const SPRINT_POS = new THREE.Vector3(0.04, -0.06, -0.03); // added at full sprint
+const RIG_SCALE = 0.55;
 
 function box(w, h, d, mat, x, y, z) {
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
@@ -40,7 +50,8 @@ function buildCarbine() {
   const muzzle = new THREE.Object3D();
   muzzle.position.set(0, 0.005, -0.61);
   g.add(muzzle);
-  return { group: g, muzzle, pump: null };
+  // ADS: rear sight notch to camera centre (sight top ~y 0.07 local)
+  return { group: g, muzzle, pump: null, adsPos: new THREE.Vector3(0, -0.0385, -0.21) };
 }
 
 function buildBreacher() {
@@ -57,21 +68,57 @@ function buildBreacher() {
   const muzzle = new THREE.Object3D();
   muzzle.position.set(0, 0.02, -0.58);
   g.add(muzzle);
-  return { group: g, muzzle, pump };
+  return { group: g, muzzle, pump, adsPos: new THREE.Vector3(0, -0.037, -0.24) };
+}
+
+function buildLongarm() {
+  const g = new THREE.Group();
+  g.add(box(0.05, 0.075, 0.36, WOOD, 0, 0, 0.02));             // full stock body
+  g.add(cyl(0.013, 0.013, 0.52, GUNMETAL, 0, 0.012, -0.5));    // long barrel
+  g.add(cyl(0.02, 0.02, 0.05, ACCENT, 0, 0.012, -0.775));      // muzzle
+  g.add(box(0.04, 0.13, 0.05, WOOD, 0, -0.1, 0.1));            // grip
+  g.children[3].rotation.x = 0.4;
+  g.add(box(0.05, 0.07, 0.16, WOOD, 0, 0.004, 0.28));          // butt
+  g.add(box(0.036, 0.1, 0.05, GUNMETAL, 0, -0.09, -0.06));     // magazine
+  // scope: tube + objective + eyepiece, sitting high on the receiver
+  g.add(cyl(0.021, 0.021, 0.16, GUNMETAL, 0, 0.078, -0.05));
+  g.add(cyl(0.026, 0.026, 0.03, ACCENT, 0, 0.078, -0.14));
+  g.add(cyl(0.024, 0.024, 0.025, ACCENT, 0, 0.078, 0.04));
+  // aperture ring the player actually aims through
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.02, 0.004, 6, 14), ACCENT);
+  ring.position.set(0, 0.078, 0.055);
+  g.add(ring);
+  const muzzle = new THREE.Object3D();
+  muzzle.position.set(0, 0.012, -0.81);
+  g.add(muzzle);
+  return { group: g, muzzle, pump: null, adsPos: new THREE.Vector3(0, -0.0429, -0.17) };
+}
+
+function buildMachete() {
+  const g = new THREE.Group();
+  g.add(box(0.03, 0.09, 0.05, WOOD, 0, -0.05, 0.06));          // handle
+  const blade = box(0.008, 0.055, 0.34, BLADE, 0, 0.01, -0.14);
+  g.add(blade);
+  const tip = box(0.008, 0.075, 0.09, BLADE, 0, 0.02, -0.3);
+  g.add(tip);
+  return { group: g, muzzle: null, pump: null, adsPos: null };
 }
 
 export function createViewmodel(camera, weapons, playerRef) {
   const rig = new THREE.Group();       // sway/bob/recoil applied here
   camera.add(rig);
-  rig.position.set(0.17, -0.16, -0.32);
-  rig.scale.setScalar(0.55);
+  rig.position.copy(HIP);
+  rig.scale.setScalar(RIG_SCALE);
 
   const models = {
     carbine: buildCarbine(),
     breacher: buildBreacher(),
+    longarm: buildLongarm(),
   };
-  for (const key of Object.keys(models)) {
-    models[key].group.traverse((o) => {
+  const machete = buildMachete();
+
+  function prepModel(model) {
+    model.group.traverse((o) => {
       if (o.isMesh) {
         o.castShadow = false;
         o.receiveShadow = false;
@@ -81,9 +128,11 @@ export function createViewmodel(camera, weapons, playerRef) {
         o.material.depthTest = true;
       }
     });
-    rig.add(models[key].group);
-    models[key].group.visible = false;
+    rig.add(model.group);
+    model.group.visible = false;
   }
+  for (const key of Object.keys(models)) prepModel(models[key]);
+  prepModel(machete);
 
   // muzzle flash: cross of two additive planes + point light
   const flashMat = new THREE.MeshBasicMaterial({
@@ -104,24 +153,37 @@ export function createViewmodel(camera, weapons, playerRef) {
   let swayX = 0;
   let swayY = 0;
   let recoilZ = 0;
+  let sprintT = 0;
   const tmpV = new THREE.Vector3();
+  const _pos = new THREE.Vector3();
 
   function update(intent, dt) {
     const st = weapons.state;
-    // show active weapon
+    const meleeing = st.meleeT > 0;
+    // show active weapon (or the machete mid-swing)
     for (const key of Object.keys(models)) {
-      models[key].group.visible = key === st.current;
+      models[key].group.visible = !meleeing && key === st.current;
     }
+    machete.group.visible = meleeing;
     const model = models[st.current];
+    const ads = st.adsBlend;
 
-    // look sway (lag behind mouse)
-    const targetSwayX = clamp(-intent.lookDX * 0.0012, -0.05, 0.05);
-    const targetSwayY = clamp(intent.lookDY * 0.0012, -0.04, 0.04);
+    // sprint blend eases in/out - the fix for the round-1 sprint glitch
+    // (absolute pose writes fought a per-frame lerp; now ONE pose composer)
+    const sprintTarget = playerRef.p.sprinting ? 1 : 0;
+    sprintT += (sprintTarget - sprintT) * Math.min(1, dt * 8);
+    const sprint = sprintT * (1 - ads);
+
+    // look sway (lag behind mouse) - damped hard when aiming
+    const swayScale = 1 - ads * 0.85;
+    const targetSwayX = clamp(-intent.lookDX * 0.0012, -0.05, 0.05) * swayScale;
+    const targetSwayY = clamp(intent.lookDY * 0.0012, -0.04, 0.04) * swayScale;
     swayX = lerp(swayX, targetSwayX, Math.min(1, dt * 10));
     swayY = lerp(swayY, targetSwayY, Math.min(1, dt * 10));
 
-    // walk bob (phase shared with camera bob via player)
-    const bobAmp = Math.min(1, playerRef.p.speedNow / 5.1) * (playerRef.p.sprinting ? 1.5 : 1);
+    // walk bob (phase shared with camera bob via player) - steadied by ADS
+    const bobAmp = Math.min(1, playerRef.p.speedNow / 5.1)
+      * (playerRef.p.sprinting ? 1.5 : 1) * (1 - ads * 0.85);
     const bx = Math.sin(playerRef.p.bobPhase) * 0.012 * bobAmp;
     const by = -Math.abs(Math.sin(playerRef.p.bobPhase * 2)) * 0.009 * bobAmp;
 
@@ -129,21 +191,28 @@ export function createViewmodel(camera, weapons, playerRef) {
     recoilZ = lerp(recoilZ, 0, Math.min(1, dt * 12));
     if (st.anim.fire > 0.85) recoilZ = Math.min(0.09, recoilZ + (st.current === 'breacher' ? 0.07 : 0.028));
 
-    // reload dip + tilt
+    // reload dip + weapon raise
     const reloadDip = st.anim.reloadPhase > 0 || st.reloading > 0 ? 1 : 0;
     const raise = st.anim.raise;
 
-    rig.position.x = 0.17 + swayX + bx;
-    rig.position.y = -0.16 + swayY + by - reloadDip * 0.14 - raise * 0.22;
-    rig.position.z = -0.32 + recoilZ * 0.6;
-    rig.rotation.z = swayX * 1.4 - reloadDip * 0.5 - raise * 0.4;
-    rig.rotation.x = swayY * 2 + recoilZ * 1.6 - reloadDip * 0.35;
+    // ---- compose the pose: hip <-> ads base, then additive layers ----
+    const adsPos = model.adsPos || HIP;
+    _pos.copy(HIP).lerp(adsPos, ads);
+    rig.position.set(
+      _pos.x + swayX + bx + SPRINT_POS.x * sprint,
+      _pos.y + swayY + by + SPRINT_POS.y * sprint - reloadDip * 0.14 - raise * 0.22,
+      _pos.z + recoilZ * 0.6 + SPRINT_POS.z * sprint
+    );
+    rig.rotation.z = swayX * 1.4 - reloadDip * 0.5 - raise * 0.4 + 0.32 * sprint;
+    rig.rotation.x = swayY * 2 + recoilZ * 1.6 - reloadDip * 0.35 + 0.5 * sprint;
+    rig.rotation.y = 0;
 
-    // sprint carry: tilt gun up-left while sprinting
-    if (playerRef.p.sprinting) {
-      rig.rotation.x = lerp(rig.rotation.x, 0.5, 0.35);
-      rig.rotation.z = lerp(rig.rotation.z, 0.3, 0.35);
-      rig.position.y -= 0.04;
+    // machete swing: a diagonal slash across the view
+    if (meleeing) {
+      const t = 1 - st.meleeT / 0.34; // 0 -> 1 over the swing
+      const arc = Math.sin(t * Math.PI);
+      machete.group.position.set(0.12 - t * 0.3, -0.04 - arc * 0.05, -0.28);
+      machete.group.rotation.set(-0.5 + arc * 1.1, 0.4 - t * 1.2, -0.4 + t * 1.0);
     }
 
     // pump slide
@@ -155,10 +224,10 @@ export function createViewmodel(camera, weapons, playerRef) {
     }
 
     // muzzle flash placement + decay
-    const on = st.anim.fire > 0.55;
+    const on = st.anim.fire > 0.55 && !meleeing;
     flashMat.opacity = on ? 0.8 : Math.max(0, flashMat.opacity - dt * 12);
     flashLight.intensity = on ? 22 : Math.max(0, flashLight.intensity - dt * 300);
-    if (on || flashMat.opacity > 0) {
+    if ((on || flashMat.opacity > 0) && model.muzzle) {
       model.muzzle.getWorldPosition(tmpV);
       flashGroup.position.copy(tmpV);
       flashGroup.quaternion.copy(camera.quaternion);

@@ -215,7 +215,9 @@ function clearOf(x, z, px, pz, r) {
   return dx * dx + dz * dz > r * r;
 }
 
-export function buildVegetation(scene) {
+export function buildVegetation(scene, opts = {}) {
+  // opts.collidersOnly: register trunk/rock colliders but build no meshes -
+  // the headless playtest runner needs the physics, not the pixels
   const t0 = performance.now();
   const ins = WORLD.insertion;
   const ext = WORLD.extraction;
@@ -381,6 +383,21 @@ export function buildVegetation(scene) {
     rockColors.push(cTmp.clone());
     if (s > 1.1) addCylinder(x, z, s * 0.75, s * 1.2, h - 1);
   });
+
+  const counts0 = {
+    bigTrees: bigTrunks.length,
+    midTrees: midTrunks.length,
+    snags: snags.length,
+    ferns: ferns.length,
+    broadleaf: leaves.length,
+    grass: grass.length,
+    rocks: rocks.length,
+    lianas: lianas.length,
+  };
+  if (opts.collidersOnly) {
+    counts0.ms = Math.round(performance.now() - t0);
+    return counts0;
+  }
 
   // ---------- materials + meshes ----------
   const barkMat = new THREE.MeshStandardMaterial({ color: 0x4a3b28, roughness: 1 });

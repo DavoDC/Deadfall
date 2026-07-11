@@ -1,70 +1,104 @@
 // Automated playtest bot. Plays a complete run - insert, route north,
-// fight what the director sends, loot what it passes, hold the beacon,
-// extract or die - using only the public game systems (no cheats).
-// Used headlessly via window.__deadfall.runBot(route) for balance work
-// and completability regression ("can every route still be finished?").
+// cross the gorge at the route's sill, fight what the director sends,
+// loot what it passes, hold the beacon, extract or die - using only the
+// public sim (no cheats). Drives balance work headlessly (scripts/
+// playtest.mjs) and in-browser via window.__deadfall.runBot(route).
+//
+// The bot plays like a competent human: aims down sights at range, swaps
+// to the shotgun up close, machetes when dry, throws a grenade at clumps,
+// prioritises bloomcallers (the summoner dies first), and detours around
+// trunk walls when it stops making progress.
 
-import { WORLD, riverX } from '../world/heightmap.js';
+import { WORLD, riverX, gorgeZ, razorfinHazard } from '../world/heightmap.js';
 import { hasLOS } from '../world/colliders.js';
 
-// waypoint lines south -> north for the three advertised routes
+// waypoint lines south -> north for the three advertised routes; each one
+// threads its own gorge crossing (causeway / rapids / fallen giant)
 function routeWaypoints(route) {
   const wps = [];
+  const cross = (i, pad = 26) => {
+    const c = WORLD.crossings[i];
+    const zg = gorgeZ(c.x);
+    wps.push({ x: c.x, z: zg + pad }, { x: c.x, z: zg }, { x: c.x, z: zg - pad });
+  };
   if (route === 'river') {
-    for (let z = 230; z >= -230; z -= 30) wps.push({ x: riverX(z), z });
+    for (let z = 280; z >= 20; z -= 30) wps.push({ x: riverX(z), z });
+    cross(1);
+    for (let z = -90; z >= -240; z -= 30) wps.push({ x: riverX(z), z });
+    wps.push({ x: 30, z: -270 }, { x: 62, z: -292 });
   } else if (route === 'ridge') {
-    wps.push({ x: 40, z: 220 }, { x: 80, z: 190 });
-    for (let z = 160; z >= -160; z -= 30) {
+    wps.push({ x: 30, z: 280 }, { x: 80, z: 240 });
+    for (let z = 200; z >= 0; z -= 30) {
       wps.push({ x: 112 + 22 * Math.sin(z * 0.008 + 0.6), z });
     }
-    wps.push({ x: 60, z: -200 }, { x: 10, z: -230 });
+    cross(2);
+    wps.push({ x: 148, z: -112 }, { x: 128, z: -170 }, { x: 108, z: -230 }, { x: 96, z: -275 });
   } else { // swamp
-    wps.push({ x: -60, z: 220 });
-    for (let z = 190; z >= -190; z -= 30) wps.push({ x: -118, z });
-    wps.push({ x: -70, z: -220 });
+    wps.push({ x: -60, z: 280 }, { x: -100, z: 250 });
+    for (let z = 220; z >= 10; z -= 30) wps.push({ x: -118, z });
+    cross(0);
+    wps.push({ x: -90, z: -120 }, { x: -56, z: -176 }, { x: 10, z: -230 }, { x: 48, z: -272 });
   }
   wps.push({ x: WORLD.extraction.x, z: WORLD.extraction.z });
   return wps;
 }
 
+// aim heights per enemy type (where the bot points, human-fair)
+const AIM_Y = {
+  prowler: 0.65,
+  spitter: 1.0,
+  juggernaut: 1.5,
+  stingerwing: 0,     // aim at its centre - it IS the body
+  shrike: 1.0,
+  bloomcaller: 1.6,
+};
+
 export function createBot(ctx) {
-  // ctx: { player, weapons, enemyMgr, director, pickups, game, updateExtraction, startRun }
-  const { player, weapons, enemyMgr, game } = ctx;
+  // ctx: { sim, startRun } - startRun must put sim into a fresh RUNNING state
+  const { sim } = ctx;
+  const { player, weapons, enemyMgr, game } = sim;
 
   function makeIntent(o = {}) {
     return Object.assign({
       moveX: 0, moveZ: 0, lookDX: 0, lookDY: 0, sprint: false, jump: false,
-      reload: false, weapon1: false, weapon2: false, swap: false,
-      interact: false, firing: false, fireDown: false,
+      reload: false, weapon1: false, weapon2: false, weapon3: false,
+      swap: false, interact: false, melee: false,
+      grenadeHold: false, grenadeThrow: false, aim: false,
+      firing: false, fireDown: false,
     }, o);
   }
 
   async function runBot(route = 'river', opts = {}) {
-    const maxMinutes = opts.maxMinutes ?? 12;
+    const maxMinutes = opts.maxMinutes ?? 18;
+    if (opts.difficulty) sim.setDifficulty(opts.difficulty);
     ctx.startRun();
-    if (document.exitPointerLock) document.exitPointerLock();
-    document.getElementById('menu').classList.add('hidden');
+    if (typeof document !== 'undefined') {
+      if (document.exitPointerLock) document.exitPointerLock();
+      const menu = document.getElementById('menu');
+      if (menu) menu.classList.add('hidden');
+    }
 
     const wps = routeWaypoints(route);
     let wpIdx = 0;
     const dt = 1 / 60;
     const report = {
       route,
+      difficulty: sim.difficulty.key,
       result: null,
       timeSec: 0,
       kills: 0,
       shots: 0,
       hpTimeline: [],
       dmgTaken: 0,
-      ammoPickedUp: false,
+      grenadesThrown: 0,
       stuck: false,
       posTrail: [],
     };
-    window.__botReport = report;
+    if (typeof window !== 'undefined') window.__botReport = report;
     let lastHp = player.p.hp;
     let stuckRef = { x: player.p.pos.x, z: player.p.pos.z, t: 0 };
     let fireHold = 0;
-    // trunk-avoidance: when velocity dies while pushing forward, slide
+    // trunk-avoidance: when progress toward the waypoint dies, slide
     // sideways around the obstruction like a human would
     let slowT = 0;
     let unstickT = 0;
@@ -74,32 +108,41 @@ export function createBot(ctx) {
     let bestWpDist = Infinity;
     let consecStuck = 0;
     let detour = null;
+    let grenadeCd = 0;
 
     const maxFrames = maxMinutes * 60 * 60;
     for (let i = 0; i < maxFrames; i++) {
       const pp = player.p.pos;
 
-      // --- target selection: nearest VISIBLE living enemy in 34m ---
-      // (LOS check only every few frames per enemy would be cheaper, but the
-      //  bot runs offline, so fairness beats speed: a human can't aim at
-      //  what the foliage hides, neither may the bot)
+      // --- target selection: nearest VISIBLE living enemy in 36m, with
+      // priority: bloomcallers die first, then whatever is closest ---
       let target = null;
-      let tDist = 34;
+      let tDist = 36;
+      let sawBloom = false;
       for (const e of enemyMgr.aliveList()) {
         const dd = Math.hypot(e.pos.x - pp.x, e.pos.z - pp.z);
-        if (dd < tDist
-          && hasLOS(pp.x, pp.y, pp.z, e.pos.x, e.pos.y + 0.8, e.pos.z)) {
-          tDist = dd;
+        if (dd >= tDist && !(e.type === 'bloomcaller' && !sawBloom && dd < 40)) continue;
+        const aimY = e.pos.y + (AIM_Y[e.type] ?? 0.8);
+        if (!hasLOS(pp.x, pp.y, pp.z, e.pos.x, aimY, e.pos.z)) continue;
+        const isBloom = e.type === 'bloomcaller';
+        if (isBloom && !sawBloom) {
+          // priority override
           target = e;
+          tDist = dd;
+          sawBloom = true;
+        } else if (!sawBloom && dd < tDist) {
+          target = e;
+          tDist = dd;
         }
       }
 
       const intent = makeIntent();
       const st = weapons.state;
+      grenadeCd = Math.max(0, grenadeCd - dt);
 
       if (target) {
         // face it (imperfect human-ish aim: slight wander)
-        const aimY = target.pos.y + (target.type === 'juggernaut' ? 1.5 : 0.65);
+        const aimY = target.pos.y + (AIM_Y[target.type] ?? 0.8);
         const dx = target.pos.x - pp.x;
         const dz = target.pos.z - pp.z;
         const dy = aimY - pp.y;
@@ -109,27 +152,71 @@ export function createBot(ctx) {
           + (Math.random() - 0.5) * 0.01;
         player.p.pitch += (wantPitch - player.p.pitch - player.p.kickPitch) * 0.4;
 
-        // weapon choice
+        // grenade a clump: 3+ hostiles within 7m of the target, mid-range
+        if (grenadeCd <= 0 && sim.grenades.state.count > 0
+          && tDist > 9 && tDist < 24) {
+          let clump = 0;
+          for (const e of enemyMgr.aliveList()) {
+            if (Math.hypot(e.pos.x - target.pos.x, e.pos.z - target.pos.z) < 7) clump++;
+          }
+          if (clump >= 3) {
+            intent.grenadeThrow = true;
+            grenadeCd = 9;
+            report.grenadesThrown++;
+          }
+        }
+
+        // weapon choice: shotgun close, longarm far (if fed), carbine default
+        const haveLong = st.mag.longarm + st.reserve.longarm > 0;
         if (tDist < 9 && st.reserve.breacher + st.mag.breacher > 0 && st.current !== 'breacher') {
           intent.weapon2 = true;
-        } else if (tDist >= 9 && st.current !== 'carbine' && st.reserve.carbine + st.mag.carbine > 0) {
+        } else if (tDist > 34 && haveLong && st.current !== 'longarm') {
+          intent.weapon3 = true;
+        } else if (tDist >= 9 && tDist <= 34 && st.current !== 'carbine'
+          && st.reserve.carbine + st.mag.carbine > 0) {
           intent.weapon1 = true;
         }
+
+        // ADS at range - this is why the round-2 bot can actually hit
+        intent.aim = tDist > 10;
+
         // fire in bursts
         fireHold += dt;
-        const aimedEnough = Math.abs(wantYaw - player.p.yaw) < 0.1;
+        const aimedEnough = Math.abs(wantYaw - player.p.yaw) < (intent.aim ? 0.06 : 0.1);
+        const totalAmmo = st.mag[st.current] + st.reserve[st.current];
         if (aimedEnough && st.mag[st.current] > 0) {
           intent.firing = fireHold % 0.5 < 0.32;
           intent.fireDown = true;
-        } else if (st.mag[st.current] === 0) {
+        } else if (st.mag[st.current] === 0 && st.reserve[st.current] > 0) {
           intent.reload = true;
         }
-        // back away from close melee while shooting
+        // dry everywhere? the machete never runs out
+        if (totalAmmo === 0 && tDist < 3.2) intent.melee = true;
+        // back away from close melee while shooting; otherwise keep
+        // drifting up the route like a human clearing while moving
         if (tDist < 4) intent.moveZ = 1;
+        else if (tDist > 8 && player.p.hp > 45) intent.moveZ = -0.6;
+        // strafe-dodge ranged attackers (acid arcs are dodgeable on foot)
+        if (target.type === 'spitter' || target.type === 'bloomcaller') {
+          intent.moveX = Math.sin(game.time * 1.6) > 0 ? 1 : -1;
+        }
       } else {
         fireHold = 0;
-        // navigate waypoints (or a temporary detour around a blockage)
-        const wp = detour || wps[Math.min(wpIdx, wps.length - 1)];
+        // hurt and quiet? go get that glowing medkit like a human would
+        let medTarget = null;
+        if (player.p.hp < 62) {
+          let best = 30;
+          for (const item of sim.pickups.items) {
+            if (!item.active || item.type !== 'medkit') continue;
+            const dd = Math.hypot(item.pos.x - pp.x, item.pos.z - pp.z);
+            if (dd < best) {
+              best = dd;
+              medTarget = { x: item.pos.x, z: item.pos.z };
+            }
+          }
+        }
+        // navigate waypoints (or a detour: blockage dogleg / medkit run)
+        const wp = medTarget || detour || wps[Math.min(wpIdx, wps.length - 1)];
         const dx = wp.x - pp.x;
         const dz = wp.z - pp.z;
         const dist = Math.hypot(dx, dz);
@@ -154,8 +241,7 @@ export function createBot(ctx) {
 
         // wedged against trunks? slide around them - commit to one side,
         // and slide longer each consecutive failure (walls, not just poles).
-        // detect by lack of PROGRESS toward the waypoint, not lack of speed:
-        // pushOut lets you slide along a wall at full speed going nowhere.
+        // detect by lack of PROGRESS toward the waypoint, not lack of speed
         sinceUnstick += dt;
         if (dist < bestWpDist - 0.8) {
           bestWpDist = dist;
@@ -190,14 +276,22 @@ export function createBot(ctx) {
         }
       }
 
-      // --- tick the actual game systems ---
-      player.update(intent, dt);
-      weapons.update(intent, dt, game.time);
-      enemyMgr.update(dt);
-      ctx.director.update(dt);
-      ctx.pickups.update(dt);
-      game.time += dt;
-      ctx.updateExtraction(dt);
+      // razorfin water is an emergency: swim for the nearest bank NOW
+      if (razorfinHazard(pp.x, pp.z) > 0) {
+        const zg = gorgeZ(pp.x);
+        const north = pp.z < zg; // already past centre? push on north (yaw 0)
+        let dyaw = (north ? 0 : Math.PI) - player.p.yaw;
+        while (dyaw > Math.PI) dyaw -= Math.PI * 2;
+        while (dyaw < -Math.PI) dyaw += Math.PI * 2;
+        player.p.yaw += Math.max(-0.15, Math.min(0.15, dyaw));
+        intent.moveZ = -1;
+        intent.moveX = 0;
+        intent.sprint = true;
+        intent.aim = false;
+      }
+
+      // --- tick the actual game ---
+      sim.step(intent, dt);
 
       // --- bookkeeping ---
       if (player.p.hp < lastHp) report.dmgTaken += lastHp - player.p.hp;
@@ -225,7 +319,8 @@ export function createBot(ctx) {
       if (i % 1200 === 1199) await new Promise((r) => setTimeout(r, 0)); // yield
     }
 
-    report.result = report.stuck ? 'STUCK' : game.state;
+    report.result = report.stuck ? 'STUCK'
+      : game.state === 'RUNNING' ? 'TIMEOUT' : game.state;
     report.timeSec = Math.round(game.time);
     report.kills = game.kills;
     report.shots = game.shotsFired;
@@ -233,7 +328,12 @@ export function createBot(ctx) {
     report.ammoLeft = {
       rifle: weapons.state.mag.carbine + weapons.state.reserve.carbine,
       shells: weapons.state.mag.breacher + weapons.state.reserve.breacher,
+      long: weapons.state.mag.longarm + weapons.state.reserve.longarm,
     };
+    report.dmgBySource = {};
+    for (const [k, v] of Object.entries(game.dmgBySource)) {
+      report.dmgBySource[k] = Math.round(v);
+    }
     return report;
   }
 

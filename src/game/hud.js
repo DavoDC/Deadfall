@@ -6,7 +6,7 @@ import { WORLD } from '../world/heightmap.js';
 
 const PX_PER_RAD = 420 / (Math.PI * 0.9); // compass strip scale
 
-export function createHud(playerRef, weapons, game, director) {
+export function createHud(playerRef, weapons, game, director, grenades, sim) {
   const els = {
     hud: document.getElementById('hud'),
     compassStrip: document.getElementById('compass-strip'),
@@ -24,6 +24,8 @@ export function createHud(playerRef, weapons, game, director) {
     extractLabel: document.getElementById('extract-label'),
     lowhp: document.getElementById('lowhp-pulse'),
     crosshair: document.getElementById('crosshair'),
+    grenades: document.getElementById('grenades'),
+    buff: document.getElementById('buff-timer'),
   };
 
   // build compass marks once: cardinals + ticks every 45deg + extraction marker
@@ -82,7 +84,8 @@ export function createHud(playerRef, weapons, game, director) {
     const mm = Math.floor(t / 60);
     const ss = String(Math.floor(t % 60)).padStart(2, '0');
     const distExt = Math.round(Math.hypot(ex, ez));
-    els.runInfo.innerHTML = `<b>${mm}:${ss}</b> RAID<br/>BEACON <b>${distExt}m</b><br/>KILLS <b>${game.kills}</b>`;
+    const diffLabel = sim ? sim.difficulty.label : '';
+    els.runInfo.innerHTML = `<b>${mm}:${ss}</b> ${diffLabel}<br/>BEACON <b>${distExt}m</b><br/>KILLS <b>${game.kills}</b>`;
 
     // threat pips
     const threat = director.threat();
@@ -105,16 +108,34 @@ export function createHud(playerRef, weapons, game, director) {
     els.healthBar.classList.toggle('low', frac < 0.33);
     els.lowhp.style.opacity = frac < 0.3 ? (0.4 + 0.3 * Math.sin(performance.now() / 180)) : 0;
 
-    // crosshair spread
+    // grenades
+    if (els.grenades && grenades) {
+      let pips = '';
+      for (let i = 0; i < grenades.state.max; i++) {
+        pips += `<span class="gpip${i < grenades.state.count ? ' on' : ''}"></span>`;
+      }
+      els.grenades.innerHTML = `${pips} <span class="glabel">[G]</span>`;
+    }
+
+    // ayahuasca timer
+    if (els.buff) {
+      const bt = p.buffT || 0;
+      els.buff.style.opacity = bt > 0 ? 1 : 0;
+      if (bt > 0) els.buff.textContent = `THE VINE · ${Math.ceil(bt)}s`;
+    }
+
+    // crosshair spread (fades away as the sights come up)
     const spread = weapons.spreadNow;
     const gap = 6 + spread * 5;
     positionCrosshairArms(gap);
+    const ads = weapons.state.adsBlend;
+    els.crosshair.style.opacity = Math.max(0, 1 - ads * 1.8);
 
     // hitmarker fade
     if (hitmarkerT > 0) {
       hitmarkerT -= dt;
       els.hitmarker.style.opacity = Math.max(0, hitmarkerT / 0.22);
-      if (hitmarkerT <= 0) els.hitmarker.classList.remove('kill');
+      if (hitmarkerT <= 0) els.hitmarker.classList.remove('kill', 'crit');
     }
     // toast fade
     if (toastT > 0) {
@@ -141,10 +162,11 @@ export function createHud(playerRef, weapons, game, director) {
     arms[3].style.cssText = `left:${gap + 2}px;top:${1 - W / 2}px;width:${L}px;height:${W}px;`;
   }
 
-  function hitmarker(kill) {
-    hitmarkerT = kill ? 0.34 : 0.22;
+  function hitmarker(kill, crit) {
+    hitmarkerT = kill ? 0.34 : crit ? 0.3 : 0.22;
     els.hitmarker.style.opacity = 1;
     if (kill) els.hitmarker.classList.add('kill');
+    else if (crit) els.hitmarker.classList.add('crit');
   }
 
   function toast(msg, seconds = 1.6) {

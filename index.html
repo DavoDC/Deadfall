@@ -42,6 +42,19 @@
       transition: background 0.15s, box-shadow 0.15s;
     }
     .cta:hover { background: rgba(120, 190, 110, 0.25); box-shadow: 0 0 18px rgba(90, 200, 90, 0.25); }
+    #difficulty { display: flex; gap: 12px; margin-bottom: 26px; }
+    .diff-btn {
+      display: flex; flex-direction: column; gap: 5px; width: 190px; padding: 12px 14px;
+      cursor: pointer; text-align: left; border-radius: 3px;
+      background: rgba(20, 34, 22, 0.55); color: var(--hud-dim);
+      border: 1px solid rgba(150, 210, 140, 0.22); transition: border-color 0.15s, background 0.15s;
+      font-family: inherit;
+    }
+    .diff-btn b { font-size: 13px; letter-spacing: 0.24em; color: var(--hud); }
+    .diff-btn span { font-size: 11px; line-height: 1.5; }
+    .diff-btn:hover { border-color: rgba(150, 210, 140, 0.55); }
+    .diff-btn.selected { border-color: var(--accent); background: rgba(80, 64, 20, 0.35); }
+    .diff-btn.selected b { color: var(--accent); }
     .controls-hint { margin-top: 26px; font-size: 12px; letter-spacing: 0.12em; color: rgba(214,228,208,0.4); line-height: 2; }
     .endstats { font-size: 15px; line-height: 2.1; color: var(--hud-dim); margin-bottom: 28px; }
     .endstats b { color: var(--hud); }
@@ -69,6 +82,7 @@
     #hitmarker::before { left: 10px; top: 0; width: 2px; height: 22px; }
     #hitmarker::after { left: 0; top: 10px; width: 22px; height: 2px; }
     #hitmarker.kill::before, #hitmarker.kill::after { background: var(--danger); }
+    #hitmarker.crit::before, #hitmarker.crit::after { background: #ffb028; }
 
     #health-wrap { position: absolute; left: 28px; bottom: 26px; width: 240px; }
     #health-label { font-size: 11px; letter-spacing: 0.3em; color: var(--hud-dim); margin-bottom: 6px; }
@@ -84,6 +98,13 @@
     #ammo .reserve { font-size: 19px; color: var(--hud-dim); font-weight: 400; }
     #ammo.empty { color: var(--danger); }
     #reload-hint { font-size: 11px; letter-spacing: 0.25em; color: var(--accent); opacity: 0; margin-top: 3px; }
+    #grenades { margin-top: 7px; font-size: 11px; letter-spacing: 0.2em; color: var(--hud-dim); }
+    .gpip { display: inline-block; width: 9px; height: 12px; margin-left: 4px; border-radius: 3px 3px 4px 4px;
+      background: rgba(214, 228, 208, 0.14); border: 1px solid rgba(214, 228, 208, 0.3); vertical-align: middle; }
+    .gpip.on { background: #9fd63a; border-color: #b8e858; box-shadow: 0 0 5px rgba(160, 220, 60, 0.5); }
+    .glabel { margin-left: 5px; }
+    #buff-timer { position: absolute; bottom: 76px; left: 28px; font-size: 12px; letter-spacing: 0.28em;
+      color: #e08cf0; text-shadow: 0 0 10px rgba(200, 90, 230, 0.7); opacity: 0; transition: opacity 0.4s; }
 
     #compass {
       position: absolute; top: 18px; left: 50%; transform: translateX(-50%);
@@ -119,6 +140,23 @@
       background: radial-gradient(ellipse at center, transparent 42%, rgba(160, 10, 5, 0.55) 100%);
       transition: opacity 0.12s;
     }
+    #underwater {
+      position: absolute; inset: 0; pointer-events: none; opacity: 0;
+      background: linear-gradient(rgba(10, 60, 70, 0.42), rgba(4, 34, 44, 0.6));
+      transition: opacity 0.18s;
+    }
+    #fever {
+      position: absolute; inset: 0; pointer-events: none; opacity: 0; mix-blend-mode: overlay;
+      background: radial-gradient(ellipse at 30% 20%, rgba(255, 80, 200, 0.5), transparent 55%),
+                  radial-gradient(ellipse at 75% 70%, rgba(80, 220, 255, 0.45), transparent 55%),
+                  radial-gradient(ellipse at 50% 100%, rgba(255, 220, 60, 0.35), transparent 60%);
+      transition: opacity 0.6s;
+      animation: feverdrift 7s ease-in-out infinite alternate;
+    }
+    @keyframes feverdrift {
+      from { filter: hue-rotate(0deg); }
+      to { filter: hue-rotate(70deg); }
+    }
     #lowhp-pulse { position: absolute; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at center, transparent 55%, rgba(200, 20, 10, 0.4) 100%); }
 
     #toast {
@@ -132,6 +170,8 @@
   <div id="app"></div>
 
   <div id="hud" class="hidden">
+    <div id="underwater"></div>
+    <div id="fever"></div>
     <div id="vignette"></div>
     <div id="lowhp-pulse"></div>
     <div id="crosshair"></div>
@@ -151,7 +191,9 @@
       <div id="weapon-name">CARBINE</div>
       <div id="ammo">30 <span class="reserve">/ 90</span></div>
       <div id="reload-hint">RELOAD [R]</div>
+      <div id="grenades"></div>
     </div>
+    <div id="buff-timer"></div>
     <div id="extract-channel">
       <div id="extract-label">EXTRACTING...</div>
       <div id="extract-bar-bg"><div id="extract-bar"></div></div>
@@ -163,16 +205,18 @@
     <div class="title">DEADFALL</div>
     <div class="subtitle">PVE JUNGLE EXTRACTION</div>
     <div class="brief">
-      Insert at the southern treeline. The extraction beacon is <b>north</b>, beyond the river.
-      The jungle knows you are here, and it gets <b>angrier the longer you stay</b>.<br /><br />
-      Take the <b>riverbed</b> (fast, exposed), the <b>eastern ridge</b> (high ground, thin cover),
-      or the <b>western swamp</b> (slow, dark, rich in supplies). Ammunition is scarce.
+      Insert at the southern treeline. The extraction beacon burns on a <b>mesa far north</b>
+      - and the <b>gorge</b> between you and it has exactly three crossings: the
+      <b>root causeway</b> (swamp), <b>the rapids</b> (river), the <b>fallen giant</b> (ridge).
+      The red water is not a warning. It is a promise.<br /><br />
+      The jungle gets angrier the deeper you go. Ammunition is scarce.
       Reach the beacon and hold it to extract.
     </div>
+    <div id="difficulty"></div>
     <button class="cta" id="btn-start">DEPLOY</button>
     <div class="controls-hint">
-      WASD MOVE &nbsp;·&nbsp; MOUSE LOOK &nbsp;·&nbsp; SHIFT SPRINT &nbsp;·&nbsp; LMB FIRE &nbsp;·&nbsp; R RELOAD<br />
-      1 / 2 / Q SWITCH WEAPON &nbsp;·&nbsp; SPACE JUMP &nbsp;·&nbsp; ESC PAUSE
+      WASD MOVE &nbsp;·&nbsp; MOUSE LOOK &nbsp;·&nbsp; SHIFT SPRINT &nbsp;·&nbsp; LMB FIRE &nbsp;·&nbsp; <b>RMB AIM</b> &nbsp;·&nbsp; R RELOAD<br />
+      1 / 2 / 3 / Q WEAPONS &nbsp;·&nbsp; G GRENADE (HOLD + RELEASE) &nbsp;·&nbsp; V MACHETE &nbsp;·&nbsp; SPACE JUMP &nbsp;·&nbsp; ESC PAUSE
     </div>
   </div>
 

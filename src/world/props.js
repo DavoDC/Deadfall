@@ -12,11 +12,11 @@ import { makeRng } from '../core/rng.js';
 export const RUIN_SITES = [
   { x: -118, z: 80, name: 'swamp shrine' },
   { x: 58, z: 160, name: 'south ruin' },
-  { x: 128, z: 30, name: 'ridge watchpost' },
+  { x: 146, z: 34, name: 'ridge watchpost' }, // just east of the crest walk
   { x: 4, z: -14, name: 'rapids altar' },       // south approach, river route
   { x: -108, z: -16, name: 'causeway shrine' }, // south approach, swamp route
   { x: 148, z: -110, name: 'east descent' },    // north of the fallen giant
-  { x: -34, z: -170, name: 'north ruin' },
+  { x: -58, z: -176, name: 'north ruin' },      // west of the river line
   { x: 44, z: -252, name: 'mesa gate' },        // last cache before the climb
 ];
 

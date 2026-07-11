@@ -16,14 +16,18 @@
 // snapshot() intentionally captures ONLY what a peer cannot derive.
 
 export function createSnapshot(ctx) {
-  const { player, weapons, enemyMgr, director, game } = ctx;
+  const { sim, seed } = ctx;
+  const { player, weapons, enemyMgr, director, game, extraction, grenades } = sim;
 
   function snapshot() {
     return {
-      seed: ctx.seed,
+      seed,
       t: game.time,
       state: game.state,
+      difficulty: sim.difficulty.key,
       kills: game.kills,
+      shots: game.shotsFired,
+      damageTaken: Math.round(game.damageTaken),
       players: [
         {
           id: 0,
@@ -37,6 +41,9 @@ export function createSnapshot(ctx) {
           weapon: weapons.state.current,
           mag: { ...weapons.state.mag },
           reserve: { ...weapons.state.reserve },
+          grenades: grenades.state.count,
+          ads: weapons.state.adsBlend,
+          buffT: player.p.buffT,
         },
       ],
       enemies: enemyMgr.enemies
@@ -50,6 +57,7 @@ export function createSnapshot(ctx) {
           heading: e.heading,
           hp: e.hp,
           state: e.state,
+          rage: e.rage || 0,
         })),
       director: {
         time: director.state.time,
@@ -58,8 +66,8 @@ export function createSnapshot(ctx) {
         budget: director.state.budget,
       },
       extraction: {
-        progress: ctx.extraction.progress,
-        committed: ctx.extraction.committed,
+        progress: extraction.progress,
+        committed: extraction.committed,
       },
     };
   }

@@ -6,20 +6,31 @@
 //   hunt -> (in range) attack behaviors -> windup -> strike/lunge/charge
 //   any -> dying -> removed
 // Perception: refreshed player fix every few seconds (noisy), exact on LOS.
+//
+// Round 2 additions:
+//   - STINGERWING: flying swarm - weak alone, a blizzard in numbers
+//   - CANOPY SHRIKE: ballistic leaper - only dangerous airborne, gawky on
+//     the ground; its pounce arc is dodgeable
+//   - BLOOMCALLER: summoner - screams the jungle down on you until killed;
+//     its core is a crit zone only while the petals are open
+//   - Spitter ENRAGE: swells and speeds up as it takes fire (end fights
+//     fast or they end you)
+//   - Prowler pack flanking: pairs curve in from both sides
+//   - Player separation: enemies can no longer clip through you
+//   - Weakpoints: per-enemy crit spheres (sacs, the juggernaut's back boil)
 
 import * as THREE from 'three';
 import { BUILDERS } from './models.js';
 import { terrainHeight, moveSpeedFactor, WORLD } from '../world/heightmap.js';
 import { pushOut, hasLOS } from '../world/colliders.js';
 import { clamp, lerp } from '../core/noise.js';
-import { sfxCreature, sfxAcidSpit, sfxAcidSplat } from '../audio/engine.js';
+import { sfxCreature, sfxAcidSpit, sfxAcidSplat, sfxBloomPulse } from '../audio/engine.js';
 
 export const ENEMY_DEFS = {
   prowler: {
     hp: 55,
     speed: 6.6,
     turnRate: 5.5,
-    aggroSight: 30,
     attackRange: 2.6,
     windup: 0.24,
     strikeDamage: 14,
@@ -29,30 +40,32 @@ export const ENEMY_DEFS = {
     zigzag: 0.55,
     callEvery: [2.6, 4.8],
     radius: 0.5,
-    xp: 1,
+    eyeH: 0.8,
   },
   spitter: {
     hp: 85,
     speed: 3.4,
     turnRate: 3.2,
-    aggroSight: 34,
     attackRange: 26,     // spit range
     keepMin: 13,         // backs away inside this
     windup: 0.62,
     spitCooldown: [2.6, 3.8],
     spitSpeed: 17,
-    spitDamage: 13,
-    splashRadius: 2.4,
+    spitDamage: 11,
+    splashRadius: 2.2,
     biteDamage: 7,
     callEvery: [3.5, 6],
     radius: 0.5,
-    xp: 2,
+    eyeH: 1.35,
+    // enrage: per rage stack (0-4, from hp lost)
+    rageSpeed: 0.13,       // +13% speed per stack
+    rageCooldown: 0.09,    // -9% spit cooldown per stack
+    rageScale: 0.055,      // it literally grows
   },
   juggernaut: {
     hp: 430,
     speed: 2.5,
     turnRate: 2.2,
-    aggroSight: 30,
     attackRange: 3.0,
     windup: 0.5,
     strikeDamage: 30,
@@ -60,21 +73,65 @@ export const ENEMY_DEFS = {
     chargeSpeed: 9.5,
     chargeWindup: 0.85,
     chargeTime: 2.4,
-    chargeDamage: 38,
+    chargeDamage: 34,
     chargeCooldown: 7,
     callEvery: [5, 9],
     radius: 1.0,
-    xp: 5,
+    eyeH: 2.1,
+  },
+  stingerwing: {
+    hp: 9,
+    speed: 8.4,
+    turnRate: 7.5,
+    touchDamage: 3,
+    touchCooldown: 1.0,
+    callEvery: [1.8, 3.4],
+    radius: 0.28,
+    eyeH: 0,
+    flyLow: 1.3,
+    flyHigh: 2.6,
+  },
+  shrike: {
+    hp: 45,
+    speed: 2.0,          // ground shuffle - it is NOT a runner
+    turnRate: 6,
+    pounceRange: 14,
+    pounceDamage: 16,
+    hopMin: 7,
+    hopMax: 12,
+    hopApex: 4.5,
+    hopDur: 0.8,
+    crouch: 0.4,         // pre-leap tell
+    recover: 1.15,       // grounded + vulnerable after a pounce
+    callEvery: [2.8, 5],
+    radius: 0.45,
+    eyeH: 1.2,
+  },
+  bloomcaller: {
+    hp: 130,
+    speed: 1.35,
+    turnRate: 2.5,
+    keepMin: 10,         // shuffles closer until this, then holds
+    bloomEvery: 8,
+    bloomChannel: 2.1,
+    bloomRange: 70,      // will not call if the player is further than this
+    callEvery: [4, 7],
+    radius: 0.6,
+    eyeH: 1.9,
   },
 };
 
 const GLOB_POOL = 14;
+const PLAYER_RADIUS = 0.42;
 
 export function createEnemyManager(scene, playerRef, effects, hooks) {
-  // hooks: { damagePlayer(amount, srcPos), onKill(type) }
+  // hooks: { damagePlayer(amount, srcPos), onKill(type, pos),
+  //          onSummon(pos, threat) -> spawned count (director assist) }
   const enemies = [];
+  const tuning = { hpMult: 1 }; // set per-run from difficulty
   const _v = new THREE.Vector3();
   const _v2 = new THREE.Vector3();
+  let flankCounter = 0;
 
   // ---- acid globs ----
   const globGeo = new THREE.SphereGeometry(0.16, 8, 6);
@@ -123,7 +180,7 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
           const splash = _v.subVectors(playerRef.p.pos, p).length();
           if (splash < def.splashRadius) {
             const frac = directHit ? 1 : 1 - splash / def.splashRadius * 0.6;
-            hooks.damagePlayer(def.spitDamage * frac, p);
+            hooks.damagePlayer(def.spitDamage * frac, p, 'acid');
           }
         }
         g.alive = false;
@@ -143,7 +200,8 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
     }
     const def = ENEMY_DEFS[type];
     e.def = def;
-    e.hp = def.hp;
+    e.maxHp = def.hp * tuning.hpMult;
+    e.hp = e.maxHp;
     e.dead = false;
     e.dying = 0;
     e.state = 'hunt';
@@ -156,16 +214,35 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
     e.chargeCd = type === 'juggernaut' ? 3 : 0;
     e.losTimer = Math.random() * 0.35;
     e.hasLOS = false;
-    e.fix = new THREE.Vector3().copy(playerRef.p.pos); // last known player pos
+    e.fix = e.fix || new THREE.Vector3();
+    e.fix.copy(playerRef.p.pos);
     e.fixTimer = 0;
     e.callTimer = 1 + Math.random() * 3;
     e.zigPhase = Math.random() * 10;
     e.flash = 0;
+    e.rage = 0;
+    e.flank = (flankCounter++ % 2) * 2 - 1; // alternate -1 / +1
     e.lungeVec = e.lungeVec || new THREE.Vector3();
+    e.baseScale = type === 'juggernaut' ? 1 : 0.9 + Math.random() * 0.25;
+    // type-specific spawn state
+    if (type === 'stingerwing') {
+      e.flyPhase = Math.random() * 10;
+      e.pos.y = terrainHeight(x, z) + def.flyLow + Math.random() * (def.flyHigh - def.flyLow);
+    } else if (type === 'shrike') {
+      e.state = 'perch';
+      e.pos.y = terrainHeight(x, z) + 7 + Math.random() * 3; // aloft in the canopy
+      e.airFrom = e.airFrom || new THREE.Vector3();
+      e.airTo = e.airTo || new THREE.Vector3();
+      e.airT = 0;
+      e.airDur = 1;
+      e.pouncing = false;
+    } else if (type === 'bloomcaller') {
+      e.bloomCd = 3 + Math.random() * 3;
+    }
     e.model.group.visible = true;
     e.model.group.position.copy(e.pos);
     e.model.group.rotation.set(0, e.heading, 0);
-    e.model.group.scale.setScalar(type === 'juggernaut' ? 1 : 0.9 + Math.random() * 0.25);
+    e.model.group.scale.setScalar(e.baseScale);
     return e;
   }
 
@@ -177,18 +254,45 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
     sfxCreature(e.type, e.pos, 1.4);
   }
 
-  function applyDamage(e, dmg, headshot, point) {
+  function applyDamage(e, dmg, headshot, point, crit = false) {
     if (e.dead || e.state === 'dying') return 'dead';
     e.hp -= dmg;
     e.flash = 1;
-    effects.burst(point, 'flesh', headshot ? 10 : 6, 2.6);
+    effects.burst(point, crit ? 'crit' : 'flesh', crit ? 14 : headshot ? 10 : 6, crit ? 4 : 2.6);
     // getting shot reveals the player exactly
     e.fix.copy(playerRef.p.pos);
+    // spitters enrage as they lose ichor - they swell, hurry, and spit faster
+    if (e.type === 'spitter') {
+      e.rage = Math.min(4, Math.floor((1 - e.hp / e.maxHp) * 5));
+    }
+    // a perched/recovering shrike that gets tagged bails into a hop
+    if (e.type === 'shrike' && (e.state === 'perch')) {
+      e.state = 'crouch';
+      e.stateT = 0;
+    }
     if (e.hp <= 0) {
       die(e);
       return 'kill';
     }
     return 'hit';
+  }
+
+  // Post-move resolution shared by every grounded mover: props push-out,
+  // player separation (no more clipping through the player), ground clamp.
+  function resolveGround(e) {
+    pushOut(e.pos, e.def.radius, e.pos.y);
+    const pp = playerRef.p.pos;
+    const dx = e.pos.x - pp.x;
+    const dz = e.pos.z - pp.z;
+    const d2 = dx * dx + dz * dz;
+    const minD = e.def.radius + PLAYER_RADIUS + 0.22;
+    if (d2 < minD * minD && d2 > 1e-6) {
+      const d = Math.sqrt(d2);
+      const push = (minD - d) / d;
+      e.pos.x += dx * push;
+      e.pos.z += dz * push;
+    }
+    e.pos.y = terrainHeight(e.pos.x, e.pos.z);
   }
 
   // ---- per-type behaviors ----
@@ -226,8 +330,7 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
     const v = speed * sf;
     e.pos.x += (Math.sin(e.heading) * v + sepX * 2.2) * dt;
     e.pos.z += (Math.cos(e.heading) * v + sepZ * 2.2) * dt;
-    pushOut(e.pos, e.def.radius, e.pos.y);
-    e.pos.y = terrainHeight(e.pos.x, e.pos.z);
+    resolveGround(e);
     e.walkPhase += dt * v * 2.2;
     return dist;
   }
@@ -236,7 +339,7 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
     e.losTimer -= dt;
     if (e.losTimer <= 0) {
       e.losTimer = 0.28 + Math.random() * 0.12;
-      const eye = _v.set(e.pos.x, e.pos.y + 1.2, e.pos.z);
+      const eye = _v.set(e.pos.x, e.pos.y + e.def.eyeH, e.pos.z);
       const pp = playerRef.p.pos;
       e.hasLOS = hasLOS(eye.x, eye.y, eye.z, pp.x, pp.y, pp.z);
     }
@@ -272,7 +375,15 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
     e.attackCd = Math.max(0, e.attackCd - dt);
 
     if (e.state === 'hunt') {
-      moveToward(e, e.fix, e.def.speed, dt, e.def.zigzag);
+      // pack flanking: while far, curve in from your assigned side
+      let target = e.fix;
+      if (dist > 11) {
+        _v2.set(e.fix.x - e.pos.x, 0, e.fix.z - e.pos.z).normalize();
+        const off = Math.min(10, dist * 0.4) * e.flank;
+        _flank.set(e.fix.x - _v2.z * off, e.fix.y, e.fix.z + _v2.x * off);
+        target = _flank;
+      }
+      moveToward(e, target, e.def.speed, dt, e.def.zigzag);
       if (dist < e.def.attackRange + 0.4 && e.attackCd <= 0) {
         e.state = 'windup';
         e.stateT = 0;
@@ -294,11 +405,10 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
       e.stateT += dt;
       e.pos.x += e.lungeVec.x * e.def.lungeSpeed * dt;
       e.pos.z += e.lungeVec.z * e.def.lungeSpeed * dt;
-      pushOut(e.pos, e.def.radius, e.pos.y);
-      e.pos.y = terrainHeight(e.pos.x, e.pos.z);
+      resolveGround(e);
       const d2 = _v.subVectors(pp, e.pos).length();
-      if (d2 < 1.6) {
-        hooks.damagePlayer(e.def.strikeDamage, e.pos);
+      if (d2 < 1.7) {
+        hooks.damagePlayer(e.def.strikeDamage, e.pos, 'prowler');
         e.state = 'hunt';
         e.attackCd = e.def.strikeCooldown;
       } else if (e.stateT > e.def.lungeTime) {
@@ -308,22 +418,29 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
     }
   }
 
+  function spitterCooldown(e) {
+    const [a, b] = e.def.spitCooldown;
+    const cd = a + Math.random() * (b - a);
+    return cd * (1 - e.def.rageCooldown * e.rage);
+  }
+
   function updateSpitter(e, dt) {
     const pp = playerRef.p.pos;
     const dist = _v.subVectors(pp, e.pos).length();
     creatureCall(e, dt, dist);
     e.attackCd = Math.max(0, e.attackCd - dt);
+    const speed = e.def.speed * (1 + e.def.rageSpeed * e.rage);
 
     if (e.state === 'hunt') {
       if (dist > e.def.attackRange * 0.8 || !e.hasLOS) {
-        moveToward(e, e.fix, e.def.speed, dt);
+        moveToward(e, e.fix, speed, dt);
       } else if (dist < e.def.keepMin) {
         // back away, keep facing player
         _v2.set(e.pos.x * 2 - pp.x, 0, e.pos.z * 2 - pp.z);
-        moveToward(e, _v2, e.def.speed * 0.85, dt);
+        moveToward(e, _v2, speed * 0.85, dt);
       }
       if (dist < 2.2 && e.attackCd <= 0) {
-        hooks.damagePlayer(e.def.biteDamage, e.pos);
+        hooks.damagePlayer(e.def.biteDamage, e.pos, 'spitter-bite');
         e.attackCd = 1.4;
       } else if (dist < e.def.attackRange && e.hasLOS && e.attackCd <= 0) {
         e.state = 'windup';
@@ -331,18 +448,18 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
         sfxCreature('spitter', e.pos, 1.2);
       }
     } else if (e.state === 'windup') {
+      const windup = e.def.windup * (1 - 0.09 * e.rage);
       e.stateT += dt;
       // sacs brighten - the readable tell
       for (const sac of e.model.refs.sacs) {
-        sac.material.emissiveIntensity = 1.6 + (e.stateT / e.def.windup) * 4;
+        sac.material.emissiveIntensity = 1.6 + e.rage * 0.7 + (e.stateT / windup) * 4;
       }
-      if (e.stateT >= e.def.windup) {
-        for (const sac of e.model.refs.sacs) sac.material.emissiveIntensity = 1.6;
+      if (e.stateT >= windup) {
+        for (const sac of e.model.refs.sacs) sac.material.emissiveIntensity = 1.6 + e.rage * 0.7;
         _v2.set(e.pos.x, e.pos.y + 1.35, e.pos.z);
         throwGlob(_v2, playerRef.p.pos);
         e.state = 'hunt';
-        const [a, b] = e.def.spitCooldown;
-        e.attackCd = a + Math.random() * (b - a);
+        e.attackCd = spitterCooldown(e);
       }
     }
   }
@@ -369,7 +486,7 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
       if (e.stateT >= e.def.windup) {
         const d2 = _v.subVectors(pp, e.pos).length();
         if (d2 < e.def.attackRange + 0.7) {
-          hooks.damagePlayer(e.def.strikeDamage, e.pos);
+          hooks.damagePlayer(e.def.strikeDamage, e.pos, 'juggernaut');
           // knockback
           _v2.subVectors(pp, e.pos).setY(0).normalize();
           playerRef.p.vel.addScaledVector(_v2, 9);
@@ -386,12 +503,10 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
         e.state = 'charge';
         e.stateT = 0;
         _v2.subVectors(pp, e.pos).setY(0).normalize();
-        e.lungeVec = e.lungeVec || new THREE.Vector3();
         e.lungeVec.copy(_v2);
       }
     } else if (e.state === 'charge') {
       e.stateT += dt;
-      const before = _v2.set(e.pos.x, 0, e.pos.z);
       e.pos.x += e.lungeVec.x * e.def.chargeSpeed * dt;
       e.pos.z += e.lungeVec.z * e.def.chargeSpeed * dt;
       const blocked = pushOut(e.pos, e.def.radius, e.pos.y);
@@ -399,15 +514,16 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
       e.walkPhase += dt * 14;
       const d2 = _v.subVectors(pp, e.pos).length();
       if (d2 < 2.6) {
-        hooks.damagePlayer(e.def.chargeDamage, e.pos);
+        hooks.damagePlayer(e.def.chargeDamage, e.pos, 'jugg-charge');
         _v2.subVectors(pp, e.pos).setY(0).normalize();
         playerRef.p.vel.addScaledVector(_v2, 13);
         playerRef.p.vel.y = 4.5;
         e.state = 'hunt';
         e.chargeCd = e.def.chargeCooldown;
         e.attackCd = 1;
+        resolveGround(e);
       } else if (blocked && e.stateT > 0.3) {
-        // slammed into a tree - stunned, your window
+        // slammed into a tree - stunned, your window (shoot the boil)
         e.state = 'stunned';
         e.stateT = 0;
         playerRef.p.camShake = Math.min(1, playerRef.p.camShake + 0.4);
@@ -424,11 +540,189 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
     }
   }
 
+  function updateStingerwing(e, dt) {
+    const pp = playerRef.p.pos;
+    const dist = _v.subVectors(pp, e.pos).length();
+    creatureCall(e, dt, dist);
+    e.attackCd = Math.max(0, e.attackCd - dt);
+    e.flyPhase += dt * (3 + Math.sin(e.zigPhase));
+
+    if (e.state === 'recoil') {
+      // just stung - peel away before another pass
+      e.stateT += dt;
+      e.pos.x += e.lungeVec.x * 6 * dt;
+      e.pos.z += e.lungeVec.z * 6 * dt;
+      if (e.stateT > 0.7) e.state = 'hunt';
+    } else {
+      // weave toward the player's head height
+      const dx = e.fix.x - e.pos.x;
+      const dz = e.fix.z - e.pos.z;
+      let want = Math.atan2(dx, dz);
+      want += Math.sin(performance.now() / 1000 * 4 + e.zigPhase) * 0.7;
+      let dh = want - e.heading;
+      while (dh > Math.PI) dh -= Math.PI * 2;
+      while (dh < -Math.PI) dh += Math.PI * 2;
+      e.heading += clamp(dh, -e.def.turnRate * dt, e.def.turnRate * dt);
+      e.pos.x += Math.sin(e.heading) * e.def.speed * dt;
+      e.pos.z += Math.cos(e.heading) * e.def.speed * dt;
+      pushOut(e.pos, e.def.radius, e.pos.y);
+      if (dist < 1.2 && e.attackCd <= 0) {
+        hooks.damagePlayer(e.def.touchDamage, e.pos, 'stingerwing');
+        e.attackCd = e.def.touchCooldown;
+        e.state = 'recoil';
+        e.stateT = 0;
+        _v2.subVectors(e.pos, pp).setY(0).normalize();
+        e.lungeVec.copy(_v2);
+      }
+    }
+    // flight altitude: bob between flyLow and flyHigh over terrain, dip
+    // toward the player's chest on approach
+    const ground = terrainHeight(e.pos.x, e.pos.z);
+    const bob = (Math.sin(e.flyPhase) * 0.5 + 0.5);
+    let targetY = ground + lerp(e.def.flyLow, e.def.flyHigh, bob);
+    if (dist < 6) targetY = pp.y - 0.35;
+    e.pos.y += (targetY - e.pos.y) * Math.min(1, dt * 3.5);
+    e.walkPhase += dt * 8;
+  }
+
+  function startHop(e, targetPos, pounce) {
+    e.airFrom.copy(e.pos);
+    e.airTo.copy(targetPos);
+    e.airT = 0;
+    e.pouncing = pounce;
+    const dist = Math.hypot(targetPos.x - e.pos.x, targetPos.z - e.pos.z);
+    e.airDur = pounce ? clamp(dist / 16, 0.35, 0.7) : e.def.hopDur;
+    e.state = 'air';
+    e.heading = Math.atan2(targetPos.x - e.pos.x, targetPos.z - e.pos.z);
+  }
+
+  function updateShrike(e, dt) {
+    const pp = playerRef.p.pos;
+    const dist = _v.subVectors(pp, e.pos).length();
+    creatureCall(e, dt, dist);
+
+    if (e.state === 'perch') {
+      // waiting in the canopy; face the player, drop in when they close
+      e.heading = Math.atan2(pp.x - e.pos.x, pp.z - e.pos.z);
+      if (dist < 42) {
+        e.state = 'crouch';
+        e.stateT = 0;
+        sfxCreature('shrike', e.pos, 1.4);
+      }
+    } else if (e.state === 'crouch') {
+      e.stateT += dt;
+      if (e.stateT >= e.def.crouch) {
+        const flat = _v.subVectors(pp, e.pos).setY(0).length();
+        if (flat < e.def.pounceRange && flat > 2.5 && e.hasLOS) {
+          // POUNCE: ballistic arc straight at where you are now - readable,
+          // dodgeable, and it commits
+          _v2.copy(pp);
+          _v2.y = terrainHeight(pp.x, pp.z);
+          startHop(e, _v2, true);
+          sfxCreature('shrike', e.pos, 1.6);
+        } else {
+          // close the gap with a hop toward the fix
+          const d = _v.subVectors(e.fix, e.pos).setY(0);
+          const len = d.length();
+          const hop = clamp(len, e.def.hopMin, e.def.hopMax);
+          d.normalize();
+          _v2.set(
+            e.pos.x + d.x * hop + (Math.random() - 0.5) * 3,
+            0,
+            e.pos.z + d.z * hop + (Math.random() - 0.5) * 3
+          );
+          _v2.x = clamp(_v2.x, -WORLD.playable + 4, WORLD.playable - 4);
+          _v2.z = clamp(_v2.z, -WORLD.playable + 4, WORLD.playable - 4);
+          _v2.y = terrainHeight(_v2.x, _v2.z);
+          startHop(e, _v2, false);
+        }
+      }
+    } else if (e.state === 'air') {
+      e.airT += dt;
+      const t = Math.min(1, e.airT / e.airDur);
+      const apex = e.pouncing ? 2.2 : e.def.hopApex;
+      e.pos.lerpVectors(e.airFrom, e.airTo, t);
+      e.pos.y += apex * 4 * t * (1 - t); // parabola
+      e.walkPhase += dt * 6;
+      if (t >= 1) {
+        if (e.pouncing) {
+          const d2 = _v.subVectors(pp, e.pos).length();
+          if (d2 < 2.1) {
+            hooks.damagePlayer(e.def.pounceDamage, e.pos, 'shrike');
+            _v2.subVectors(pp, e.pos).setY(0).normalize();
+            playerRef.p.vel.addScaledVector(_v2, 5);
+          }
+          e.state = 'recover';
+          e.stateT = 0;
+        } else {
+          e.state = 'land';
+          e.stateT = 0;
+        }
+        resolveGround(e);
+      }
+    } else if (e.state === 'land') {
+      e.stateT += dt;
+      if (e.stateT > 0.25) {
+        e.state = 'crouch';
+        e.stateT = 0;
+      }
+    } else if (e.state === 'recover') {
+      // grounded and gawky - this is your window
+      e.stateT += dt;
+      moveToward(e, e.fix, e.def.speed, dt);
+      if (e.stateT > e.def.recover) {
+        e.state = 'crouch';
+        e.stateT = 0;
+      }
+    }
+  }
+
+  function updateBloomcaller(e, dt) {
+    const pp = playerRef.p.pos;
+    const dist = _v.subVectors(pp, e.pos).length();
+    creatureCall(e, dt, dist);
+    e.bloomCd = Math.max(0, e.bloomCd - dt);
+
+    if (e.state === 'hunt') {
+      if (dist > e.def.keepMin) {
+        moveToward(e, e.fix, e.def.speed, dt);
+      } else {
+        // hold ground, sway, face you
+        e.heading = Math.atan2(pp.x - e.pos.x, pp.z - e.pos.z);
+      }
+      if (e.bloomCd <= 0 && dist < e.def.bloomRange) {
+        e.state = 'bloom';
+        e.stateT = 0;
+        sfxCreature('bloomcaller', e.pos, 1.5);
+      }
+    } else if (e.state === 'bloom') {
+      // channel: petals open, core exposed (crit window), scream builds
+      e.stateT += dt;
+      if (e.stateT >= e.def.bloomChannel) {
+        e.state = 'hunt';
+        e.bloomCd = e.def.bloomEvery;
+        sfxBloomPulse(e.pos);
+        effects.burst(_v.set(e.pos.x, e.pos.y + 2, e.pos.z), 'bloom', 16, 5);
+        // the jungle answers: reinforcements near the CALLER + a fresh fix
+        // on the player for every hunter alive
+        if (hooks.onSummon) hooks.onSummon(e.pos);
+        for (const o of enemies) {
+          if (!o.dead && o.state !== 'dying') o.fix.copy(pp);
+        }
+      }
+    }
+  }
+
   const TYPE_UPDATE = {
     prowler: updateProwler,
     spitter: updateSpitter,
     juggernaut: updateJuggernaut,
+    stingerwing: updateStingerwing,
+    shrike: updateShrike,
+    bloomcaller: updateBloomcaller,
   };
+
+  const _flank = new THREE.Vector3();
 
   // ---- animation ----
   function animate(e, dt) {
@@ -438,8 +732,18 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
 
     if (e.state === 'dying') {
       e.dying += dt;
-      g.rotation.z = Math.min(Math.PI / 2, e.dying * 3.2);
-      if (e.dying > 1.2) g.position.y = e.pos.y - (e.dying - 1.2) * 0.5;
+      if (e.type === 'stingerwing') {
+        // clipped wings: drop out of the air
+        g.position.y = Math.max(terrainHeight(e.pos.x, e.pos.z) + 0.1, e.pos.y - e.dying * 6);
+        g.rotation.z += dt * 9;
+      } else if (e.type === 'bloomcaller') {
+        // wilt: crumple downward
+        const s = Math.max(0.15, 1 - e.dying * 0.7) * e.baseScale;
+        g.scale.set(e.baseScale, s, e.baseScale);
+      } else {
+        g.rotation.z = Math.min(Math.PI / 2, e.dying * 3.2);
+        if (e.dying > 1.2) g.position.y = e.pos.y - (e.dying - 1.2) * 0.5;
+      }
       if (e.dying > 2.6) {
         e.dead = true;
         g.visible = false;
@@ -450,27 +754,27 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
     g.rotation.y = e.heading;
     g.rotation.z = 0;
 
-    // hit flash
+    // hit flash: scale pulse (cheap, no shared-material writes)
     if (e.flash > 0) {
       e.flash = Math.max(0, e.flash - dt * 6);
-      const f = e.flash;
-      g.traverse((o) => {
-        if (o.isMesh && o.material.emissive && o.material !== undefined) {
-          o.material._baseEI = o.material._baseEI ?? o.material.emissiveIntensity ?? 0;
-        }
-      });
-      // cheap flash: scale pulse instead of touching shared materials
-      const s = g.scale.x;
-      g.scale.setScalar(s + f * 0.02);
     }
+    const rageScale = e.type === 'spitter' ? 1 + e.def.rageScale * e.rage : 1;
+    g.scale.setScalar(e.baseScale * rageScale + e.flash * 0.02);
 
-    // walk cycle
+    // walk cycle: hips swing, knees counter-bend
     const swing = Math.sin(e.walkPhase);
     if (refs.legs) {
       refs.legs.forEach((leg, i) => {
         leg.rotation.x = swing * 0.55 * (i % 2 === 0 ? 1 : -1);
       });
     }
+    if (refs.knees) {
+      refs.knees.forEach((knee, i) => {
+        const s = swing * (i % 2 === 0 ? 1 : -1);
+        knee.rotation.x = 0.35 + Math.max(0, -s) * 0.7;
+      });
+    }
+
     // body bob + type-specific flourish
     const bob = Math.abs(Math.sin(e.walkPhase)) * 0.05;
     if (e.type === 'prowler') {
@@ -484,7 +788,12 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
     } else if (e.type === 'spitter') {
       refs.torso.position.y = 1.05 + bob;
       refs.torso.rotation.x = e.state === 'windup' ? 0.55 + e.stateT * 0.4 : 0.55;
-    } else {
+      // rage: sacs swell
+      for (const sac of refs.sacs) {
+        const bs = sac.userData.baseScale || 1;
+        sac.scale.setScalar(bs * (1 + e.rage * 0.13));
+      }
+    } else if (e.type === 'juggernaut') {
       refs.torso.position.y = 1.55 + bob * 1.6;
       if (e.state === 'chargewind') {
         refs.torso.rotation.x = -0.35; // rear up
@@ -498,6 +807,38 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
           a.rotation.z = (a.position.x > 0 ? -0.15 : 0.15) + swing * 0.3 * (a.position.x > 0 ? 1 : -1);
         });
       }
+    } else if (e.type === 'stingerwing') {
+      // wing blur
+      const flap = Math.sin(performance.now() / 1000 * 46 + e.zigPhase) * 0.6;
+      refs.wings[0].rotation.y = 0.3 + flap;
+      refs.wings[1].rotation.y = -0.3 - flap;
+      g.rotation.x = Math.sin(e.flyPhase) * 0.15;
+    } else if (e.type === 'shrike') {
+      const airborne = e.state === 'air' || e.state === 'perch';
+      if (airborne) {
+        // arms thrown up, legs tucked - the flying-wraith silhouette
+        refs.arms[0].rotation.z = 2.2;
+        refs.arms[1].rotation.z = -2.2;
+        refs.legs.forEach((l) => { l.rotation.x = -1.6; });
+        refs.stripe.material.emissiveIntensity = 3.4;
+        g.rotation.x = e.state === 'air' ? -0.4 : 0;
+      } else {
+        refs.arms[0].rotation.z = 0.5 + swing * 0.4;
+        refs.arms[1].rotation.z = -0.5 - swing * 0.4;
+        refs.stripe.material.emissiveIntensity = e.state === 'crouch' ? 2.4 + e.stateT * 4 : 2.4;
+        g.rotation.x = e.state === 'crouch' ? 0.25 : 0;
+      }
+    } else if (e.type === 'bloomcaller') {
+      // sway like a heavy flower in wind; petals hinge open during bloom
+      const sway = Math.sin(performance.now() / 1000 * 1.3 + e.zigPhase) * 0.06;
+      g.rotation.z = sway;
+      const open = e.state === 'bloom'
+        ? 0.25 + (e.stateT / e.def.bloomChannel) * 1.15
+        : 0.25;
+      for (const petal of refs.petals) petal.rotation.x = open;
+      refs.core.material.emissiveIntensity = e.state === 'bloom'
+        ? 2.8 + (e.stateT / e.def.bloomChannel) * 4
+        : 1.6;
     }
   }
 
@@ -514,7 +855,7 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
     updateGlobs(dt);
   }
 
-  // ray vs head/body spheres of every living enemy; nearest hit wins
+  // ray vs head/crit/body spheres of every living enemy; nearest hit wins
   function raySphere(ox, oy, oz, dx, dy, dz, cx, cy, cz, r) {
     const ex = ox - cx;
     const ey = oy - cy;
@@ -527,40 +868,44 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
     return t >= 0 ? t : Infinity;
   }
 
-  const _head = new THREE.Vector3();
-  const _body = new THREE.Vector3();
+  const _sph = new THREE.Vector3();
 
   function rayEnemies(origin, dir, maxDist) {
     let best = maxDist;
     let bestEnemy = null;
-    let bestHead = false;
+    let bestZone = 'body';
+    let bestMult = 1;
     for (const e of enemies) {
       if (e.dead || e.state === 'dying') continue;
       const s = e.model.group.scale.x;
-      _head.copy(e.model.headOffset).multiplyScalar(s);
-      rotateY(_head, e.heading);
-      _head.add(e.pos);
-      _body.copy(e.model.bodyOffset).multiplyScalar(s);
-      rotateY(_body, e.heading);
-      _body.add(e.pos);
 
-      const tH = raySphere(origin.x, origin.y, origin.z, dir.x, dir.y, dir.z,
-        _head.x, _head.y, _head.z, e.model.headR * s);
-      if (tH < best) {
-        best = tH;
-        bestEnemy = e;
-        bestHead = true;
-        continue;
+      const testSphere = (off, r, zone, mult) => {
+        _sph.copy(off).multiplyScalar(s);
+        rotateY(_sph, e.heading);
+        _sph.add(e.pos);
+        const t = raySphere(origin.x, origin.y, origin.z, dir.x, dir.y, dir.z,
+          _sph.x, _sph.y, _sph.z, r * s);
+        if (t < best) {
+          best = t;
+          bestEnemy = e;
+          bestZone = zone;
+          bestMult = mult;
+        }
+      };
+
+      // crit zones first (they sit inside/over the body silhouette)
+      if (e.model.crits) {
+        for (const c of e.model.crits) {
+          if (c.when && e.state !== c.when) continue;
+          testSphere(c.off, c.r, 'crit', c.mult);
+        }
       }
-      const tB = raySphere(origin.x, origin.y, origin.z, dir.x, dir.y, dir.z,
-        _body.x, _body.y, _body.z, e.model.bodyR * s);
-      if (tB < best) {
-        best = tB;
-        bestEnemy = e;
-        bestHead = false;
-      }
+      testSphere(e.model.headOffset, e.model.headR, 'head', e.model.headMultScale ?? 1);
+      testSphere(e.model.bodyOffset, e.model.bodyR, 'body', 1);
     }
-    return bestEnemy ? { t: best, enemy: bestEnemy, headshot: bestHead } : null;
+    return bestEnemy
+      ? { t: best, enemy: bestEnemy, zone: bestZone, zoneMult: bestMult, headshot: bestZone === 'head' }
+      : null;
   }
 
   function rotateY(v, ang) {
@@ -593,5 +938,8 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
     }
   }
 
-  return { update, spawn, applyDamage, rayEnemies, aliveCount, aliveList, reset, enemies };
+  return {
+    update, spawn, applyDamage, rayEnemies, aliveCount, aliveList, reset,
+    enemies, tuning,
+  };
 }

@@ -33,6 +33,9 @@ export function createPlayer(camera) {
     landImpact: 0,     // set on landing, decays; hooks camera dip + audio
     inWater: false,
     sprinting: false,
+    aimBlend: 0,       // 0..1, written by weapons.update (ADS state)
+    moveMult: 1,       // ADS slow, written by weapons.update
+    buffT: 0,          // ayahuasca seconds remaining (sim decrements)
     sensitivity: 0.0021,
     kickPitch: 0,      // weapon recoil kick, decays
     kickYaw: 0,
@@ -49,9 +52,10 @@ export function createPlayer(camera) {
   function update(intent, dt) {
     if (!p.alive) return;
 
-    // --- look ---
-    p.yaw -= intent.lookDX * p.sensitivity;
-    p.pitch -= intent.lookDY * p.sensitivity;
+    // --- look (ADS steadies the hand) ---
+    const sens = p.sensitivity * (1 - p.aimBlend * 0.45);
+    p.yaw -= intent.lookDX * sens;
+    p.pitch -= intent.lookDY * sens;
     p.pitch = clamp(p.pitch, -1.45, 1.45);
 
     // recoil kick decays back
@@ -67,13 +71,16 @@ export function createPlayer(camera) {
     if (wish.lengthSq() > 1) wish.normalize();
 
     const moving = wish.lengthSq() > 0.01;
-    const wantSprint = intent.sprint && moving && intent.moveZ < 0 && p.stamina > 0.05;
+    // aiming cancels sprint; the vine (ayahuasca) makes sprint free
+    const wantSprint = intent.sprint && moving && intent.moveZ < 0
+      && p.stamina > 0.05 && !intent.aim;
     p.sprinting = wantSprint;
-    if (wantSprint) p.stamina = Math.max(0, p.stamina - dt * 0.22);
+    if (wantSprint && p.buffT <= 0) p.stamina = Math.max(0, p.stamina - dt * 0.22);
     else p.stamina = Math.min(1, p.stamina + dt * 0.14);
 
     const terrainFactor = moveSpeedFactor(p.pos.x, p.pos.z);
-    const targetSpeed = (wantSprint ? SPRINT : WALK) * terrainFactor;
+    const buffMult = p.buffT > 0 ? 1.22 : 1;
+    const targetSpeed = (wantSprint ? SPRINT : WALK) * terrainFactor * p.moveMult * buffMult;
 
     // --- integrate horizontal velocity ---
     const control = p.grounded ? 1 : AIR_CONTROL;
@@ -177,6 +184,9 @@ export function createPlayer(camera) {
     p.kickPitch = 0;
     p.kickYaw = 0;
     p.camShake = 0;
+    p.aimBlend = 0;
+    p.moveMult = 1;
+    p.buffT = 0;
   }
 
   return { p, update, damage, heal, reset, EYE_HEIGHT, RADIUS };

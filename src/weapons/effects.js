@@ -74,6 +74,10 @@ export function createEffects(scene) {
     flesh: [new THREE.Color(0x571414), new THREE.Color(0x7a1f16)],
     acid: [new THREE.Color(0x9fd63a), new THREE.Color(0x5f9e1e)],
     spark: [new THREE.Color(0xffd27a), new THREE.Color(0xfff2c0)],
+    crit: [new THREE.Color(0xffc030), new THREE.Color(0xff7a18)],
+    bloom: [new THREE.Color(0xff7ac8), new THREE.Color(0xffe258)],
+    boom: [new THREE.Color(0xffb040), new THREE.Color(0x513c28)],
+    razor: [new THREE.Color(0xc02040), new THREE.Color(0x701226)],
   };
 
   function burst(point, kind, count = 7, speed = 3.2) {

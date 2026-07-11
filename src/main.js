@@ -1,25 +1,24 @@
-// Deadfall - entry point and game orchestration.
+// Deadfall - browser entry point. The GAME lives in src/game/sim.js (shared
+// with the headless playtest runner); this file is presentation: renderer,
+// input, HUD, audio, menus, atmosphere, and the debug/playtest API.
 // State machine: MENU -> RUNNING (-> extraction channel) -> WIN | DEAD -> MENU.
 
 import * as THREE from 'three';
-import { WORLD } from './world/heightmap.js';
+import { WORLD, gorgeZ } from './world/heightmap.js';
 import { buildTerrain, buildWater } from './world/terrain.js';
 import { buildSky, trackShadow, MOODS } from './world/sky.js';
 import { buildVegetation, tickWind } from './world/vegetation.js';
 import { buildProps } from './world/props.js';
 import { colliderCount } from './world/colliders.js';
 import { createInput } from './player/input.js';
-import { createPlayer } from './player/controller.js';
-import { createWeapons } from './weapons/weapons.js';
 import { createViewmodel } from './weapons/viewmodel.js';
 import { createEffects } from './weapons/effects.js';
-import { createEnemyManager } from './enemies/enemies.js';
-import { createDirector } from './enemies/director.js';
-import { createPickups } from './game/pickups.js';
 import { createHud } from './game/hud.js';
+import { createSim } from './game/sim.js';
+import { DIFFICULTIES, DEFAULT_DIFFICULTY } from './game/difficulty.js';
 import {
   initAudio, resumeAudio, setListener, sfxFootstep, sfxLand, sfxHurt,
-  sfxExtractTone, sfxStinger, sfxHeartbeat,
+  sfxExtractTone, sfxStinger, sfxHeartbeat, sfxRazorfin, sfxAyahuasca,
 } from './audio/engine.js';
 import { startAmbience, updateAmbience, setRain } from './audio/ambience.js';
 import { createMotes, createDrizzle } from './world/motes.js';
@@ -34,7 +33,8 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
 app.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(74, window.innerWidth / window.innerHeight, 0.08, 2200);
+const BASE_FOV = 74;
+const camera = new THREE.PerspectiveCamera(BASE_FOV, window.innerWidth / window.innerHeight, 0.08, 2400);
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -55,134 +55,85 @@ const drizzle = createDrizzle(scene);
 console.log('[deadfall] world built in', Math.round(performance.now() - t0), 'ms,',
   colliderCount(), 'colliders');
 
-// --- game state ---
-const game = {
-  state: 'MENU', // MENU | RUNNING | DEAD | WIN
-  time: 0,       // seconds since run start
-  kills: 0,
-  shotsFired: 0,
+// --- presentation elements the sim reports into ---
+const vignetteEl = document.getElementById('vignette');
+const underwaterEl = document.getElementById('underwater');
+const feverEl = document.getElementById('fever');
+let vignette = 0;
+let hud = null; // created after sim
+
+const ui = {
+  toast: (msg, secs) => hud && hud.toast(msg, secs),
+  setObjective: (text) => hud && hud.setObjective(text),
+  showExtract: (progress) => hud && hud.showExtract(progress),
+  hitmarker: (kill, crit) => hud && hud.hitmarker(kill, crit),
+  onHurt(amount) {
+    sfxHurt();
+    vignette = 1;
+  },
+  onDeath() {
+    sfxStinger('death');
+    endRun(false);
+  },
+  onWin() {
+    sfxStinger('win');
+    endRun(true);
+  },
+  onHazard(kind) {
+    if (kind === 'razorfin') {
+      sfxRazorfin();
+      hud && hud.toast('RAZORFINS - GET OUT OF THE WATER', 1.2);
+    }
+  },
+  onExtractTone: (progress) => sfxExtractTone(progress),
+  onSurge: () => {},
+  onBuff: () => sfxAyahuasca(),
 };
 
-// --- player ---
-const input = createInput(renderer.domElement);
-const player = createPlayer(camera);
+// --- the game itself ---
+const effects = createEffects(scene);
+const sim = createSim({ scene, camera, effects, ui });
+const { game, player, weapons, grenades, enemyMgr, director, pickups, extraction } = sim;
+
 scene.add(camera); // viewmodel rig hangs off the camera
 player.p.onStep = (wet, sprint) => sfxFootstep(wet, sprint);
 player.p.onLand = (impact) => sfxLand(impact);
 
-// --- combat ---
-const effects = createEffects(scene);
-const weaponHooks = {
-  rayEnemies: null, // installed by enemies module
-  onTracer: (from, to) => effects.spawnTracer(from, to),
-  onImpact: (point, kind) => effects.burst(point, kind),
-  onEnemyHit: null, // installed by enemies module
-  onShot: null,     // installed by director (gunfire raises heat)
-  onHitmarker: null, // installed by HUD
-};
-const weapons = createWeapons(camera, player, weaponHooks);
+const input = createInput(renderer.domElement);
 const viewmodel = createViewmodel(camera, weapons, player);
 scene.add(viewmodel.flashGroup);
+hud = createHud(player, weapons, game, director, grenades, sim);
 
-// --- enemies + director ---
-const vignetteEl = document.getElementById('vignette');
-let vignette = 0;
-let pickupsRef = null; // assigned below; enemy kills drop supplies through it
-const enemyMgr = createEnemyManager(scene, player, effects, {
-  damagePlayer(amount, srcPos) {
-    if (game.state !== 'RUNNING' || !player.p.alive) return;
-    player.damage(amount);
-    sfxHurt();
-    vignette = 1;
-    if (!player.p.alive) onPlayerDeath();
-  },
-  onKill(type, pos) {
-    game.kills += 1;
-    // dying enemies drop supplies; juggernauts drop a cache
-    if (!pickupsRef) return;
-    if (type === 'juggernaut') pickupsRef.dropAt(pos.x, pos.z, true);
-    else if (Math.random() < 0.35) pickupsRef.dropAt(pos.x, pos.z, false);
-  },
-});
-const director = createDirector(enemyMgr, player);
-weaponHooks.rayEnemies = (origin, dir, maxDist) => enemyMgr.rayEnemies(origin, dir, maxDist);
-weaponHooks.onEnemyHit = (enemy, dmg, headshot, point) => enemyMgr.applyDamage(enemy, dmg, headshot, point);
-weaponHooks.onShot = () => {
-  director.onShot();
-  game.shotsFired += 1;
-};
+// --- difficulty selection ---
+let difficultyKey = localStorage.getItem('deadfall_difficulty') || DEFAULT_DIFFICULTY;
+if (!DIFFICULTIES[difficultyKey]) difficultyKey = DEFAULT_DIFFICULTY;
+sim.setDifficulty(difficultyKey);
 
-// --- pickups + HUD ---
-const hud = createHud(player, weapons, game, director);
-const pickups = createPickups(scene, player, weapons, {
-  heal(amount) {
-    const before = player.p.hp;
-    player.heal(amount);
-    return player.p.hp - before;
-  },
-  toast(msg) {
-    hud.toast(msg);
-  },
-});
-weaponHooks.onHitmarker = (kill) => hud.hitmarker(kill);
-pickupsRef = pickups;
-
-// --- extraction ---
-const extraction = {
-  progress: 0,
-  active: false,     // player currently in the zone
-  committed: false,  // surge triggered (stays on once you start)
-  toneAt: 0,
-};
-
-function updateExtraction(dt) {
-  const ex = WORLD.extraction;
-  const dx = player.p.pos.x - ex.x;
-  const dz = player.p.pos.z - ex.z;
-  const inZone = dx * dx + dz * dz < ex.radius * ex.radius;
-
-  if (inZone && !extraction.active) {
-    extraction.active = true;
-    if (!extraction.committed) {
-      extraction.committed = true;
-      director.startSurge();
-      hud.toast('HOLD THE BEACON', 2.4);
-      hud.setObjective('HOLD FOR EXTRACTION');
-    }
-  } else if (!inZone && extraction.active) {
-    extraction.active = false;
-    hud.setObjective('RETURN TO THE BEACON');
+const diffButtons = {};
+const diffWrap = document.getElementById('difficulty');
+for (const key of Object.keys(DIFFICULTIES)) {
+  const d = DIFFICULTIES[key];
+  const btn = document.createElement('button');
+  btn.className = 'diff-btn';
+  btn.innerHTML = `<b>${d.label}</b><span>${d.blurb}</span>`;
+  btn.addEventListener('click', () => selectDifficulty(key));
+  diffWrap.appendChild(btn);
+  diffButtons[key] = btn;
+}
+function selectDifficulty(key) {
+  difficultyKey = key;
+  localStorage.setItem('deadfall_difficulty', key);
+  sim.setDifficulty(key);
+  for (const [k, btn] of Object.entries(diffButtons)) {
+    btn.classList.toggle('selected', k === key);
   }
-
-  if (extraction.active) {
-    extraction.progress = Math.min(1, extraction.progress + dt / 18);
-    if (extraction.progress - extraction.toneAt >= 0.1) {
-      extraction.toneAt = extraction.progress;
-      sfxExtractTone(extraction.progress);
-    }
-    if (extraction.progress >= 1) {
-      winRun();
-      return;
-    }
-  }
-  hud.showExtract(extraction.committed ? extraction.progress : null);
 }
+selectDifficulty(difficultyKey);
 
-function winRun() {
-  game.state = 'WIN';
-  sfxStinger('win');
-  endRun(true);
-}
-
-function onPlayerDeath() {
-  game.state = 'DEAD';
-  sfxStinger('death');
-  endRun(false);
-}
-
+// --- run lifecycle (presentation wrapper around sim.resetRun) ---
 function loadBest() {
   try {
-    return JSON.parse(localStorage.getItem('deadfall_best')) || null;
+    return JSON.parse(localStorage.getItem('deadfall_best2_' + difficultyKey)) || null;
   } catch {
     return null;
   }
@@ -196,7 +147,7 @@ function saveBest(extracted) {
     || (extracted && !best.extracted)
     || (extracted === !!best.extracted
       && (extracted ? run.time < best.time : run.kills > best.kills));
-  if (better) localStorage.setItem('deadfall_best', JSON.stringify(run));
+  if (better) localStorage.setItem('deadfall_best2_' + difficultyKey, JSON.stringify(run));
   return better;
 }
 
@@ -210,11 +161,11 @@ function endRun(extracted) {
   title.className = 'title ' + (extracted ? 'extracted' : 'died');
   const mm = Math.floor(game.time / 60);
   const ss = String(Math.floor(game.time % 60)).padStart(2, '0');
-  const acc = game.shotsFired > 0 ? '' : '';
   document.getElementById('end-stats').innerHTML =
-    `TIME <b>${mm}:${ss}</b> &nbsp;·&nbsp; KILLS <b>${game.kills}</b> &nbsp;·&nbsp; SHOTS <b>${game.shotsFired}</b>${acc}` +
-    (isRecord ? '<br/><span style="color:var(--accent)">NEW RECORD</span>' : '') +
-    (extracted ? '' : '<br/>The jungle keeps what it kills.');
+    `${DIFFICULTIES[difficultyKey].label} &nbsp;·&nbsp; TIME <b>${mm}:${ss}</b> &nbsp;·&nbsp; KILLS <b>${game.kills}</b>`
+    + ` &nbsp;·&nbsp; SHOTS <b>${game.shotsFired}</b> &nbsp;·&nbsp; DAMAGE TAKEN <b>${Math.round(game.damageTaken)}</b>`
+    + (isRecord ? '<br/><span style="color:var(--accent)">NEW RECORD</span>' : '')
+    + (extracted ? '' : '<br/>The jungle keeps what it kills.');
 }
 
 const menuEl = document.getElementById('menu');
@@ -231,22 +182,9 @@ function startRun() {
   applyMood(mood);
   drizzle.setEnabled(!!mood.drizzle);
   setRain(!!mood.drizzle);
-  player.reset();
-  weapons.reset();
-  enemyMgr.reset();
-  director.reset();
-  pickups.reset();
-  extraction.progress = 0;
-  extraction.active = false;
-  extraction.committed = false;
-  extraction.toneAt = 0;
-  hud.setObjective('REACH THE EXTRACTION BEACON');
-  hud.showExtract(null);
+  sim.resetRun();
   vignette = 0;
-  game.state = 'RUNNING';
-  game.time = 0;
-  game.kills = 0;
-  game.shotsFired = 0;
+  seenCrossing = null;
   menuEl.classList.add('hidden');
   endEl.classList.add('hidden');
   hudEl.classList.remove('hidden');
@@ -276,6 +214,19 @@ input.state.onLockChange = (locked) => {
   if (game.state !== 'RUNNING') btnStart.textContent = 'DEPLOY';
 };
 
+// --- crossing callouts: name the sill as you commit to it ---
+let seenCrossing = null;
+function updateCrossingCallout() {
+  const pp = player.p.pos;
+  for (const c of WORLD.crossings) {
+    const cz = gorgeZ(c.x);
+    if (Math.hypot(pp.x - c.x, pp.z - cz) < 26 && seenCrossing !== c.name) {
+      seenCrossing = c.name;
+      hud.toast(c.name, 2.2);
+    }
+  }
+}
+
 // --- main loop ---
 let last = performance.now();
 let frames = 0;
@@ -296,21 +247,16 @@ function tick(now) {
   }
 
   // Sim advances only under pointer lock: ESC is a real pause, and the
-  // autotest bot (which steps the systems itself, unlocked) never double-ticks.
+  // autotest bot (which steps the sim itself, unlocked) never double-ticks.
   if (game.state === 'RUNNING' && input.state.locked) {
-    game.time += dt;
     const intent = input.sample();
-    player.update(intent, dt);
-    weapons.update(intent, dt, game.time);
+    sim.step(intent, dt);
     viewmodel.update(intent, dt);
     effects.update(dt, camera);
-    enemyMgr.update(dt);
-    director.update(dt);
-    pickups.update(dt);
-    if (game.state === 'RUNNING') updateExtraction(dt);
     trackShadow(sun, player.p.pos);
     setListener(player.p.pos, camera.getWorldDirection(_listenerFwd));
     hud.update(dt);
+    updateCrossingCallout();
 
     // reactive dread: nearest hostile drives ambience; extraction keeps it hot
     let nearest = Infinity;
@@ -331,17 +277,29 @@ function tick(now) {
       heartbeatT = 0.65 + (player.p.hp / 30) * 0.55; // faster when closer to death
     }
 
-    // sprint FOV kick
-    const targetFov = player.p.sprinting ? 79 : 74;
+    // FOV: sprint widens, ADS narrows toward the weapon's sight picture
+    const ads = weapons.state.adsBlend;
+    const hipFov = player.p.sprinting ? BASE_FOV + 5 : BASE_FOV;
+    const targetFov = hipFov + (weapons.def().adsFov - hipFov) * ads;
     if (Math.abs(camera.fov - targetFov) > 0.05) {
-      camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 8);
+      camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 14);
       camera.updateProjectionMatrix();
     }
+
     motes.update(dt, now / 1000, player.p.pos, camera.quaternion);
     _yawQuat.setFromEuler(_yawEuler.set(0, player.p.yaw, 0));
     drizzle.update(dt, player.p.pos, _yawQuat);
     vignette = Math.max(0, vignette - dt * 1.6);
     vignetteEl.style.opacity = vignette * 0.9;
+
+    // underwater tint: the round-1 "vanishing water" is now a real dive
+    const submerged = camera.position.y < WORLD.waterLevel + 0.12;
+    underwaterEl.style.opacity = submerged ? 1 : 0;
+
+    // ayahuasca fever: the world saturates and breathes
+    const fever = Math.min(1, player.p.buffT / 3); // fades over the last 3s
+    feverEl.style.opacity = fever * 0.85;
+    renderer.toneMappingExposure = 1.05 + fever * 0.35;
   }
 
   if (water.userData.tick) water.userData.tick(now / 1000);
@@ -355,48 +313,52 @@ const _yawQuat = new THREE.Quaternion();
 const _yawEuler = new THREE.Euler();
 let heartbeatT = 0;
 
-const EMPTY_INTENT = {
-  moveX: 0, moveZ: 0, lookDX: 0, lookDY: 0, sprint: false, jump: false,
-  reload: false, weapon1: false, weapon2: false, swap: false, interact: false,
-  firing: false, fireDown: false,
-};
-
 requestAnimationFrame(tick);
 
-// --- debug / automated-test API ---
+// --- debug / automated-playtest API (documented in README) ---
+const bot = createBot({ sim, startRun: () => sim.resetRun() });
+const { snapshot } = createSnapshot({ sim, seed: WORLD.seed });
 window.__deadfall = {
+  version: 2,
+  sim,
   game,
   player,
   weapons,
-  weaponHooks,
-  effects,
-  viewmodel,
+  grenades,
   enemyMgr,
   director,
   pickups,
-  hud,
   extraction,
-  updateExtraction,
+  hud,
   applyMood,
   MOODS,
   drizzle,
-  runBot: null, // assigned below
   scene,
   camera,
   renderer,
   get fps() { return fps; },
-  startRun,
+  // control surface
+  setDifficulty: (name) => sim.setDifficulty(name),
+  startRun,            // full presentation run (menus, audio)
+  startSimRun: () => sim.resetRun(), // silent sim-only run (bot/tests)
+  step: (intent, dt) => sim.step(intent, dt),
   teleport(x, z) {
     player.p.pos.set(x, 0, z);
     player.p.pos.y = 200; // drop in; gravity settles onto terrain
   },
+  god(on = true) {
+    player.p.maxHp = on ? 1e9 : 100;
+    player.p.hp = player.p.maxHp;
+  },
+  give(what, n = 1) {
+    if (what === 'grenade') grenades.add(n);
+    else if (what === 'ammo') {
+      weapons.addAmmo('carbine', 90);
+      weapons.addAmmo('breacher', 24);
+      weapons.addAmmo('longarm', 16);
+    }
+  },
+  snapshot,
+  runBot: bot.runBot,
 };
-const bot = createBot({
-  player, weapons, enemyMgr, director, pickups, game, updateExtraction, startRun,
-});
-window.__deadfall.runBot = bot.runBot;
-const { snapshot } = createSnapshot({
-  player, weapons, enemyMgr, director, game, extraction, seed: WORLD.seed,
-});
-window.__deadfall.snapshot = snapshot;
-console.log('[deadfall] ready');
+console.log('[deadfall] ready (round 2)');
