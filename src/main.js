@@ -19,7 +19,7 @@ import { createPickups } from './game/pickups.js';
 import { createHud } from './game/hud.js';
 import {
   initAudio, resumeAudio, setListener, sfxFootstep, sfxLand, sfxHurt,
-  sfxExtractTone, sfxStinger,
+  sfxExtractTone, sfxStinger, sfxHeartbeat,
 } from './audio/engine.js';
 import { startAmbience, updateAmbience } from './audio/ambience.js';
 import { createMotes } from './world/motes.js';
@@ -153,7 +153,7 @@ function updateExtraction(dt) {
   }
 
   if (extraction.active) {
-    extraction.progress = Math.min(1, extraction.progress + dt / 14);
+    extraction.progress = Math.min(1, extraction.progress + dt / 18);
     if (extraction.progress - extraction.toneAt >= 0.1) {
       extraction.toneAt = extraction.progress;
       sfxExtractTone(extraction.progress);
@@ -316,6 +316,13 @@ function tick(now) {
     }
     updateAmbience(danger, dt);
 
+    // low integrity: your own heart is the loudest thing in the jungle
+    heartbeatT -= dt;
+    if (player.p.hp < 30 && player.p.alive && heartbeatT <= 0) {
+      sfxHeartbeat();
+      heartbeatT = 0.65 + (player.p.hp / 30) * 0.55; // faster when closer to death
+    }
+
     // sprint FOV kick
     const targetFov = player.p.sprinting ? 79 : 74;
     if (Math.abs(camera.fov - targetFov) > 0.05) {
@@ -334,6 +341,7 @@ function tick(now) {
 }
 
 const _listenerFwd = new THREE.Vector3();
+let heartbeatT = 0;
 
 const EMPTY_INTENT = {
   moveX: 0, moveZ: 0, lookDX: 0, lookDY: 0, sprint: false, jump: false,

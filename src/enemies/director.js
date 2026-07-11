@@ -67,7 +67,7 @@ export function createDirector(enemyMgr, playerRef) {
 
     // what can we afford / what does the moment need?
     const wants = [];
-    if (t > 0.42 && d.spawned.juggernaut * 9 < t * 10 - 3) wants.push('juggernaut');
+    if (t > 0.3 && d.spawned.juggernaut * 8 < t * 10 - 2) wants.push('juggernaut');
     if (t > 0.1 && Math.random() < 0.5) wants.push('spitter');
     wants.push('prowler');
 

@@ -336,6 +336,22 @@ export function sfxAcidSplat(pos) {
   n.stop(t + 0.2);
 }
 
+export function sfxHeartbeat() {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  for (const [dt2, vol] of [[0, 0.34], [0.16, 0.22]]) { // lub-dub
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    env(osc.frequency, t + dt2, [[0, 58], [0.09, 34]]);
+    const g = ctx.createGain();
+    env(g.gain, t + dt2, [[0, 0.001], [0.015, vol], [0.12, 0.001]]);
+    osc.connect(g);
+    out(g);
+    osc.start(t + dt2);
+    osc.stop(t + dt2 + 0.15);
+  }
+}
+
 export function sfxExtractTone(progress) {
   if (!ctx) return;
   const t = ctx.currentTime;

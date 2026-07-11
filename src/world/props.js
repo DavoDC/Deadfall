@@ -53,14 +53,14 @@ export function buildProps(scene) {
 
   // vertical light column - visible above canopy from across the map
   const beam = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.5, 1.4, 90, 12, 1, true),
+    new THREE.CylinderGeometry(0.9, 2.4, 240, 12, 1, true),
     new THREE.MeshBasicMaterial({
-      color: 0xffc857, transparent: true, opacity: 0.16,
+      color: 0xffc857, transparent: true, opacity: 0.2,
       blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false,
-      fog: false,
+      fog: false, // pierces the murk - the one fixed point in the jungle
     })
   );
-  beam.position.set(ext.x + 5.9, eh + 45, ext.z);
+  beam.position.set(ext.x + 5.9, eh + 110, ext.z);
   group.add(beam);
 
   const beaconLight = new THREE.PointLight(0xffb040, 30, 40);
@@ -142,7 +142,7 @@ export function buildProps(scene) {
     const pulse = 0.6 + 0.4 * Math.sin(t * 2.4);
     beaconLamp.material.emissiveIntensity = 1.6 + pulse * 2.6;
     beaconLight.intensity = 16 + pulse * 26;
-    beam.material.opacity = 0.10 + pulse * 0.10;
+    beam.material.opacity = 0.13 + pulse * 0.11;
   }
 
   return { tickProps };
