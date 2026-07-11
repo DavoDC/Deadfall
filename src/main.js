@@ -10,6 +10,12 @@ import { buildProps } from './world/props.js';
 import { colliderCount } from './world/colliders.js';
 import { createInput } from './player/input.js';
 import { createPlayer } from './player/controller.js';
+import { createWeapons } from './weapons/weapons.js';
+import { createViewmodel } from './weapons/viewmodel.js';
+import { createEffects } from './weapons/effects.js';
+import {
+  initAudio, resumeAudio, setListener, sfxFootstep, sfxLand,
+} from './audio/engine.js';
 
 const app = document.getElementById('app');
 
@@ -41,6 +47,23 @@ console.log('[deadfall] world built in', Math.round(performance.now() - t0), 'ms
 // --- player ---
 const input = createInput(renderer.domElement);
 const player = createPlayer(camera);
+scene.add(camera); // viewmodel rig hangs off the camera
+player.p.onStep = (wet, sprint) => sfxFootstep(wet, sprint);
+player.p.onLand = (impact) => sfxLand(impact);
+
+// --- combat ---
+const effects = createEffects(scene);
+const weaponHooks = {
+  rayEnemies: null, // installed by enemies module
+  onTracer: (from, to) => effects.spawnTracer(from, to),
+  onImpact: (point, kind) => effects.burst(point, kind),
+  onEnemyHit: null, // installed by enemies module
+  onShot: null,     // installed by director (gunfire raises heat)
+  onHitmarker: null, // installed by HUD
+};
+const weapons = createWeapons(camera, player, weaponHooks);
+const viewmodel = createViewmodel(camera, weapons, player);
+scene.add(viewmodel.flashGroup);
 
 // --- game state ---
 const game = {
@@ -55,7 +78,10 @@ const hudEl = document.getElementById('hud');
 const endEl = document.getElementById('endscreen');
 
 function startRun() {
+  initAudio();
+  resumeAudio();
   player.reset();
+  weapons.reset();
   game.state = 'RUNNING';
   game.time = 0;
   game.kills = 0;
@@ -101,13 +127,35 @@ function tick(now) {
     game.time += dt;
     const intent = input.state.locked ? input.sample() : EMPTY_INTENT;
     player.update(intent, dt);
+    weapons.update(intent, dt, game.time);
+    viewmodel.update(intent, dt);
+    effects.update(dt, camera);
     trackShadow(sun, player.p.pos);
+    setListener(player.p.pos, camera.getWorldDirection(_listenerFwd));
+    updateAmmoHud();
   }
 
   if (water.userData.tick) water.userData.tick(now / 1000);
   tickWind(now / 1000);
   tickProps(dt);
   renderer.render(scene, camera);
+}
+
+const _listenerFwd = new THREE.Vector3();
+
+// temporary ammo HUD hookup (full HUD module lands with the run loop)
+const ammoEl = document.getElementById('ammo');
+const weaponNameEl = document.getElementById('weapon-name');
+const reloadHintEl = document.getElementById('reload-hint');
+function updateAmmoHud() {
+  const st = weapons.state;
+  const mag = st.mag[st.current];
+  const res = st.reserve[st.current];
+  ammoEl.innerHTML = `${mag} <span class="reserve">/ ${res}</span>`;
+  ammoEl.classList.toggle('empty', mag === 0);
+  weaponNameEl.textContent = weapons.def().name;
+  reloadHintEl.style.opacity =
+    (mag <= 5 && res > 0 && st.reloading <= 0) ? 1 : 0;
 }
 
 const EMPTY_INTENT = {
@@ -122,6 +170,10 @@ requestAnimationFrame(tick);
 window.__deadfall = {
   game,
   player,
+  weapons,
+  weaponHooks,
+  effects,
+  viewmodel,
   scene,
   camera,
   renderer,
