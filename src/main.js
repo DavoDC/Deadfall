@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { WORLD } from './world/heightmap.js';
 import { buildTerrain, buildWater } from './world/terrain.js';
-import { buildSky, trackShadow } from './world/sky.js';
+import { buildSky, trackShadow, MOODS } from './world/sky.js';
 import { buildVegetation, tickWind } from './world/vegetation.js';
 import { buildProps } from './world/props.js';
 import { colliderCount } from './world/colliders.js';
@@ -21,8 +21,8 @@ import {
   initAudio, resumeAudio, setListener, sfxFootstep, sfxLand, sfxHurt,
   sfxExtractTone, sfxStinger, sfxHeartbeat,
 } from './audio/engine.js';
-import { startAmbience, updateAmbience } from './audio/ambience.js';
-import { createMotes } from './world/motes.js';
+import { startAmbience, updateAmbience, setRain } from './audio/ambience.js';
+import { createMotes, createDrizzle } from './world/motes.js';
 import { createBot } from './game/autotest.js';
 
 const app = document.getElementById('app');
@@ -44,12 +44,13 @@ window.addEventListener('resize', () => {
 // --- world ---
 console.log('[deadfall] building world, seed', WORLD.seed);
 const t0 = performance.now();
-const { sun } = buildSky(scene, renderer);
+const { sun, applyMood } = buildSky(scene, renderer);
 buildTerrain(scene);
 const water = buildWater(scene);
 buildVegetation(scene);
 const { tickProps } = buildProps(scene);
 const motes = createMotes(scene);
+const drizzle = createDrizzle(scene);
 console.log('[deadfall] world built in', Math.round(performance.now() - t0), 'ms,',
   colliderCount(), 'colliders');
 
@@ -223,6 +224,12 @@ function startRun() {
   initAudio();
   resumeAudio();
   startAmbience();
+  // roll the weather - same jungle, different day
+  const moodKeys = Object.keys(MOODS);
+  const mood = MOODS[moodKeys[Math.floor(Math.random() * moodKeys.length)]];
+  applyMood(mood);
+  drizzle.setEnabled(!!mood.drizzle);
+  setRain(!!mood.drizzle);
   player.reset();
   weapons.reset();
   enemyMgr.reset();
@@ -330,6 +337,8 @@ function tick(now) {
       camera.updateProjectionMatrix();
     }
     motes.update(dt, now / 1000, player.p.pos, camera.quaternion);
+    _yawQuat.setFromEuler(_yawEuler.set(0, player.p.yaw, 0));
+    drizzle.update(dt, player.p.pos, _yawQuat);
     vignette = Math.max(0, vignette - dt * 1.6);
     vignetteEl.style.opacity = vignette * 0.9;
   }
@@ -341,6 +350,8 @@ function tick(now) {
 }
 
 const _listenerFwd = new THREE.Vector3();
+const _yawQuat = new THREE.Quaternion();
+const _yawEuler = new THREE.Euler();
 let heartbeatT = 0;
 
 const EMPTY_INTENT = {
@@ -365,6 +376,9 @@ window.__deadfall = {
   hud,
   extraction,
   updateExtraction,
+  applyMood,
+  MOODS,
+  drizzle,
   runBot: null, // assigned below
   scene,
   camera,

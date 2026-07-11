@@ -74,7 +74,26 @@ export function startAmbience() {
   drone.start();
   drone2.start();
 
-  nodes = { windGain, insGain, droneGain, birdTimer: 2, danger: 0 };
+  // rain layer (gated by mood)
+  const rain = ctx.createBufferSource();
+  rain.buffer = noiseBuf;
+  rain.loop = true;
+  rain.playbackRate.value = 1.3;
+  const rainHp = ctx.createBiquadFilter();
+  rainHp.type = 'highpass';
+  rainHp.frequency.value = 2400;
+  const rainGain = ctx.createGain();
+  rainGain.gain.value = 0;
+  rain.connect(rainHp).connect(rainGain).connect(master);
+  rain.start();
+
+  nodes = { windGain, insGain, droneGain, rainGain, birdTimer: 2, danger: 0 };
+}
+
+export function setRain(on) {
+  if (!nodes) return;
+  const ctx = audioCtx();
+  nodes.rainGain.gain.setTargetAtTime(on ? 0.06 : 0, ctx.currentTime, 1.2);
 }
 
 function birdCall() {

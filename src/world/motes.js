@@ -56,3 +56,56 @@ export function createMotes(scene) {
 
   return { update };
 }
+
+// Drizzle for the grey-mist mood: fast thin streaks in a wrap box.
+export function createDrizzle(scene) {
+  const N = 420;
+  const geo = new THREE.PlaneGeometry(0.012, 0.5);
+  const mat = new THREE.MeshBasicMaterial({
+    color: 0xc8d4c8, transparent: true, opacity: 0.34, depthWrite: false,
+  });
+  const mesh = new THREE.InstancedMesh(geo, mat, N);
+  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  mesh.frustumCulled = false;
+  mesh.visible = false;
+  scene.add(mesh);
+
+  const R = 18;
+  const drops = [];
+  for (let i = 0; i < N; i++) {
+    drops.push({
+      x: (Math.random() * 2 - 1) * R,
+      y: Math.random() * 14,
+      z: (Math.random() * 2 - 1) * R,
+      v: 9 + Math.random() * 4,
+    });
+  }
+  const _m = new THREE.Matrix4();
+  const _q = new THREE.Quaternion();
+  const _s = new THREE.Vector3(1, 1, 1);
+  const _p = new THREE.Vector3();
+
+  function update(dt, playerPos, camYawQuat) {
+    if (!mesh.visible) return;
+    for (let i = 0; i < N; i++) {
+      const d = drops[i];
+      d.y -= d.v * dt;
+      if (d.y < 0) {
+        d.y = 13 + Math.random() * 2;
+        d.x = (Math.random() * 2 - 1) * R;
+        d.z = (Math.random() * 2 - 1) * R;
+      }
+      _p.set(playerPos.x + d.x, playerPos.y - 1.66 + d.y, playerPos.z + d.z);
+      _m.compose(_p, camYawQuat, _s);
+      mesh.setMatrixAt(i, _m);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  return {
+    update,
+    setEnabled(on) {
+      mesh.visible = on;
+    },
+  };
+}
