@@ -3,6 +3,7 @@ import { makeRng, hash2 } from '../src/core/rng.js';
 import { fbm, valueNoise } from '../src/core/noise.js';
 import {
   WORLD, terrainHeight, moisture, terrainNormal, moveSpeedFactor, riverX,
+  gorgeZ, razorfinHazard,
 } from '../src/world/heightmap.js';
 
 describe('rng', () => {
@@ -76,7 +77,7 @@ describe('terrain layout', () => {
     expect(wet / n).toBeGreaterThan(0.7);
   });
   it('escarpment seals the map edge', () => {
-    for (const [x, z] of [[320, 0], [-320, 0], [0, 320], [300, 300]]) {
+    for (const [x, z] of [[380, 0], [-380, 0], [0, 380], [360, 360]]) {
       expect(terrainHeight(x, z)).toBeGreaterThan(28);
     }
   });
@@ -86,7 +87,7 @@ describe('terrain layout', () => {
     expect(hi).toBeGreaterThan(WORLD.waterLevel + 0.5);
     expect(he).toBeGreaterThan(WORLD.waterLevel + 0.5);
     expect(hi).toBeLessThan(25);
-    expect(he).toBeLessThan(25);
+    expect(he).toBeLessThan(40); // extraction mesa is deliberately high ground
   });
   it('moisture in [0,1], wetter in swamp than on ridge', () => {
     let sw = 0, ri = 0, n = 0;
@@ -117,5 +118,65 @@ describe('terrain layout', () => {
     expect(open).toBeGreaterThan(0.9);
     expect(swamp).toBeLessThan(open);
     expect(water).toBeLessThan(0.8);
+  });
+});
+
+describe('gorge rift (round 2: no straight line to extraction)', () => {
+  it('the gorge is deep water across the map away from the sills', () => {
+    // sample x lanes at least 25m from any crossing: the rift centre there
+    // must be well below the waterline (a swim, not a walk)
+    let checked = 0;
+    for (let x = -300; x <= 300; x += 10) {
+      const nearSill = WORLD.crossings.some((c) => Math.abs(x - c.x) < 25);
+      if (nearSill) continue;
+      const h = terrainHeight(x, gorgeZ(x));
+      expect(h, `gorge floor at x=${x}`).toBeLessThan(WORLD.waterLevel - 1.5);
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(30);
+  });
+  it('every crossing sill is a walkable path over the rift', () => {
+    for (const c of WORLD.crossings) {
+      const zg = gorgeZ(c.x);
+      for (let dz = -24; dz <= 24; dz += 2) {
+        const h = terrainHeight(c.x, zg + dz);
+        if (Math.abs(dz) <= 12) {
+          // the deck itself is dry
+          expect(h, `${c.name} deck at dz=${dz}`).toBeGreaterThan(WORLD.waterLevel + 0.3);
+        } else {
+          // the approach may be a wade, but never razorfin-deep
+          expect(h, `${c.name} approach at dz=${dz}`).toBeGreaterThan(WORLD.waterLevel - 1.05);
+        }
+      }
+    }
+  });
+  it('the straight line from insertion to extraction hits razorfin water', () => {
+    const a = WORLD.insertion;
+    const b = WORLD.extraction;
+    let worst = 0;
+    for (let t = 0; t <= 1; t += 0.002) {
+      const x = a.x + (b.x - a.x) * t;
+      const z = a.z + (b.z - a.z) * t;
+      worst = Math.max(worst, razorfinHazard(x, z));
+    }
+    expect(worst).toBeGreaterThan(0.85); // the beeline swims with razorfins
+  });
+  it('razorfin hazard is zero on the sills and away from the gorge', () => {
+    for (const c of WORLD.crossings) {
+      expect(razorfinHazard(c.x, gorgeZ(c.x))).toBe(0);
+    }
+    expect(razorfinHazard(0, 200)).toBe(0);
+    expect(razorfinHazard(WORLD.extraction.x, WORLD.extraction.z)).toBe(0);
+  });
+  it('extraction mesa is commanding high ground above its surroundings', () => {
+    const ex = WORLD.extraction;
+    const top = terrainHeight(ex.x, ex.z);
+    let ring = 0;
+    let n = 0;
+    for (let a = 0; a < Math.PI * 2; a += 0.4) {
+      ring += terrainHeight(ex.x + Math.cos(a) * 60, ex.z + Math.sin(a) * 60);
+      n++;
+    }
+    expect(top).toBeGreaterThan(ring / n + 4);
   });
 });

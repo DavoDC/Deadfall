@@ -3,7 +3,7 @@
 // dark boggy swamp, olive riverbed, khaki-rock ridge, deep green jungle floor.
 
 import * as THREE from 'three';
-import { WORLD, terrainHeight, moisture, terrainNormal } from './heightmap.js';
+import { WORLD, terrainHeight, moisture, terrainNormal, razorfinHazard } from './heightmap.js';
 import { clamp, lerp } from '../core/noise.js';
 import { hash2 } from '../core/rng.js';
 
@@ -18,7 +18,7 @@ const COL = {
 };
 
 export function buildTerrain(scene) {
-  const segs = 256;
+  const segs = 320;
   const geo = new THREE.PlaneGeometry(WORLD.size, WORLD.size, segs, segs);
   geo.rotateX(-Math.PI / 2);
 
@@ -75,14 +75,37 @@ export function buildTerrain(scene) {
 }
 
 export function buildWater(scene) {
-  const geo = new THREE.PlaneGeometry(WORLD.size, WORLD.size, 48, 48);
+  const geo = new THREE.PlaneGeometry(WORLD.size, WORLD.size, 64, 64);
   geo.rotateX(-Math.PI / 2);
+
+  // per-vertex colour: living teal water, blooming BLOOD RED over the
+  // razorfin gorge - the hazard telegraphs itself from a distance
+  const pos = geo.attributes.position;
+  const wCol = new Float32Array(pos.count * 3);
+  const cSafe = new THREE.Color(0x1e6e64);
+  const cBlood = new THREE.Color(0x8e1626);
+  const cw = new THREE.Color();
+  for (let i = 0; i < pos.count; i++) {
+    const hz = razorfinHazard(pos.getX(i), pos.getZ(i));
+    cw.copy(cSafe).lerp(cBlood, hz);
+    wCol[i * 3] = cw.r;
+    wCol[i * 3 + 1] = cw.g;
+    wCol[i * 3 + 2] = cw.b;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(wCol, 3));
+
   const mat = new THREE.MeshStandardMaterial({
-    color: 0x14281e,
+    color: 0xffffff,
+    vertexColors: true,
     transparent: true,
-    opacity: 0.82,
-    roughness: 0.35,
+    opacity: 0.78,
+    roughness: 0.3,
     metalness: 0.1,
+    // DoubleSide + no depth-write: the surface stays visible from BELOW
+    // (round-1 bug: wading the deep channel put the camera under the
+    // single-sided plane and the water "vanished")
+    side: THREE.DoubleSide,
+    depthWrite: false,
   });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.position.y = WORLD.waterLevel;

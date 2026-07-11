@@ -3,17 +3,21 @@
 // act as loot magnets along each route.
 
 import * as THREE from 'three';
-import { WORLD, terrainHeight } from './heightmap.js';
+import { WORLD, terrainHeight, gorgeZ } from './heightmap.js';
 import { addCylinder } from './colliders.js';
 import { makeRng } from '../core/rng.js';
 
-// Ruin sites: one per route + a river crossing. Pickups spawn around these.
+// Ruin sites: loot magnets shaping each route, plus staging grounds on the
+// gorge approaches and a final cache before the mesa climb.
 export const RUIN_SITES = [
-  { x: -118, z: 60, name: 'swamp shrine' },
-  { x: 122, z: -40, name: 'ridge watchpost' },
-  { x: 6, z: -8, name: 'river crossing' },
-  { x: -34, z: -150, name: 'north ruin' },
-  { x: 58, z: 132, name: 'south ruin' },
+  { x: -118, z: 80, name: 'swamp shrine' },
+  { x: 58, z: 160, name: 'south ruin' },
+  { x: 128, z: 30, name: 'ridge watchpost' },
+  { x: 4, z: -14, name: 'rapids altar' },       // south approach, river route
+  { x: -108, z: -16, name: 'causeway shrine' }, // south approach, swamp route
+  { x: 148, z: -110, name: 'east descent' },    // north of the fallen giant
+  { x: -34, z: -170, name: 'north ruin' },
+  { x: 44, z: -252, name: 'mesa gate' },        // last cache before the climb
 ];
 
 export function buildProps(scene) {
@@ -121,6 +125,69 @@ export function buildProps(scene) {
     pillar.castShadow = true;
     group.add(pillar);
     addCylinder(px, pz, 0.8, 5, ph - 0.5);
+  }
+
+  // ---------- gorge crossing landmarks ----------
+  // Each sill gets a physical story so the crossings read from a distance.
+  const barkMat = new THREE.MeshStandardMaterial({ color: 0x5c4430, roughness: 1 });
+
+  // FALLEN GIANT (ridge): a colossal trunk lying along the crossing
+  {
+    const c = WORLD.crossings[2];
+    const zg = gorgeZ(c.x);
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 3.4, 46, 12), barkMat);
+    const hDeck = terrainHeight(c.x, zg);
+    trunk.rotation.x = Math.PI / 2; // lie along z (across the gorge)
+    trunk.position.set(c.x, hDeck - 1.9, zg); // mostly buried: its back IS the deck
+    trunk.castShadow = true;
+    trunk.receiveShadow = true;
+    group.add(trunk);
+    // shattered root ball at the south end
+    const roots = new THREE.Mesh(new THREE.SphereGeometry(4.2, 8, 6), barkMat);
+    roots.position.set(c.x + 2, hDeck + 0.5, zg + 24);
+    roots.scale.set(1, 0.9, 0.5);
+    roots.castShadow = true;
+    group.add(roots);
+    addCylinder(c.x + 2, zg + 24, 3.4, 5, hDeck - 1);
+  }
+
+  // THE RAPIDS (river): stepping boulders scattered along the sill
+  {
+    const c = WORLD.crossings[1];
+    const zg = gorgeZ(c.x);
+    const boulderGeo = new THREE.IcosahedronGeometry(1, 1);
+    for (let i = 0; i < 9; i++) {
+      const bx = c.x + rng.range(-6, 6);
+      const bz = zg + rng.range(-16, 16);
+      const bh = terrainHeight(bx, bz);
+      const s = rng.range(0.8, 2.1);
+      const rock = new THREE.Mesh(boulderGeo, stoneMat);
+      rock.position.set(bx, bh + s * 0.15, bz);
+      rock.scale.set(s, s * rng.range(0.55, 0.8), s);
+      rock.rotation.y = rng.next() * Math.PI;
+      rock.castShadow = true;
+      rock.receiveShadow = true;
+      group.add(rock);
+      if (s > 1.4) addCylinder(bx, bz, s * 0.7, s, bh - 0.5);
+    }
+  }
+
+  // ROOT CAUSEWAY (swamp): arched roots vaulting over the deck
+  {
+    const c = WORLD.crossings[0];
+    const zg = gorgeZ(c.x);
+    for (let i = 0; i < 5; i++) {
+      const az = zg + (i - 2) * 7;
+      const ah = terrainHeight(c.x, az);
+      // arch plane faces the walker (XY): you pass under it heading north
+      const arch = new THREE.Mesh(new THREE.TorusGeometry(4.2, 0.32, 6, 10, Math.PI), barkMat);
+      arch.position.set(c.x, ah + 0.2, az);
+      arch.rotation.y = rng.range(-0.15, 0.15);
+      arch.castShadow = true;
+      group.add(arch);
+      addCylinder(c.x - 4.2, az, 0.5, 4, ah - 0.5);
+      addCylinder(c.x + 4.2, az, 0.5, 4, ah - 0.5);
+    }
   }
 
   const blockMesh = new THREE.InstancedMesh(blockGeo, stoneMat, blocks.length);

@@ -6,7 +6,7 @@
 
 import * as THREE from 'three';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
-import { WORLD, terrainHeight, moisture, terrainNormal } from './heightmap.js';
+import { WORLD, terrainHeight, moisture, terrainNormal, gorgeZ } from './heightmap.js';
 import { addCylinder } from './colliders.js';
 import { makeRng } from '../core/rng.js';
 import { clamp } from '../core/noise.js';
@@ -244,6 +244,10 @@ export function buildVegetation(scene) {
     if (Math.max(Math.abs(x), Math.abs(z)) > WORLD.playable + 20) return false;
     if (!clearOf(x, z, ins.x, ins.z, 10)) return false;
     if (!clearOf(x, z, ext.x, ext.z, 13)) return false;
+    // never choke a gorge crossing - the sills must stay walkable
+    for (const c of WORLD.crossings) {
+      if (Math.abs(x - c.x) < 11 && Math.abs(z - gorgeZ(c.x)) < 26) return false;
+    }
     return h > -60;
   }
 
@@ -304,7 +308,7 @@ export function buildVegetation(scene) {
   scatter(16, 37, (x, z, rng) => {
     const h = terrainHeight(x, z);
     if (!keepSpot(x, z, h)) return;
-    const inSwamp = x < -55 && Math.abs(z) < 210;
+    const inSwamp = x < -55 && Math.abs(z) < 265;
     const nearWater = h < WORLD.waterLevel + 1.2;
     if (!inSwamp && !(nearWater && rng.chance(0.35))) return;
     if (rng.next() > 0.5) return;
