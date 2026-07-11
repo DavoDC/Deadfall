@@ -5,6 +5,9 @@ import * as THREE from 'three';
 import { WORLD } from './world/heightmap.js';
 import { buildTerrain, buildWater } from './world/terrain.js';
 import { buildSky, trackShadow } from './world/sky.js';
+import { buildVegetation, tickWind } from './world/vegetation.js';
+import { buildProps } from './world/props.js';
+import { colliderCount } from './world/colliders.js';
 import { createInput } from './player/input.js';
 import { createPlayer } from './player/controller.js';
 
@@ -30,7 +33,10 @@ const t0 = performance.now();
 const { sun } = buildSky(scene, renderer);
 buildTerrain(scene);
 const water = buildWater(scene);
-console.log('[deadfall] world built in', Math.round(performance.now() - t0), 'ms');
+buildVegetation(scene);
+const { tickProps } = buildProps(scene);
+console.log('[deadfall] world built in', Math.round(performance.now() - t0), 'ms,',
+  colliderCount(), 'colliders');
 
 // --- player ---
 const input = createInput(renderer.domElement);
@@ -99,6 +105,8 @@ function tick(now) {
   }
 
   if (water.userData.tick) water.userData.tick(now / 1000);
+  tickWind(now / 1000);
+  tickProps(dt);
   renderer.render(scene, camera);
 }
 

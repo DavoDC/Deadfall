@@ -4,13 +4,13 @@
 import * as THREE from 'three';
 
 export const ATMOS = {
-  fogColor: 0x9db98a,
-  fogDensity: 0.0165,
+  fogColor: 0x93ac7e,
+  fogDensity: 0.019,
   sunColor: 0xffe0b0,
   sunIntensity: 2.6,
-  hemiSky: 0xbcd6a0,
-  hemiGround: 0x2c3a20,
-  hemiIntensity: 0.75,
+  hemiSky: 0xc2d8aa,
+  hemiGround: 0x46523a,
+  hemiIntensity: 1.05,
 };
 
 export function buildSky(scene, renderer) {
@@ -44,7 +44,7 @@ export function buildSky(scene, renderer) {
     depthWrite: false,
     fog: false,
     uniforms: {
-      topColor: { value: new THREE.Color(0x8fb8c9) },
+      topColor: { value: new THREE.Color(0xa8c4b2) },
       horizonColor: { value: new THREE.Color(ATMOS.fogColor) },
     },
     vertexShader: /* glsl */ `
