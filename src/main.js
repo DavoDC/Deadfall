@@ -13,8 +13,10 @@ import { createPlayer } from './player/controller.js';
 import { createWeapons } from './weapons/weapons.js';
 import { createViewmodel } from './weapons/viewmodel.js';
 import { createEffects } from './weapons/effects.js';
+import { createEnemyManager } from './enemies/enemies.js';
+import { createDirector } from './enemies/director.js';
 import {
-  initAudio, resumeAudio, setListener, sfxFootstep, sfxLand,
+  initAudio, resumeAudio, setListener, sfxFootstep, sfxLand, sfxHurt,
 } from './audio/engine.js';
 
 const app = document.getElementById('app');
@@ -65,6 +67,47 @@ const weapons = createWeapons(camera, player, weaponHooks);
 const viewmodel = createViewmodel(camera, weapons, player);
 scene.add(viewmodel.flashGroup);
 
+// --- enemies + director ---
+const vignetteEl = document.getElementById('vignette');
+let vignette = 0;
+const enemyMgr = createEnemyManager(scene, player, effects, {
+  damagePlayer(amount, srcPos) {
+    if (game.state !== 'RUNNING' || !player.p.alive) return;
+    player.damage(amount);
+    sfxHurt();
+    vignette = 1;
+    if (!player.p.alive) onPlayerDeath();
+  },
+  onKill(type) {
+    game.kills += 1;
+  },
+});
+const director = createDirector(enemyMgr, player);
+weaponHooks.rayEnemies = (origin, dir, maxDist) => enemyMgr.rayEnemies(origin, dir, maxDist);
+weaponHooks.onEnemyHit = (enemy, dmg, headshot, point) => enemyMgr.applyDamage(enemy, dmg, headshot, point);
+weaponHooks.onShot = () => {
+  director.onShot();
+  game.shotsFired += 1;
+};
+
+function onPlayerDeath() {
+  game.state = 'DEAD';
+  endRun(false);
+}
+
+function endRun(extracted) {
+  // placeholder - full end screen lands with the run-loop module
+  input.exitLock();
+  hudEl.classList.add('hidden');
+  endEl.classList.remove('hidden');
+  const title = document.getElementById('end-title');
+  title.textContent = extracted ? 'EXTRACTED' : 'K.I.A.';
+  title.className = 'title ' + (extracted ? 'extracted' : 'died');
+  document.getElementById('end-stats').innerHTML =
+    `TIME <b>${Math.floor(game.time / 60)}:${String(Math.floor(game.time % 60)).padStart(2, '0')}</b>` +
+    ` &nbsp; KILLS <b>${game.kills}</b> &nbsp; SHOTS <b>${game.shotsFired}</b>`;
+}
+
 // --- game state ---
 const game = {
   state: 'MENU', // MENU | RUNNING | DEAD | WIN
@@ -82,6 +125,9 @@ function startRun() {
   resumeAudio();
   player.reset();
   weapons.reset();
+  enemyMgr.reset();
+  director.reset();
+  vignette = 0;
   game.state = 'RUNNING';
   game.time = 0;
   game.kills = 0;
@@ -130,9 +176,18 @@ function tick(now) {
     weapons.update(intent, dt, game.time);
     viewmodel.update(intent, dt);
     effects.update(dt, camera);
+    enemyMgr.update(dt);
+    director.update(dt);
     trackShadow(sun, player.p.pos);
     setListener(player.p.pos, camera.getWorldDirection(_listenerFwd));
     updateAmmoHud();
+    // damage vignette + health bar
+    vignette = Math.max(0, vignette - dt * 1.6);
+    vignetteEl.style.opacity = vignette * 0.9;
+    const hb = document.getElementById('health-bar');
+    const frac = player.p.hp / player.p.maxHp;
+    hb.style.width = `${frac * 100}%`;
+    hb.classList.toggle('low', frac < 0.33);
   }
 
   if (water.userData.tick) water.userData.tick(now / 1000);
@@ -174,6 +229,8 @@ window.__deadfall = {
   weaponHooks,
   effects,
   viewmodel,
+  enemyMgr,
+  director,
   scene,
   camera,
   renderer,
