@@ -245,16 +245,27 @@ function startRun() {
   input.requestLock();
 }
 
-document.getElementById('btn-start').addEventListener('click', startRun);
+const btnStart = document.getElementById('btn-start');
+btnStart.addEventListener('click', () => {
+  if (game.state === 'RUNNING') {
+    // ESC pause -> resume the same run, do not reset it
+    menuEl.classList.add('hidden');
+    input.requestLock();
+  } else {
+    startRun();
+  }
+});
 document.getElementById('btn-again').addEventListener('click', startRun);
 
 input.state.onLockChange = (locked) => {
   if (!locked && game.state === 'RUNNING') {
-    // treat unlock as pause -> back to menu overlay without resetting
+    // treat unlock as pause -> menu overlay, run frozen (loop gates on lock)
+    btnStart.textContent = 'RESUME';
     menuEl.classList.remove('hidden');
   } else if (locked && game.state === 'RUNNING') {
     menuEl.classList.add('hidden');
   }
+  if (game.state !== 'RUNNING') btnStart.textContent = 'DEPLOY';
 };
 
 // --- main loop ---
@@ -276,9 +287,11 @@ function tick(now) {
     fpsTimer = 0;
   }
 
-  if (game.state === 'RUNNING') {
+  // Sim advances only under pointer lock: ESC is a real pause, and the
+  // autotest bot (which steps the systems itself, unlocked) never double-ticks.
+  if (game.state === 'RUNNING' && input.state.locked) {
     game.time += dt;
-    const intent = input.state.locked ? input.sample() : EMPTY_INTENT;
+    const intent = input.sample();
     player.update(intent, dt);
     weapons.update(intent, dt, game.time);
     viewmodel.update(intent, dt);
