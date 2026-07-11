@@ -21,6 +21,8 @@ import {
   initAudio, resumeAudio, setListener, sfxFootstep, sfxLand, sfxHurt,
   sfxExtractTone, sfxStinger,
 } from './audio/engine.js';
+import { startAmbience, updateAmbience } from './audio/ambience.js';
+import { createMotes } from './world/motes.js';
 
 const app = document.getElementById('app');
 
@@ -46,6 +48,7 @@ buildTerrain(scene);
 const water = buildWater(scene);
 buildVegetation(scene);
 const { tickProps } = buildProps(scene);
+const motes = createMotes(scene);
 console.log('[deadfall] world built in', Math.round(performance.now() - t0), 'ms,',
   colliderCount(), 'colliders');
 
@@ -218,6 +221,7 @@ const endEl = document.getElementById('endscreen');
 function startRun() {
   initAudio();
   resumeAudio();
+  startAmbience();
   player.reset();
   weapons.reset();
   enemyMgr.reset();
@@ -285,6 +289,26 @@ function tick(now) {
     trackShadow(sun, player.p.pos);
     setListener(player.p.pos, camera.getWorldDirection(_listenerFwd));
     hud.update(dt);
+
+    // reactive dread: nearest hostile drives ambience; extraction keeps it hot
+    let nearest = Infinity;
+    for (const e of enemyMgr.aliveList()) {
+      const dd = Math.hypot(e.pos.x - player.p.pos.x, e.pos.z - player.p.pos.z);
+      if (dd < nearest) nearest = dd;
+    }
+    let danger = nearest === Infinity ? 0 : Math.max(0, Math.min(1, 1 - nearest / 48));
+    if (extraction.committed && game.state === 'RUNNING' && extraction.progress < 1) {
+      danger = Math.max(danger, 0.55);
+    }
+    updateAmbience(danger, dt);
+
+    // sprint FOV kick
+    const targetFov = player.p.sprinting ? 79 : 74;
+    if (Math.abs(camera.fov - targetFov) > 0.05) {
+      camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 8);
+      camera.updateProjectionMatrix();
+    }
+    motes.update(dt, now / 1000, player.p.pos, camera.quaternion);
     vignette = Math.max(0, vignette - dt * 1.6);
     vignetteEl.style.opacity = vignette * 0.9;
   }
