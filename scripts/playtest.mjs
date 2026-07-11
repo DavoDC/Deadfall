@@ -75,6 +75,10 @@ for (const difficulty of difficulties) {
       if (srcs.length) {
         console.log(`      hurt by: ${srcs.map(([k, v]) => `${k} ${v}`).join(', ')}`);
       }
+      if (rep.stuck) {
+        const tail = rep.posTrail.slice(-10).map((p) => `${p.x},${p.z}`).join(' > ');
+        console.log(`      trail: ${tail}`);
+      }
     }
   }
 }

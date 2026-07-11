@@ -14,6 +14,18 @@ const COSTS = {
   prowler: 1, stingerwing: 0.6, spitter: 2, shrike: 2, bloomcaller: 3, juggernaut: 5,
 };
 
+// Extraction surge: the final stand is a WAVE, not a siege. Melee-weighted
+// recipes - you can fight a horde off the beacon; you cannot out-stand
+// artillery you are forced to hold still inside.
+const SURGE_SQUADS = [
+  { min: 0, recipe: [['prowler', 2]] },
+  { min: 0, recipe: [['stingerwing', 4]] },
+  { min: 0, recipe: [['prowler', 1], ['stingerwing', 3]] },
+  { min: 0.5, recipe: [['shrike', 2]] },
+  { min: 0.6, recipe: [['juggernaut', 1]] },
+  { min: 0.7, recipe: [['prowler', 2], ['shrike', 1]] },
+];
+
 // Squad recipes unlock by threat tier. The director prefers the freshest
 // unlocked recipes so fights change texture as the run deepens.
 const SQUADS = [
@@ -138,10 +150,11 @@ export function createDirector(enemyMgr, playerRef, opts = {}) {
     const alive = enemyMgr.aliveCount();
     if (alive >= cap()) return;
 
-    const unlocked = SQUADS.filter((s) => t >= s.min);
+    const pool = d.surge ? SURGE_SQUADS : SQUADS;
+    const unlocked = pool.filter((s) => t >= s.min);
     if (unlocked.length === 0) return;
     // prefer the freshest recipes: pick among the last few unlocked
-    const window = unlocked.slice(-4);
+    const window = d.surge ? unlocked : unlocked.slice(-4);
     const squad = window[Math.floor(Math.random() * window.length)];
 
     for (const [type, count] of squad.recipe) {

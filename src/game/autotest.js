@@ -109,24 +109,32 @@ export function createBot(ctx) {
     let consecStuck = 0;
     let detour = null;
     let grenadeCd = 0;
+    let razorEscapeYaw = null;
 
     const maxFrames = maxMinutes * 60 * 60;
     for (let i = 0; i < maxFrames; i++) {
       const pp = player.p.pos;
 
-      // --- target selection: nearest VISIBLE living enemy in 36m, with
-      // priority: bloomcallers die first, then whatever is closest ---
+      // --- target selection with engagement TRIAGE: a runner does not
+      // clear the jungle, they clear what is in the way. Fight only what
+      // is close, actively attacking, or a bloomcaller (kill on sight -
+      // it multiplies). Everything else: keep moving north. ---
       let target = null;
-      let tDist = 36;
+      let tDist = Infinity;
       let sawBloom = false;
       for (const e of enemyMgr.aliveList()) {
         const dd = Math.hypot(e.pos.x - pp.x, e.pos.z - pp.z);
-        if (dd >= tDist && !(e.type === 'bloomcaller' && !sawBloom && dd < 40)) continue;
+        const attacking = e.state === 'windup' || e.state === 'lunge'
+          || e.state === 'charge' || e.state === 'chargewind' || e.state === 'air';
+        const isBloom = e.type === 'bloomcaller';
+        const engage = isBloom ? dd < 42
+          : attacking ? dd < 30
+            : dd < 18;
+        if (!engage) continue;
         const aimY = e.pos.y + (AIM_Y[e.type] ?? 0.8);
         if (!hasLOS(pp.x, pp.y, pp.z, e.pos.x, aimY, e.pos.z)) continue;
-        const isBloom = e.type === 'bloomcaller';
         if (isBloom && !sawBloom) {
-          // priority override
+          // priority override: the summoner dies first
           target = e;
           tDist = dd;
           sawBloom = true;
@@ -276,11 +284,42 @@ export function createBot(ctx) {
         }
       }
 
-      // razorfin water is an emergency: swim for the nearest bank NOW
+      // dodge committed attacks like a human: a charging juggernaut and a
+      // pouncing shrike are locked onto a line - step OFF the line, hard
+      for (const e of enemyMgr.aliveList()) {
+        const charging = e.type === 'juggernaut' && (e.state === 'charge' || e.state === 'chargewind');
+        const pouncing = e.type === 'shrike' && e.state === 'air' && e.pouncing;
+        if (!charging && !pouncing) continue;
+        const ex = pp.x - e.pos.x;
+        const ez = pp.z - e.pos.z;
+        const ed = Math.hypot(ex, ez);
+        if (ed > 16) continue;
+        // step to whichever side of the attack line we already lean toward
+        const hx = Math.sin(e.heading);
+        const hz = Math.cos(e.heading);
+        const side = Math.sign(ex * hz - ez * hx) || 1;
+        // convert world side direction into strafe relative to player yaw
+        const dodgeX = hz * side;
+        const dodgeZ = -hx * side;
+        const fwdX = -Math.sin(player.p.yaw);
+        const fwdZ = -Math.cos(player.p.yaw);
+        const rightX = -fwdZ;
+        const rightZ = fwdX;
+        intent.moveX = Math.sign(dodgeX * rightX + dodgeZ * rightZ) || 1;
+        intent.moveZ = 0.4; // and give ground
+        intent.sprint = false;
+        break;
+      }
+
+      // razorfin water is an emergency: swim for the nearest bank NOW.
+      // Latch the chosen bank until clear - dithering at the centreline
+      // while the swarm feeds is how one bot run bled out.
       if (razorfinHazard(pp.x, pp.z) > 0) {
-        const zg = gorgeZ(pp.x);
-        const north = pp.z < zg; // already past centre? push on north (yaw 0)
-        let dyaw = (north ? 0 : Math.PI) - player.p.yaw;
+        if (razorEscapeYaw === null) {
+          const north = pp.z < gorgeZ(pp.x); // past centre? push on north
+          razorEscapeYaw = north ? 0 : Math.PI;
+        }
+        let dyaw = razorEscapeYaw - player.p.yaw;
         while (dyaw > Math.PI) dyaw -= Math.PI * 2;
         while (dyaw < -Math.PI) dyaw += Math.PI * 2;
         player.p.yaw += Math.max(-0.15, Math.min(0.15, dyaw));
@@ -288,6 +327,8 @@ export function createBot(ctx) {
         intent.moveX = 0;
         intent.sprint = true;
         intent.aim = false;
+      } else {
+        razorEscapeYaw = null;
       }
 
       // --- tick the actual game ---
