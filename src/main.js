@@ -23,6 +23,7 @@ import {
 } from './audio/engine.js';
 import { startAmbience, updateAmbience } from './audio/ambience.js';
 import { createMotes } from './world/motes.js';
+import { createBot } from './game/autotest.js';
 
 const app = document.getElementById('app');
 
@@ -343,6 +344,7 @@ window.__deadfall = {
   hud,
   extraction,
   updateExtraction,
+  runBot: null, // assigned below
   scene,
   camera,
   renderer,
@@ -353,4 +355,8 @@ window.__deadfall = {
     player.p.pos.y = 200; // drop in; gravity settles onto terrain
   },
 };
+const bot = createBot({
+  player, weapons, enemyMgr, director, pickups, game, updateExtraction, startRun,
+});
+window.__deadfall.runBot = bot.runBot;
 console.log('[deadfall] ready');

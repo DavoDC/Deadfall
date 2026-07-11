@@ -8,7 +8,6 @@ import { terrainHeight, WORLD } from '../world/heightmap.js';
 import { clamp, lerp } from '../core/noise.js';
 
 const RAMP_TIME = 400;         // seconds to reach full baseline threat
-const TICK = 4;                // seconds between spend decisions
 const COSTS = { prowler: 1, spitter: 2, juggernaut: 5 };
 
 export function createDirector(enemyMgr, playerRef) {
@@ -16,23 +15,24 @@ export function createDirector(enemyMgr, playerRef) {
     time: 0,
     heat: 0,          // noise-driven, decays
     surge: false,     // extraction channel active
-    tickT: 2.5,       // first contact comes early but light
-    budget: 1.2,
+    tickT: 18,        // opening grace - let the jungle breathe first
+    budget: 1,
     spawned: { prowler: 0, spitter: 0, juggernaut: 0 },
   };
 
   function threat() {
     const base = clamp(d.time / RAMP_TIME, 0, 1);
-    return clamp(base * 0.75 + d.heat + (d.surge ? 0.3 : 0), 0, 1.25);
+    return clamp(base * 0.8 + d.heat + (d.surge ? 0.3 : 0), 0, 1.25);
   }
 
   function onShot() {
-    d.heat = Math.min(0.45, d.heat + 0.018);
+    // noise nudges the jungle, it does not command it
+    d.heat = Math.min(0.15, d.heat + 0.008);
   }
 
   function cap() {
     const t = threat();
-    return Math.round(2 + t * (d.surge ? 10 : 7));
+    return Math.round(2 + t * (d.surge ? 8 : 4));
   }
 
   // find a spawn point: ring around player, biased toward their heading,
@@ -45,7 +45,9 @@ export function createDirector(enemyMgr, playerRef) {
       const ang = biasAhead
         ? yaw + Math.PI + (Math.random() - 0.5) * 2.4   // ahead of camera (-z is yaw+PI in world atan2 terms)
         : Math.random() * Math.PI * 2;
-      const r = d.surge ? 26 + Math.random() * 22 : 34 + Math.random() * 26;
+      const t = threat();
+      const base = d.surge ? 18 : lerp(40, 25, t);
+      const r = base + Math.random() * 16;
       const x = pp.x - Math.sin(ang) * r;
       const z = pp.z - Math.cos(ang) * r;
       if (Math.max(Math.abs(x), Math.abs(z)) > WORLD.playable - 6) continue;
@@ -66,7 +68,7 @@ export function createDirector(enemyMgr, playerRef) {
     // what can we afford / what does the moment need?
     const wants = [];
     if (t > 0.42 && d.spawned.juggernaut * 9 < t * 10 - 3) wants.push('juggernaut');
-    if (t > 0.18 && Math.random() < 0.45) wants.push('spitter');
+    if (t > 0.1 && Math.random() < 0.5) wants.push('spitter');
     wants.push('prowler');
 
     for (const type of wants) {
@@ -97,12 +99,13 @@ export function createDirector(enemyMgr, playerRef) {
 
   function update(dt) {
     d.time += dt;
-    d.heat = Math.max(0, d.heat - dt * 0.008);
+    d.heat = Math.max(0, d.heat - dt * 0.012);
     d.tickT -= dt;
     if (d.tickT <= 0) {
-      d.tickT = d.surge ? TICK * 0.45 : TICK;
       const t = threat();
-      d.budget = Math.min(10, d.budget + lerp(0.8, 3.4, t));
+      // squad cadence: one purchase decision, then a real pause
+      d.tickT = d.surge ? lerp(7, 4, t) : lerp(22, 8, t);
+      d.budget = Math.min(8, d.budget + lerp(1, 3, t));
       trySpend();
     }
   }
