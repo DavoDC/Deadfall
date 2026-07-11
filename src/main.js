@@ -15,8 +15,11 @@ import { createViewmodel } from './weapons/viewmodel.js';
 import { createEffects } from './weapons/effects.js';
 import { createEnemyManager } from './enemies/enemies.js';
 import { createDirector } from './enemies/director.js';
+import { createPickups } from './game/pickups.js';
+import { createHud } from './game/hud.js';
 import {
   initAudio, resumeAudio, setListener, sfxFootstep, sfxLand, sfxHurt,
+  sfxExtractTone, sfxStinger,
 } from './audio/engine.js';
 
 const app = document.getElementById('app');
@@ -46,6 +49,14 @@ const { tickProps } = buildProps(scene);
 console.log('[deadfall] world built in', Math.round(performance.now() - t0), 'ms,',
   colliderCount(), 'colliders');
 
+// --- game state ---
+const game = {
+  state: 'MENU', // MENU | RUNNING | DEAD | WIN
+  time: 0,       // seconds since run start
+  kills: 0,
+  shotsFired: 0,
+};
+
 // --- player ---
 const input = createInput(renderer.domElement);
 const player = createPlayer(camera);
@@ -70,6 +81,7 @@ scene.add(viewmodel.flashGroup);
 // --- enemies + director ---
 const vignetteEl = document.getElementById('vignette');
 let vignette = 0;
+let pickupsRef = null; // assigned below; enemy kills drop supplies through it
 const enemyMgr = createEnemyManager(scene, player, effects, {
   damagePlayer(amount, srcPos) {
     if (game.state !== 'RUNNING' || !player.p.alive) return;
@@ -78,8 +90,12 @@ const enemyMgr = createEnemyManager(scene, player, effects, {
     vignette = 1;
     if (!player.p.alive) onPlayerDeath();
   },
-  onKill(type) {
+  onKill(type, pos) {
     game.kills += 1;
+    // dying enemies drop supplies; juggernauts drop a cache
+    if (!pickupsRef) return;
+    if (type === 'juggernaut') pickupsRef.dropAt(pos.x, pos.z, true);
+    else if (Math.random() < 0.35) pickupsRef.dropAt(pos.x, pos.z, false);
   },
 });
 const director = createDirector(enemyMgr, player);
@@ -90,31 +106,110 @@ weaponHooks.onShot = () => {
   game.shotsFired += 1;
 };
 
+// --- pickups + HUD ---
+const hud = createHud(player, weapons, game, director);
+const pickups = createPickups(scene, player, weapons, {
+  heal(amount) {
+    const before = player.p.hp;
+    player.heal(amount);
+    return player.p.hp - before;
+  },
+  toast(msg) {
+    hud.toast(msg);
+  },
+});
+weaponHooks.onHitmarker = (kill) => hud.hitmarker(kill);
+pickupsRef = pickups;
+
+// --- extraction ---
+const extraction = {
+  progress: 0,
+  active: false,     // player currently in the zone
+  committed: false,  // surge triggered (stays on once you start)
+  toneAt: 0,
+};
+
+function updateExtraction(dt) {
+  const ex = WORLD.extraction;
+  const dx = player.p.pos.x - ex.x;
+  const dz = player.p.pos.z - ex.z;
+  const inZone = dx * dx + dz * dz < ex.radius * ex.radius;
+
+  if (inZone && !extraction.active) {
+    extraction.active = true;
+    if (!extraction.committed) {
+      extraction.committed = true;
+      director.startSurge();
+      hud.toast('HOLD THE BEACON', 2.4);
+      hud.setObjective('HOLD FOR EXTRACTION');
+    }
+  } else if (!inZone && extraction.active) {
+    extraction.active = false;
+    hud.setObjective('RETURN TO THE BEACON');
+  }
+
+  if (extraction.active) {
+    extraction.progress = Math.min(1, extraction.progress + dt / 14);
+    if (extraction.progress - extraction.toneAt >= 0.1) {
+      extraction.toneAt = extraction.progress;
+      sfxExtractTone(extraction.progress);
+    }
+    if (extraction.progress >= 1) {
+      winRun();
+      return;
+    }
+  }
+  hud.showExtract(extraction.committed ? extraction.progress : null);
+}
+
+function winRun() {
+  game.state = 'WIN';
+  sfxStinger('win');
+  endRun(true);
+}
+
 function onPlayerDeath() {
   game.state = 'DEAD';
+  sfxStinger('death');
   endRun(false);
 }
 
+function loadBest() {
+  try {
+    return JSON.parse(localStorage.getItem('deadfall_best')) || null;
+  } catch {
+    return null;
+  }
+}
+
+function saveBest(extracted) {
+  const best = loadBest();
+  const run = { extracted, time: Math.round(game.time), kills: game.kills };
+  // extraction beats non-extraction; then fastest extraction; then most kills
+  const better = !best
+    || (extracted && !best.extracted)
+    || (extracted === !!best.extracted
+      && (extracted ? run.time < best.time : run.kills > best.kills));
+  if (better) localStorage.setItem('deadfall_best', JSON.stringify(run));
+  return better;
+}
+
 function endRun(extracted) {
-  // placeholder - full end screen lands with the run-loop module
   input.exitLock();
   hudEl.classList.add('hidden');
   endEl.classList.remove('hidden');
+  const isRecord = saveBest(extracted);
   const title = document.getElementById('end-title');
   title.textContent = extracted ? 'EXTRACTED' : 'K.I.A.';
   title.className = 'title ' + (extracted ? 'extracted' : 'died');
+  const mm = Math.floor(game.time / 60);
+  const ss = String(Math.floor(game.time % 60)).padStart(2, '0');
+  const acc = game.shotsFired > 0 ? '' : '';
   document.getElementById('end-stats').innerHTML =
-    `TIME <b>${Math.floor(game.time / 60)}:${String(Math.floor(game.time % 60)).padStart(2, '0')}</b>` +
-    ` &nbsp; KILLS <b>${game.kills}</b> &nbsp; SHOTS <b>${game.shotsFired}</b>`;
+    `TIME <b>${mm}:${ss}</b> &nbsp;·&nbsp; KILLS <b>${game.kills}</b> &nbsp;·&nbsp; SHOTS <b>${game.shotsFired}</b>${acc}` +
+    (isRecord ? '<br/><span style="color:var(--accent)">NEW RECORD</span>' : '') +
+    (extracted ? '' : '<br/>The jungle keeps what it kills.');
 }
-
-// --- game state ---
-const game = {
-  state: 'MENU', // MENU | RUNNING | DEAD | WIN
-  time: 0,       // seconds since run start
-  kills: 0,
-  shotsFired: 0,
-};
 
 const menuEl = document.getElementById('menu');
 const hudEl = document.getElementById('hud');
@@ -127,6 +222,13 @@ function startRun() {
   weapons.reset();
   enemyMgr.reset();
   director.reset();
+  pickups.reset();
+  extraction.progress = 0;
+  extraction.active = false;
+  extraction.committed = false;
+  extraction.toneAt = 0;
+  hud.setObjective('REACH THE EXTRACTION BEACON');
+  hud.showExtract(null);
   vignette = 0;
   game.state = 'RUNNING';
   game.time = 0;
@@ -178,16 +280,13 @@ function tick(now) {
     effects.update(dt, camera);
     enemyMgr.update(dt);
     director.update(dt);
+    pickups.update(dt);
+    if (game.state === 'RUNNING') updateExtraction(dt);
     trackShadow(sun, player.p.pos);
     setListener(player.p.pos, camera.getWorldDirection(_listenerFwd));
-    updateAmmoHud();
-    // damage vignette + health bar
+    hud.update(dt);
     vignette = Math.max(0, vignette - dt * 1.6);
     vignetteEl.style.opacity = vignette * 0.9;
-    const hb = document.getElementById('health-bar');
-    const frac = player.p.hp / player.p.maxHp;
-    hb.style.width = `${frac * 100}%`;
-    hb.classList.toggle('low', frac < 0.33);
   }
 
   if (water.userData.tick) water.userData.tick(now / 1000);
@@ -197,21 +296,6 @@ function tick(now) {
 }
 
 const _listenerFwd = new THREE.Vector3();
-
-// temporary ammo HUD hookup (full HUD module lands with the run loop)
-const ammoEl = document.getElementById('ammo');
-const weaponNameEl = document.getElementById('weapon-name');
-const reloadHintEl = document.getElementById('reload-hint');
-function updateAmmoHud() {
-  const st = weapons.state;
-  const mag = st.mag[st.current];
-  const res = st.reserve[st.current];
-  ammoEl.innerHTML = `${mag} <span class="reserve">/ ${res}</span>`;
-  ammoEl.classList.toggle('empty', mag === 0);
-  weaponNameEl.textContent = weapons.def().name;
-  reloadHintEl.style.opacity =
-    (mag <= 5 && res > 0 && st.reloading <= 0) ? 1 : 0;
-}
 
 const EMPTY_INTENT = {
   moveX: 0, moveZ: 0, lookDX: 0, lookDY: 0, sprint: false, jump: false,
@@ -231,6 +315,10 @@ window.__deadfall = {
   viewmodel,
   enemyMgr,
   director,
+  pickups,
+  hud,
+  extraction,
+  updateExtraction,
   scene,
   camera,
   renderer,
