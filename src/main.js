@@ -24,6 +24,7 @@ import {
 import { startAmbience, updateAmbience, setRain } from './audio/ambience.js';
 import { createMotes, createDrizzle } from './world/motes.js';
 import { createBot } from './game/autotest.js';
+import { createSnapshot } from './game/snapshot.js';
 
 const app = document.getElementById('app');
 
@@ -394,4 +395,8 @@ const bot = createBot({
   player, weapons, enemyMgr, director, pickups, game, updateExtraction, startRun,
 });
 window.__deadfall.runBot = bot.runBot;
+const { snapshot } = createSnapshot({
+  player, weapons, enemyMgr, director, game, extraction, seed: WORLD.seed,
+});
+window.__deadfall.snapshot = snapshot;
 console.log('[deadfall] ready');
