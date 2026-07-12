@@ -122,14 +122,17 @@ export function createBot(ctx) {
       let target = null;
       let tDist = Infinity;
       let sawBloom = false;
+      // on DEADFALL the winning strategy is different: fight even less,
+      // keep moving - you cannot out-kill the hard director's budget
+      const hardMode = sim.difficulty.key === 'hard';
       for (const e of enemyMgr.aliveList()) {
         const dd = Math.hypot(e.pos.x - pp.x, e.pos.z - pp.z);
         const attacking = e.state === 'windup' || e.state === 'lunge'
           || e.state === 'charge' || e.state === 'chargewind' || e.state === 'air';
         const isBloom = e.type === 'bloomcaller';
         const engage = isBloom ? dd < 42
-          : attacking ? dd < 30
-            : dd < 18;
+          : attacking ? dd < (hardMode ? 24 : 30)
+            : dd < (hardMode ? 13 : 18);
         if (!engage) continue;
         const aimY = e.pos.y + (AIM_Y[e.type] ?? 0.8);
         if (!hasLOS(pp.x, pp.y, pp.z, e.pos.x, aimY, e.pos.z)) continue;
@@ -203,7 +206,9 @@ export function createBot(ctx) {
         // back away from close melee while shooting; otherwise keep
         // drifting up the route like a human clearing while moving
         if (tDist < 4) intent.moveZ = 1;
-        else if (tDist > 8 && player.p.hp > 45) intent.moveZ = -0.6;
+        else if (tDist > (hardMode ? 5 : 8) && player.p.hp > (hardMode ? 30 : 45)) {
+          intent.moveZ = hardMode ? -0.85 : -0.6;
+        }
         // strafe-dodge ranged attackers (acid arcs are dodgeable on foot)
         if (target.type === 'spitter' || target.type === 'bloomcaller') {
           intent.moveX = Math.sin(game.time * 1.6) > 0 ? 1 : -1;
@@ -346,9 +351,9 @@ export function createBot(ctx) {
       const atBeacon = wpIdx >= wps.length - 1
         && Math.hypot(pp.x - wps[wps.length - 1].x, pp.z - wps[wps.length - 1].z) < 10;
       stuckRef.t += dt;
-      if (stuckRef.t > 10) {
+      if (stuckRef.t > 14) {
         if (!target && !atBeacon
-          && Math.hypot(pp.x - stuckRef.x, pp.z - stuckRef.z) < 2.5) {
+          && Math.hypot(pp.x - stuckRef.x, pp.z - stuckRef.z) < 2.2) {
           report.stuck = true;
           report.stuckAt = { x: Math.round(pp.x), z: Math.round(pp.z), wp: wpIdx };
           break;

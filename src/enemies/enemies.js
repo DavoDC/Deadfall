@@ -58,8 +58,8 @@ export const ENEMY_DEFS = {
     radius: 0.5,
     eyeH: 1.35,
     // enrage: per rage stack (0-4, from hp lost)
-    rageSpeed: 0.13,       // +13% speed per stack
-    rageCooldown: 0.09,    // -9% spit cooldown per stack
+    rageSpeed: 0.12,       // +12% speed per stack
+    rageCooldown: 0.07,    // -7% spit cooldown per stack
     rageScale: 0.055,      // it literally grows
   },
   juggernaut: {

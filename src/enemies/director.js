@@ -79,7 +79,7 @@ export function createDirector(enemyMgr, playerRef, opts = {}) {
   function cap() {
     const t = threat();
     const bonus = d.diff ? d.diff.capBonus : 0;
-    return Math.round(2 + t * (d.surge ? 8.5 : 4.5)) + bonus;
+    return Math.round(2 + t * (d.surge ? 7 : 4.5)) + bonus;
   }
 
   // The crossing the player is currently approaching from the south, if any.
@@ -202,8 +202,11 @@ export function createDirector(enemyMgr, playerRef, opts = {}) {
       const tickScale = d.diff ? d.diff.tickScale : 1;
       const budgetRate = d.diff ? d.diff.budgetRate : 1;
       // squad cadence: one purchase decision, then a real pause
-      d.tickT = (d.surge ? lerp(6, 3.4, t) : lerp(24, 9, t)) * tickScale;
-      d.budget = Math.min(12, d.budget + lerp(0.9, 3, t) * budgetRate);
+      d.tickT = (d.surge ? lerp(6, 3.6, t) : lerp(24, 9, t)) * tickScale;
+      // budget regen saturates at full threat - the overdrive band (>1)
+      // sharpens cadence and cap, not spawn volume, or the surge becomes
+      // an unwinnable faucet on hard
+      d.budget = Math.min(12, d.budget + lerp(0.9, 3, Math.min(t, 1)) * budgetRate);
       trySpend();
     }
   }
