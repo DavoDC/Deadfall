@@ -84,6 +84,20 @@
     #hitmarker.kill::before, #hitmarker.kill::after { background: var(--danger); }
     #hitmarker.crit::before, #hitmarker.crit::after { background: #ffb028; }
 
+    /* LONGARM scope overlay: circular glass + fine reticle */
+    #scope { position: absolute; inset: 0; opacity: 0; transition: opacity 0.08s; pointer-events: none; }
+    #scope .glass {
+      position: absolute; inset: 0;
+      background: radial-gradient(circle at 50% 50%, transparent 31%, rgba(2, 6, 3, 0.985) 33.5%);
+    }
+    #scope .ret-h, #scope .ret-v { position: absolute; background: rgba(10, 14, 10, 0.9); }
+    #scope .ret-h { left: 50%; top: 50%; width: 34vmin; height: 1.5px; transform: translate(-50%, -50%); }
+    #scope .ret-v { left: 50%; top: 50%; width: 1.5px; height: 34vmin; transform: translate(-50%, -50%); }
+    #scope .ret-dot {
+      position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; border-radius: 50%;
+      background: rgba(180, 30, 20, 0.9); transform: translate(-50%, -50%);
+    }
+
     #health-wrap { position: absolute; left: 28px; bottom: 26px; width: 240px; }
     #health-label { font-size: 11px; letter-spacing: 0.3em; color: var(--hud-dim); margin-bottom: 6px; }
     #health-bar-bg {
@@ -176,6 +190,7 @@
     <div id="lowhp-pulse"></div>
     <div id="crosshair"></div>
     <div id="hitmarker"></div>
+    <div id="scope"><div class="glass"></div><div class="ret-h"></div><div class="ret-v"></div><div class="ret-dot"></div></div>
     <div id="compass"><div id="compass-strip"></div><div id="compass-tick"></div></div>
     <div id="objective">REACH THE EXTRACTION BEACON</div>
     <div id="run-info"></div>

@@ -50,8 +50,9 @@ function buildCarbine() {
   const muzzle = new THREE.Object3D();
   muzzle.position.set(0, 0.005, -0.61);
   g.add(muzzle);
-  // ADS: rear sight notch to camera centre (sight top ~y 0.07 local)
-  return { group: g, muzzle, pump: null, adsPos: new THREE.Vector3(0, -0.0385, -0.21) };
+  // ADS: rear sight notch to camera centre (sight top ~y 0.07 local),
+  // held far enough out that the receiver doesn't swallow the view
+  return { group: g, muzzle, pump: null, adsPos: new THREE.Vector3(0, -0.047, -0.3) };
 }
 
 function buildBreacher() {
@@ -68,7 +69,7 @@ function buildBreacher() {
   const muzzle = new THREE.Object3D();
   muzzle.position.set(0, 0.02, -0.58);
   g.add(muzzle);
-  return { group: g, muzzle, pump, adsPos: new THREE.Vector3(0, -0.037, -0.24) };
+  return { group: g, muzzle, pump, adsPos: new THREE.Vector3(0, -0.046, -0.33) };
 }
 
 function buildLongarm() {
@@ -91,7 +92,7 @@ function buildLongarm() {
   const muzzle = new THREE.Object3D();
   muzzle.position.set(0, 0.012, -0.81);
   g.add(muzzle);
-  return { group: g, muzzle, pump: null, adsPos: new THREE.Vector3(0, -0.0429, -0.17) };
+  return { group: g, muzzle, pump: null, adsPos: new THREE.Vector3(0, -0.052, -0.27) };
 }
 
 function buildMachete() {
@@ -160,9 +161,12 @@ export function createViewmodel(camera, weapons, playerRef) {
   function update(intent, dt) {
     const st = weapons.state;
     const meleeing = st.meleeT > 0;
-    // show active weapon (or the machete mid-swing)
+    // show active weapon (or the machete mid-swing). The LONGARM hands
+    // the view to the HUD scope overlay at full ADS - you aim through
+    // glass, not past a polygon eyepiece.
+    const scoped = st.current === 'longarm' && st.adsBlend > 0.8;
     for (const key of Object.keys(models)) {
-      models[key].group.visible = !meleeing && key === st.current;
+      models[key].group.visible = !meleeing && key === st.current && !(scoped && key === 'longarm');
     }
     machete.group.visible = meleeing;
     const model = models[st.current];

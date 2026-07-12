@@ -26,6 +26,7 @@ export function createHud(playerRef, weapons, game, director, grenades, sim) {
     crosshair: document.getElementById('crosshair'),
     grenades: document.getElementById('grenades'),
     buff: document.getElementById('buff-timer'),
+    scope: document.getElementById('scope'),
   };
 
   // build compass marks once: cardinals + ticks every 45deg + extraction marker
@@ -130,6 +131,12 @@ export function createHud(playerRef, weapons, game, director, grenades, sim) {
     positionCrosshairArms(gap);
     const ads = weapons.state.adsBlend;
     els.crosshair.style.opacity = Math.max(0, 1 - ads * 1.8);
+
+    // LONGARM scope: glass takes over at full ADS
+    if (els.scope) {
+      const scoped = weapons.state.current === 'longarm' && ads > 0.8;
+      els.scope.style.opacity = scoped ? 1 : 0;
+    }
 
     // hitmarker fade
     if (hitmarkerT > 0) {

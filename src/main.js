@@ -330,6 +330,8 @@ window.__deadfall = {
   pickups,
   extraction,
   hud,
+  viewmodel,
+  effects,
   applyMood,
   MOODS,
   drizzle,
