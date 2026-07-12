@@ -1,53 +1,56 @@
-// Sky dome, fog and lighting. Late-afternoon jungle: warm low sun, green
-// murk swallowing the distance. The fog IS the dread - sightlines end in it.
+// Sky dome, fog and lighting - the AMAZONIAN FEVER-DREAM (locked art
+// direction, round 2). Vibrant, saturated, multicoloured: the fog is still
+// the dread, but it is bright fog - colour swallowing the distance, never
+// grey murk. Shadow floors are lifted so nothing crushes to black (the
+// round-1 "too dark to see enemies" fix lives here).
 
 import * as THREE from 'three';
 
-// Per-run atmosphere moods - same jungle, different day. Picked at run
-// start; the mist mood also brings drizzle.
+// Per-run atmosphere moods - same jungle, different fever. Picked at run
+// start; the violet mood also brings glittering drizzle.
 export const MOODS = {
-  afternoon: {
-    label: 'LATE AFTERNOON',
-    fogColor: 0x93ac7e,
-    fogDensity: 0.019,
-    sunColor: 0xffe0b0,
-    sunIntensity: 2.6,
+  bloom: {
+    label: 'MORNING BLOOM',
+    fogColor: 0xa2d8b8,      // bright mint haze
+    fogDensity: 0.016,
+    sunColor: 0xfff2c8,
+    sunIntensity: 2.9,
     sunPos: [-140, 180, 90],
-    hemiSky: 0xc2d8aa,
-    hemiGround: 0x46523a,
-    hemiIntensity: 1.05,
-    skyTop: 0xa8c4b2,
+    hemiSky: 0xc2ecd4,
+    hemiGround: 0x5d7c48,    // lifted shadow floor - foliage never black
+    hemiIntensity: 1.35,
+    skyTop: 0x6cc4e8,        // turquoise zenith
     drizzle: false,
   },
-  dusk: {
-    label: 'DUSK',
-    fogColor: 0x97846b,
-    fogDensity: 0.021,
-    sunColor: 0xffb070,
-    sunIntensity: 2.0,
-    sunPos: [-220, 70, 40], // low western sun, long shadows
-    hemiSky: 0xa89882,
-    hemiGround: 0x42423a,
-    hemiIntensity: 0.95,
-    skyTop: 0x93a0b0,
+  gold: {
+    label: 'GOLDEN HOUR',
+    fogColor: 0xe8bc86,      // amber light in the air itself
+    fogDensity: 0.017,
+    sunColor: 0xffae54,
+    sunIntensity: 3.1,
+    sunPos: [-220, 85, 40],  // low western sun, long warm shadows
+    hemiSky: 0xf0cf9e,
+    hemiGround: 0x6c5a80,    // violet shadow tint, not mud
+    hemiIntensity: 1.25,
+    skyTop: 0xf09a5e,
     drizzle: false,
   },
-  mist: {
-    label: 'GREY MIST',
-    fogColor: 0x9aa79a,
-    fogDensity: 0.03,
-    sunColor: 0xd8dcd0,
-    sunIntensity: 1.5,
+  violet: {
+    label: 'VIOLET FEVER',
+    fogColor: 0xc7a4de,      // bright orchid haze
+    fogDensity: 0.02,
+    sunColor: 0xf2dcff,
+    sunIntensity: 2.3,
     sunPos: [-80, 220, 40],
-    hemiSky: 0xb8c2b4,
-    hemiGround: 0x3f463a,
-    hemiIntensity: 1.15,
-    skyTop: 0xaab4aa,
+    hemiSky: 0xdcc0ec,
+    hemiGround: 0x4c7060,    // emerald bounce
+    hemiIntensity: 1.4,
+    skyTop: 0x8f6ed8,
     drizzle: true,
   },
 };
 
-export const ATMOS = { ...MOODS.afternoon };
+export const ATMOS = { ...MOODS.bloom };
 
 export function buildSky(scene, renderer) {
   scene.fog = new THREE.FogExp2(ATMOS.fogColor, ATMOS.fogDensity);
@@ -73,14 +76,14 @@ export function buildSky(scene, renderer) {
   scene.add(sun);
   scene.add(sun.target);
 
-  // gradient dome: hazy warm horizon -> pale green-blue zenith
+  // gradient dome: hazy bright horizon -> saturated fever zenith
   const skyGeo = new THREE.SphereGeometry(1600, 24, 12);
   const skyMat = new THREE.ShaderMaterial({
     side: THREE.BackSide,
     depthWrite: false,
     fog: false,
     uniforms: {
-      topColor: { value: new THREE.Color(0xa8c4b2) },
+      topColor: { value: new THREE.Color(ATMOS.skyTop) },
       horizonColor: { value: new THREE.Color(ATMOS.fogColor) },
     },
     vertexShader: /* glsl */ `
@@ -107,7 +110,7 @@ export function buildSky(scene, renderer) {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 1.12;
 
   function applyMood(mood) {
     Object.assign(ATMOS, mood);

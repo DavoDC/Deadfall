@@ -7,12 +7,16 @@ const COUNT = 170;
 const RANGE = 22;   // half-size of the wrap box around the player
 
 export function createMotes(scene) {
-  const geo = new THREE.PlaneGeometry(0.045, 0.045);
+  const geo = new THREE.PlaneGeometry(0.05, 0.05);
   const mat = new THREE.MeshBasicMaterial({
-    color: 0xd8e8b0, transparent: true, opacity: 0.42,
+    color: 0xffffff, vertexColors: true, transparent: true, opacity: 0.5,
     blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
   });
   const mesh = new THREE.InstancedMesh(geo, mat, COUNT);
+  // fever-dream pollen: warm gold, orchid, and cyan glints drifting in the light
+  const glow = [new THREE.Color(0xffe8a0), new THREE.Color(0xff9ad8), new THREE.Color(0x9af0ff)];
+  for (let i = 0; i < COUNT; i++) mesh.setColorAt(i, glow[i % glow.length]);
+  mesh.instanceColor.needsUpdate = true;
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   mesh.frustumCulled = false;
   scene.add(mesh);

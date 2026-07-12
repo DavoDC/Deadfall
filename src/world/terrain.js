@@ -7,14 +7,16 @@ import { WORLD, terrainHeight, moisture, terrainNormal, razorfinHazard } from '.
 import { clamp, lerp } from '../core/noise.js';
 import { hash2 } from '../core/rng.js';
 
+// Fever-dream ground palette: saturated lush greens, golden dry grass,
+// warm mud - nothing crushes toward black (round-1 "too dark" fix).
 const COL = {
-  mud: new THREE.Color(0x3d3020),
-  wetMud: new THREE.Color(0x2e2517),
-  lush: new THREE.Color(0x1e3d14),
-  deepLush: new THREE.Color(0x142c0e),
-  dry: new THREE.Color(0x5a5a30),
-  rock: new THREE.Color(0x59524a),
-  sand: new THREE.Color(0x6b5f3e),
+  mud: new THREE.Color(0x5c4630),
+  wetMud: new THREE.Color(0x47351f),
+  lush: new THREE.Color(0x2e6b1c),
+  deepLush: new THREE.Color(0x1e5416),
+  dry: new THREE.Color(0x9a9040),
+  rock: new THREE.Color(0x8a7c6c),
+  sand: new THREE.Color(0xb89a5a),
 };
 
 export function buildTerrain(scene) {
@@ -82,8 +84,8 @@ export function buildWater(scene) {
   // razorfin gorge - the hazard telegraphs itself from a distance
   const pos = geo.attributes.position;
   const wCol = new Float32Array(pos.count * 3);
-  const cSafe = new THREE.Color(0x1e6e64);
-  const cBlood = new THREE.Color(0x8e1626);
+  const cSafe = new THREE.Color(0x2a9e8a);
+  const cBlood = new THREE.Color(0xa01a2e);
   const cw = new THREE.Color();
   for (let i = 0; i < pos.count; i++) {
     const hz = razorfinHazard(pos.getX(i), pos.getZ(i));

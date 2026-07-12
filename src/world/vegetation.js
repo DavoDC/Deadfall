@@ -268,7 +268,12 @@ export function buildVegetation(scene, opts = {}) {
     _m.compose(_p.set(x, h - 0.4, z), _q, _s.set(s, s * (0.9 + rng.next() * 0.25), s));
     bigTrunks.push(_m.clone());
     bigCanopies.push(_m.clone());
-    cBigCanopy.setHSL(0.29 + rng.next() * 0.05, 0.42 + rng.next() * 0.18, 0.16 + rng.next() * 0.1);
+    if (rng.chance(0.13)) {
+      // flowering emergent: a crown of colour above the canopy sea
+      cBigCanopy.setHSL(rng.pick([0.9, 0.02, 0.52, 0.13]), 0.6 + rng.next() * 0.25, 0.42 + rng.next() * 0.14);
+    } else {
+      cBigCanopy.setHSL(0.22 + rng.next() * 0.2, 0.5 + rng.next() * 0.3, 0.26 + rng.next() * 0.14);
+    }
     bigColors.push(cBigCanopy.clone());
     addCylinder(x, z, 0.95 * s, 15 * s, h - 1);
 
@@ -301,7 +306,11 @@ export function buildVegetation(scene, opts = {}) {
     _m.compose(_p.set(x, h - 0.3, z), _q, _s.set(s, s, s));
     midTrunks.push(_m.clone());
     midCanopies.push(_m.clone());
-    cTmp.setHSL(0.26 + rng.next() * 0.08, 0.4 + rng.next() * 0.25, 0.18 + rng.next() * 0.12);
+    if (rng.chance(0.1)) {
+      cTmp.setHSL(rng.pick([0.86, 0.05, 0.48]), 0.55 + rng.next() * 0.25, 0.4 + rng.next() * 0.12);
+    } else {
+      cTmp.setHSL(0.2 + rng.next() * 0.22, 0.48 + rng.next() * 0.28, 0.26 + rng.next() * 0.14);
+    }
     midColors.push(cTmp.clone());
     addCylinder(x, z, 0.36 * s, 8.5 * s, h - 1);
   });
@@ -333,7 +342,7 @@ export function buildVegetation(scene, opts = {}) {
     _q.setFromAxisAngle(UP, rng.next() * Math.PI * 2);
     _m.compose(_p.set(x, h - 0.05, z), _q, _s.set(s, s * (0.8 + rng.next() * 0.4), s));
     ferns.push(_m.clone());
-    cTmp.setHSL(0.3 + rng.next() * 0.06, 0.4 + rng.next() * 0.2, 0.14 + rng.next() * 0.12);
+    cTmp.setHSL(0.26 + rng.next() * 0.14, 0.5 + rng.next() * 0.25, 0.24 + rng.next() * 0.14);
     fernColors.push(cTmp.clone());
   });
 
@@ -348,7 +357,11 @@ export function buildVegetation(scene, opts = {}) {
     _q.setFromAxisAngle(UP, rng.next() * Math.PI * 2);
     _m.compose(_p.set(x, h - 0.05, z), _q, _s.set(s, s, s));
     leaves.push(_m.clone());
-    cTmp.setHSL(0.27 + rng.next() * 0.08, 0.45 + rng.next() * 0.2, 0.16 + rng.next() * 0.1);
+    if (rng.chance(0.22)) {
+      cTmp.setHSL(rng.pick([0.82, 0.9, 0.58]), 0.5 + rng.next() * 0.25, 0.36 + rng.next() * 0.14);
+    } else {
+      cTmp.setHSL(0.24 + rng.next() * 0.14, 0.5 + rng.next() * 0.22, 0.26 + rng.next() * 0.12);
+    }
     leafColors.push(cTmp.clone());
   });
 
@@ -363,7 +376,7 @@ export function buildVegetation(scene, opts = {}) {
     _q.setFromAxisAngle(UP, rng.next() * Math.PI * 2);
     _m.compose(_p.set(x, h - 0.03, z), _q, _s.set(s, s, s));
     grass.push(_m.clone());
-    cTmp.setHSL(0.25 + rng.next() * 0.08, 0.32 + rng.next() * 0.18, 0.1 + rng.next() * 0.1);
+    cTmp.setHSL(0.2 + rng.next() * 0.16, 0.45 + rng.next() * 0.2, 0.22 + rng.next() * 0.12);
     grassColors.push(cTmp.clone());
   });
 
