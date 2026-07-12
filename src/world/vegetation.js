@@ -6,7 +6,10 @@
 
 import * as THREE from 'three';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
-import { WORLD, terrainHeight, moisture, terrainNormal, gorgeZ } from './heightmap.js';
+import {
+  WORLD, terrainHeight, moisture, terrainNormal, gorgeZ, palisadeZ, fractureZ,
+  thicketAt,
+} from './heightmap.js';
 import { addCylinder } from './colliders.js';
 import { makeRng } from '../core/rng.js';
 import { clamp } from '../core/noise.js';
@@ -173,6 +176,52 @@ function lianaGeo() {
   return g;
 }
 
+// Strangler-thicket clump: a splayed fan of tall curved canes with broad
+// dark leaves - packed instances of this build the impassable walls.
+function thicketGeo() {
+  const parts = [];
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + 0.4;
+    const lean = 0.18 + (i % 3) * 0.09;
+    const cane = new THREE.CylinderGeometry(0.05, 0.16, 5.4, 5);
+    cane.translate(0, 2.7, 0);
+    cane.rotateZ(lean);
+    cane.rotateY(a);
+    parts.push(cane);
+  }
+  const leaf = new THREE.PlaneGeometry(0.9, 1.9, 1, 2);
+  {
+    const pos = leaf.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const y = pos.getY(i);
+      pos.setZ(i, Math.sin((y + 0.95) / 1.9 * Math.PI) * 0.4);
+    }
+  }
+  for (let i = 0; i < 7; i++) {
+    const f = leaf.clone();
+    f.translate(0, 0.95, 0);
+    f.rotateX(-0.5 - (i % 3) * 0.3);
+    f.rotateY((i / 7) * Math.PI * 2 + 0.2);
+    f.translate(0, 2.4 + (i % 3) * 1.1, 0);
+    parts.push(f);
+  }
+  return BufferGeometryUtils.mergeGeometries(parts);
+}
+
+// Warning bloom: a glowing magenta trumpet atop the wall growth - the
+// fever-dream's way of saying "not through here".
+function warnBloomGeo() {
+  const parts = [];
+  const stem = new THREE.CylinderGeometry(0.03, 0.05, 1.4, 4);
+  stem.translate(0, 0.7, 0);
+  parts.push(stem);
+  const cone = new THREE.ConeGeometry(0.34, 0.6, 7, 1, true);
+  cone.rotateX(Math.PI);
+  cone.translate(0, 1.65, 0);
+  parts.push(cone);
+  return BufferGeometryUtils.mergeGeometries(parts);
+}
+
 // ---------- placement ----------
 
 const _m = new THREE.Matrix4();
@@ -238,9 +287,28 @@ export function buildVegetation(scene, opts = {}) {
   const rocks = [];
   const rockColors = [];
   const lianas = [];
+  const thickets = [];
+  const thicketColors = [];
+  const warnBlooms = [];
 
   const cBigCanopy = new THREE.Color();
   const cTmp = new THREE.Color();
+
+  // the mesa stair centreline (for keeping the ramp clear of trunks)
+  const stairAz = Math.atan2(WORLD.maw.x - ext.x, WORLD.maw.z - ext.z);
+  const stairUx = Math.sin(stairAz);
+  const stairUz = Math.cos(stairAz);
+
+  function nearStair(x, z) {
+    // distance from the stair centreline segment (d 8..56 from mesa centre)
+    const px = x - ext.x;
+    const pz = z - ext.z;
+    let along = px * stairUx + pz * stairUz;
+    along = Math.max(8, Math.min(56, along));
+    const cx = ext.x + stairUx * along;
+    const cz = ext.z + stairUz * along;
+    return Math.hypot(x - cx, z - cz) < 11;
+  }
 
   function keepSpot(x, z, h) {
     if (Math.max(Math.abs(x), Math.abs(z)) > WORLD.playable + 20) return false;
@@ -250,6 +318,18 @@ export function buildVegetation(scene, opts = {}) {
     for (const c of WORLD.crossings) {
       if (Math.abs(x - c.x) < 11 && Math.abs(z - gorgeZ(c.x)) < 26) return false;
     }
+    // round 3: keep every forced corridor readable and open
+    for (const g of WORLD.gates) {
+      if (Math.abs(x - g.x) < 13 && Math.abs(z - palisadeZ(g.x)) < 34) return false;
+    }
+    if (Math.abs(x - WORLD.bonebridge.x) < 12
+      && Math.abs(z - fractureZ(WORLD.bonebridge.x)) < 30) return false;
+    if (Math.abs(x - WORLD.scree.x) < 28
+      && Math.abs(z - fractureZ(WORLD.scree.x)) < 42) return false;
+    if (!clearOf(x, z, WORLD.maw.x, WORLD.maw.z, WORLD.maw.r + 4)) return false;
+    if (nearStair(x, z)) return false;
+    // thicket interior grows its own wall species, nothing else
+    if (thicketAt(x, z) > 0.2) return false;
     return h > -60;
   }
 
@@ -268,11 +348,12 @@ export function buildVegetation(scene, opts = {}) {
     _m.compose(_p.set(x, h - 0.4, z), _q, _s.set(s, s * (0.9 + rng.next() * 0.25), s));
     bigTrunks.push(_m.clone());
     bigCanopies.push(_m.clone());
-    if (rng.chance(0.13)) {
+    if (rng.chance(0.3)) {
       // flowering emergent: a crown of colour above the canopy sea
-      cBigCanopy.setHSL(rng.pick([0.9, 0.02, 0.52, 0.13]), 0.6 + rng.next() * 0.25, 0.42 + rng.next() * 0.14);
+      // (round 3: Far Cry New Dawn saturation push - more, hotter)
+      cBigCanopy.setHSL(rng.pick([0.9, 0.02, 0.52, 0.13, 0.62]), 0.72 + rng.next() * 0.24, 0.44 + rng.next() * 0.14);
     } else {
-      cBigCanopy.setHSL(0.22 + rng.next() * 0.2, 0.5 + rng.next() * 0.3, 0.26 + rng.next() * 0.14);
+      cBigCanopy.setHSL(0.22 + rng.next() * 0.2, 0.58 + rng.next() * 0.3, 0.28 + rng.next() * 0.14);
     }
     bigColors.push(cBigCanopy.clone());
     addCylinder(x, z, 0.95 * s, 15 * s, h - 1);
@@ -306,10 +387,10 @@ export function buildVegetation(scene, opts = {}) {
     _m.compose(_p.set(x, h - 0.3, z), _q, _s.set(s, s, s));
     midTrunks.push(_m.clone());
     midCanopies.push(_m.clone());
-    if (rng.chance(0.1)) {
-      cTmp.setHSL(rng.pick([0.86, 0.05, 0.48]), 0.55 + rng.next() * 0.25, 0.4 + rng.next() * 0.12);
+    if (rng.chance(0.24)) {
+      cTmp.setHSL(rng.pick([0.86, 0.05, 0.48, 0.14]), 0.68 + rng.next() * 0.25, 0.42 + rng.next() * 0.12);
     } else {
-      cTmp.setHSL(0.2 + rng.next() * 0.22, 0.48 + rng.next() * 0.28, 0.26 + rng.next() * 0.14);
+      cTmp.setHSL(0.2 + rng.next() * 0.22, 0.55 + rng.next() * 0.28, 0.28 + rng.next() * 0.14);
     }
     midColors.push(cTmp.clone());
     addCylinder(x, z, 0.36 * s, 8.5 * s, h - 1);
@@ -357,10 +438,10 @@ export function buildVegetation(scene, opts = {}) {
     _q.setFromAxisAngle(UP, rng.next() * Math.PI * 2);
     _m.compose(_p.set(x, h - 0.05, z), _q, _s.set(s, s, s));
     leaves.push(_m.clone());
-    if (rng.chance(0.22)) {
-      cTmp.setHSL(rng.pick([0.82, 0.9, 0.58]), 0.5 + rng.next() * 0.25, 0.36 + rng.next() * 0.14);
+    if (rng.chance(0.38)) {
+      cTmp.setHSL(rng.pick([0.82, 0.9, 0.58, 0.12, 0.98]), 0.62 + rng.next() * 0.28, 0.38 + rng.next() * 0.14);
     } else {
-      cTmp.setHSL(0.24 + rng.next() * 0.14, 0.5 + rng.next() * 0.22, 0.26 + rng.next() * 0.12);
+      cTmp.setHSL(0.24 + rng.next() * 0.14, 0.55 + rng.next() * 0.22, 0.28 + rng.next() * 0.12);
     }
     leafColors.push(cTmp.clone());
   });
@@ -397,6 +478,33 @@ export function buildVegetation(scene, opts = {}) {
     if (s > 1.1) addCylinder(x, z, s * 0.75, s * 1.2, h - 1);
   });
 
+  // --- thicket walls (round 3): dense, tall, glowing warnings on top ---
+  scatter(2.0, 97, (x, z, rng) => {
+    const d = thicketAt(x, z);
+    if (d < 0.35) return;
+    const h = terrainHeight(x, z);
+    if (h < WORLD.waterLevel - 0.5) return;
+    if (Math.max(Math.abs(x), Math.abs(z)) > WORLD.playable + 10) return;
+    const s = (0.8 + rng.next() * 0.55) * (0.7 + d * 0.5);
+    _e.set((rng.next() - 0.5) * 0.12, rng.next() * Math.PI * 2, (rng.next() - 0.5) * 0.12);
+    _q.setFromEuler(_e);
+    _m.compose(_p.set(x, h - 0.2, z), _q, _s.set(s, s * (0.85 + rng.next() * 0.4), s));
+    thickets.push(_m.clone());
+    // deep jungle wall: violet-greens with occasional hot accents
+    if (rng.chance(0.14)) {
+      cTmp.setHSL(rng.pick([0.85, 0.75, 0.98]), 0.65 + rng.next() * 0.25, 0.34 + rng.next() * 0.1);
+    } else {
+      cTmp.setHSL(0.3 + rng.next() * 0.12, 0.55 + rng.next() * 0.25, 0.16 + rng.next() * 0.1);
+    }
+    thicketColors.push(cTmp.clone());
+    if (rng.chance(0.12)) {
+      _q.setFromAxisAngle(UP, rng.next() * Math.PI * 2);
+      const bs = 0.9 + rng.next() * 0.8;
+      _m.compose(_p.set(x + rng.range(-0.8, 0.8), h + 3.4 + rng.next() * 1.6, z + rng.range(-0.8, 0.8)), _q, _s.set(bs, bs, bs));
+      warnBlooms.push(_m.clone());
+    }
+  });
+
   const counts0 = {
     bigTrees: bigTrunks.length,
     midTrees: midTrunks.length,
@@ -406,6 +514,7 @@ export function buildVegetation(scene, opts = {}) {
     grass: grass.length,
     rocks: rocks.length,
     lianas: lianas.length,
+    thicket: thickets.length,
   };
   if (opts.collidersOnly) {
     counts0.ms = Math.round(performance.now() - t0);
@@ -433,6 +542,13 @@ export function buildVegetation(scene, opts = {}) {
   }), 0.6);
   const rockMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, flatShading: true });
   const lianaMat = new THREE.MeshStandardMaterial({ color: 0x3c4a26, roughness: 1 });
+  const thicketMat = windify(new THREE.MeshStandardMaterial({
+    color: 0xffffff, roughness: 1, side: THREE.DoubleSide,
+  }), 0.22);
+  const warnBloomMat = new THREE.MeshStandardMaterial({
+    color: 0xff4fd0, emissive: 0xd0189a, emissiveIntensity: 1.8,
+    roughness: 0.5, side: THREE.DoubleSide,
+  });
 
   const meshes = [
     makeInstanced(bigTreeTrunkGeo(), barkMat, bigTrunks, null, 'both'),
@@ -445,6 +561,8 @@ export function buildVegetation(scene, opts = {}) {
     makeInstanced(grassGeo(), grassMat, grass, grassColors, 'receive'),
     makeInstanced(rockGeo(), rockMat, rocks, rockColors, 'both'),
     makeInstanced(lianaGeo(), lianaMat, lianas, null, 'none'),
+    makeInstanced(thicketGeo(), thicketMat, thickets, thicketColors, 'cast'),
+    makeInstanced(warnBloomGeo(), warnBloomMat, warnBlooms, null, 'none'),
   ];
   for (const m of meshes) scene.add(m);
 

@@ -4,7 +4,7 @@
 // State machine: MENU -> RUNNING (-> extraction channel) -> WIN | DEAD -> MENU.
 
 import * as THREE from 'three';
-import { WORLD, gorgeZ } from './world/heightmap.js';
+import { WORLD, LANDMARKS, landmarkPos } from './world/heightmap.js';
 import { buildTerrain, buildWater } from './world/terrain.js';
 import { buildSky, trackShadow, MOODS } from './world/sky.js';
 import { buildVegetation, tickWind } from './world/vegetation.js';
@@ -30,6 +30,10 @@ const app = document.getElementById('app');
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+// round-3 saturation push: Far Cry New Dawn vibrancy baseline; the
+// ayahuasca trip appends its own distortion filters on top of this
+const BASE_FILTER = 'saturate(1.3) contrast(1.04)';
+renderer.domElement.style.filter = BASE_FILTER;
 app.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -184,7 +188,7 @@ function startRun() {
   setRain(!!mood.drizzle);
   sim.resetRun();
   vignette = 0;
-  seenCrossing = null;
+  seenLandmarks.clear();
   menuEl.classList.add('hidden');
   endEl.classList.add('hidden');
   hudEl.classList.remove('hidden');
@@ -214,15 +218,17 @@ input.state.onLockChange = (locked) => {
   if (game.state !== 'RUNNING') btnStart.textContent = 'DEPLOY';
 };
 
-// --- crossing callouts: name the sill as you commit to it ---
-let seenCrossing = null;
-function updateCrossingCallout() {
+// --- named-place reveals: every landmark announces itself once per run ---
+const seenLandmarks = new Set();
+function updateLandmarkCallout() {
   const pp = player.p.pos;
-  for (const c of WORLD.crossings) {
-    const cz = gorgeZ(c.x);
-    if (Math.hypot(pp.x - c.x, pp.z - cz) < 26 && seenCrossing !== c.name) {
-      seenCrossing = c.name;
-      hud.toast(c.name, 2.2);
+  for (const l of LANDMARKS) {
+    if (seenLandmarks.has(l.name)) continue;
+    const p = landmarkPos(l);
+    if (Math.hypot(pp.x - p.x, pp.z - p.z) < l.r) {
+      seenLandmarks.add(l.name);
+      hud.showLocation(l.name);
+      break; // one reveal at a time - they are moments, not spam
     }
   }
 }
@@ -256,7 +262,7 @@ function tick(now) {
     trackShadow(sun, player.p.pos);
     setListener(player.p.pos, camera.getWorldDirection(_listenerFwd));
     hud.update(dt);
-    updateCrossingCallout();
+    updateLandmarkCallout();
 
     // reactive dread: nearest hostile drives ambience; extraction keeps it hot
     let nearest = Infinity;

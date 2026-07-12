@@ -3,7 +3,7 @@
 // act as loot magnets along each route.
 
 import * as THREE from 'three';
-import { WORLD, terrainHeight, gorgeZ } from './heightmap.js';
+import { WORLD, terrainHeight, gorgeZ, palisadeZ, fractureZ } from './heightmap.js';
 import { addCylinder } from './colliders.js';
 import { makeRng } from '../core/rng.js';
 
@@ -190,6 +190,161 @@ export function buildProps(scene) {
     }
   }
 
+  // ---------- round-3 landmarks ----------
+  const boneMat = new THREE.MeshStandardMaterial({ color: 0xe4dcc4, roughness: 0.7 });
+
+  // BONEBRIDGE: the ribcage of something colossal arches over the Fracture
+  // step - you walk up through its chest onto the highlands.
+  {
+    const bx = WORLD.bonebridge.x;
+    for (let i = 0; i < 6; i++) {
+      const rz = fractureZ(bx) + 12 - i * 5;
+      const rh = terrainHeight(bx, rz);
+      const r = 7.5 - Math.abs(i - 2.5) * 0.9;
+      const rib = new THREE.Mesh(new THREE.TorusGeometry(r, 0.42 - i * 0.03, 6, 14, Math.PI), boneMat);
+      rib.position.set(bx, rh + 0.4, rz);
+      rib.rotation.z = (i - 2.5) * 0.06;
+      rib.castShadow = true;
+      group.add(rib);
+      addCylinder(bx - r, rz, 0.6, 4, rh - 0.5);
+      addCylinder(bx + r, rz, 0.6, 4, rh - 0.5);
+    }
+    // the skull, half-buried at the foot of the climb
+    const skull = new THREE.Mesh(new THREE.SphereGeometry(3.4, 10, 8), boneMat);
+    const sz = fractureZ(bx) + 20;
+    const sh = terrainHeight(bx + 10, sz);
+    skull.position.set(bx + 10, sh + 1.1, sz);
+    skull.scale.set(1, 0.82, 1.15);
+    skull.castShadow = true;
+    group.add(skull);
+    const socketGeo = new THREE.SphereGeometry(0.85, 8, 6);
+    const socketMat = new THREE.MeshStandardMaterial({ color: 0x14100c, roughness: 1 });
+    for (const sx of [-1.3, 1.3]) {
+      const socket = new THREE.Mesh(socketGeo, socketMat);
+      socket.position.set(bx + 10 + sx, sh + 1.7, sz - 2.6);
+      group.add(socket);
+    }
+    addCylinder(bx + 10, sz, 3.2, 3.5, sh - 0.5);
+  }
+
+  // THE HOWLING GATE: monolith jaws either side of the west pass. The wind
+  // howls through (audio hook lives in ambience).
+  {
+    const g0 = WORLD.gates[0];
+    const gz = palisadeZ(g0.x);
+    for (const [ox, lean] of [[-8, 0.12], [8, -0.1]]) {
+      const mh = terrainHeight(g0.x + ox, gz);
+      const mono = new THREE.Mesh(new THREE.BoxGeometry(2.6, 13, 1.8), stoneMat);
+      mono.position.set(g0.x + ox, mh + 6, gz);
+      mono.rotation.z = lean;
+      mono.castShadow = true;
+      group.add(mono);
+      addCylinder(g0.x + ox, gz, 1.8, 13, mh - 0.5);
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(0.9, 0.12, 6, 16),
+        new THREE.MeshStandardMaterial({
+          color: 0x7ae8d0, emissive: 0x2ab89a, emissiveIntensity: 1.6, roughness: 0.4,
+        })
+      );
+      ring.position.set(g0.x + ox, mh + 9.5, gz + (ox < 0 ? 1 : -1) * 0.95);
+      group.add(ring);
+    }
+  }
+
+  // SKYREACH SADDLE: cairn stack + streamer pole on the high pass
+  {
+    const g2 = WORLD.gates[2];
+    const gz = palisadeZ(g2.x);
+    const sh = terrainHeight(g2.x + 7, gz);
+    let cy = sh;
+    for (let i = 0; i < 5; i++) {
+      const s = 1.6 - i * 0.24;
+      const stone = new THREE.Mesh(new THREE.IcosahedronGeometry(s, 0), stoneMat);
+      stone.position.set(g2.x + 7, cy + s * 0.6, gz);
+      stone.rotation.y = i * 0.9;
+      stone.castShadow = true;
+      group.add(stone);
+      cy += s * 0.95;
+    }
+    addCylinder(g2.x + 7, gz, 1.6, 6, sh - 0.5);
+  }
+
+  // CINDER FANG: the ember at the spire's tip - the beacon's dark twin,
+  // visible over the canopy for navigation from anywhere north.
+  const fangH = terrainHeight(WORLD.fang.x, WORLD.fang.z);
+  const ember = new THREE.Mesh(
+    new THREE.OctahedronGeometry(2.6, 0),
+    new THREE.MeshStandardMaterial({
+      color: 0xff7a2e, emissive: 0xff4a08, emissiveIntensity: 2.8, roughness: 0.3,
+    })
+  );
+  ember.position.set(WORLD.fang.x, fangH + 3.4, WORLD.fang.z);
+  group.add(ember);
+  const emberLight = new THREE.PointLight(0xff5a18, 26, 60);
+  emberLight.position.copy(ember.position);
+  group.add(emberLight);
+
+  // THE SUNKEN MAW: a drowned monolith ring + bone piles - the larder
+  {
+    const M = WORLD.maw;
+    const mawRng = makeRng(WORLD.seed + 777);
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * Math.PI * 2 + 0.3;
+      const r = M.r - 4 + mawRng.range(-3, 3);
+      const mx = M.x + Math.cos(a) * r;
+      const mz = M.z + Math.sin(a) * r;
+      const mh = terrainHeight(mx, mz);
+      const mono = new THREE.Mesh(
+        new THREE.BoxGeometry(1.4 + mawRng.next(), 4 + mawRng.next() * 4, 1.2),
+        mawRng.chance(0.5) ? mossMat : stoneMat
+      );
+      mono.position.set(mx, mh + 1.6, mz);
+      mono.rotation.set(mawRng.range(-0.2, 0.2), mawRng.next() * Math.PI, mawRng.range(-0.25, 0.25));
+      mono.castShadow = true;
+      group.add(mono);
+      addCylinder(mx, mz, 1.1, 4, mh - 0.5);
+    }
+    // rib bones jutting from the shallows
+    for (let i = 0; i < 7; i++) {
+      const a = mawRng.next() * Math.PI * 2;
+      const r = mawRng.range(4, M.r - 10);
+      const bx2 = M.x + Math.cos(a) * r;
+      const bz2 = M.z + Math.sin(a) * r;
+      const bh = terrainHeight(bx2, bz2);
+      const rib = new THREE.Mesh(new THREE.TorusGeometry(mawRng.range(1.2, 2.4), 0.16, 5, 10, Math.PI * 0.7), boneMat);
+      rib.position.set(bx2, bh + 0.2, bz2);
+      rib.rotation.set(0, mawRng.next() * Math.PI, mawRng.range(0.3, 0.9));
+      group.add(rib);
+    }
+  }
+
+  // THE STAIR: paired torch-blooms light the climb out of the moat
+  {
+    const ex2 = WORLD.extraction;
+    const az = Math.atan2(WORLD.maw.x - ex2.x, WORLD.maw.z - ex2.z);
+    const ux = Math.sin(az);
+    const uz = Math.cos(az);
+    const px = -uz;
+    const pz = ux;
+    const torchMat = new THREE.MeshStandardMaterial({
+      color: 0xffc857, emissive: 0xff9018, emissiveIntensity: 2.4, roughness: 0.4,
+    });
+    const poleMat = new THREE.MeshStandardMaterial({ color: 0x3a4438, roughness: 0.9 });
+    for (let d = 20; d <= 52; d += 8) {
+      for (const side of [-1, 1]) {
+        const tx = ex2.x + ux * d + px * side * 8;
+        const tz = ex2.z + uz * d + pz * side * 8;
+        const th = terrainHeight(tx, tz);
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.14, 2.6, 5), poleMat);
+        pole.position.set(tx, th + 1.3, tz);
+        group.add(pole);
+        const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.3, 7, 6), torchMat);
+        bulb.position.set(tx, th + 2.75, tz);
+        group.add(bulb);
+      }
+    }
+  }
+
   const blockMesh = new THREE.InstancedMesh(blockGeo, stoneMat, blocks.length);
   blocks.forEach((m, i) => blockMesh.setMatrixAt(i, m));
   blockMesh.castShadow = true;
@@ -210,6 +365,11 @@ export function buildProps(scene) {
     beaconLamp.material.emissiveIntensity = 1.6 + pulse * 2.6;
     beaconLight.intensity = 16 + pulse * 26;
     beam.material.opacity = 0.13 + pulse * 0.11;
+    // the Fang's ember breathes slowly - alive, watching
+    const emberPulse = 0.5 + 0.5 * Math.sin(t * 0.9 + 1.4);
+    ember.material.emissiveIntensity = 1.8 + emberPulse * 2.2;
+    emberLight.intensity = 16 + emberPulse * 22;
+    ember.rotation.y = t * 0.25;
   }
 
   return { tickProps };

@@ -3,20 +3,23 @@
 // dark boggy swamp, olive riverbed, khaki-rock ridge, deep green jungle floor.
 
 import * as THREE from 'three';
-import { WORLD, terrainHeight, moisture, terrainNormal, razorfinHazard } from './heightmap.js';
-import { clamp, lerp } from '../core/noise.js';
+import {
+  WORLD, terrainHeight, moisture, terrainNormal, razorfinHazard,
+} from './heightmap.js';
+import { clamp, lerp, smoothstep } from '../core/noise.js';
 import { hash2 } from '../core/rng.js';
 
-// Fever-dream ground palette: saturated lush greens, golden dry grass,
-// warm mud - nothing crushes toward black (round-1 "too dark" fix).
+// Fever-dream ground palette, round-3 saturation push (Far Cry New Dawn
+// vibrancy): electric greens, golden dry grass, warm violet-cast rock -
+// nothing crushes toward black (round-1 "too dark" fix).
 const COL = {
-  mud: new THREE.Color(0x5c4630),
-  wetMud: new THREE.Color(0x47351f),
-  lush: new THREE.Color(0x2e6b1c),
-  deepLush: new THREE.Color(0x1e5416),
-  dry: new THREE.Color(0x9a9040),
-  rock: new THREE.Color(0x8a7c6c),
-  sand: new THREE.Color(0xb89a5a),
+  mud: new THREE.Color(0x6b4c2e),
+  wetMud: new THREE.Color(0x513a20),
+  lush: new THREE.Color(0x2f8a14),
+  deepLush: new THREE.Color(0x1a6e12),
+  dry: new THREE.Color(0xb8a838),
+  rock: new THREE.Color(0x968294),
+  sand: new THREE.Color(0xc9a95e),
 };
 
 export function buildTerrain(scene) {
@@ -47,14 +50,15 @@ export function buildTerrain(scene) {
     const bank = clamp((WORLD.waterLevel + 1.6 - h) / 2.4, 0, 1);
     if (bank > 0) c.lerp(h < WORLD.waterLevel ? COL.wetMud : COL.mud, bank * 0.9);
 
-    // steep = exposed rock
+    // steep = exposed rock (the new cliff walls read as bare stone)
     if (slope > 0.25) c.lerp(COL.rock, clamp((slope - 0.25) * 3.2, 0, 0.85));
-    // high ridge tops fade to rock/dry grass
-    if (h > 14) c.lerp(COL.rock, clamp((h - 14) / 18, 0, 0.7));
+    // only true summits fade to rock (the highlands shelf stays jungle)
+    if (h > 19) c.lerp(COL.rock, clamp((h - 19) / 22, 0, 0.6));
 
-    // per-vertex variance breaks up flat shading
+    // per-vertex variance breaks up flat shading; slight hue drift keeps
+    // big same-colour fields alive (round-3 saturation pass)
     const v = hash2(Math.round(x * 2.3), Math.round(z * 2.3), 91) * 0.16 - 0.08;
-    c.offsetHSL(0, 0, v * 0.35);
+    c.offsetHSL(v * 0.07, 0.03, v * 0.35);
 
     colors[i * 3] = c.r;
     colors[i * 3 + 1] = c.g;
@@ -77,19 +81,38 @@ export function buildTerrain(scene) {
 }
 
 export function buildWater(scene) {
-  const geo = new THREE.PlaneGeometry(WORLD.size, WORLD.size, 64, 64);
+  const geo = new THREE.PlaneGeometry(WORLD.size, WORLD.size, 128, 128);
   geo.rotateX(-Math.PI / 2);
 
   // per-vertex colour: living teal water, blooming BLOOD RED over the
-  // razorfin gorge - the hazard telegraphs itself from a distance
+  // razorfin gorge AND the Sunken Maw (the boss's moat) - hazards
+  // telegraph themselves from a distance.
+  // per-vertex swell AMPLITUDE is scaled by real water depth; where the
+  // plane would form a paper-thin film over near-coplanar ground (the
+  // round-2 "pool grows and shrinks with view angle" z-fighting bug) the
+  // vertex is sunk below the terrain instead.
   const pos = geo.attributes.position;
   const wCol = new Float32Array(pos.count * 3);
-  const cSafe = new THREE.Color(0x2a9e8a);
+  const amp = new Float32Array(pos.count);
+  const cSafe = new THREE.Color(0x25b89a);
   const cBlood = new THREE.Color(0xa01a2e);
   const cw = new THREE.Color();
   for (let i = 0; i < pos.count; i++) {
-    const hz = razorfinHazard(pos.getX(i), pos.getZ(i));
-    cw.copy(cSafe).lerp(cBlood, hz);
+    const x = pos.getX(i);
+    const z = pos.getZ(i);
+    const depth = WORLD.waterLevel - terrainHeight(x, z);
+    if (depth < 0.22) {
+      pos.setY(i, terrainHeight(x, z) - WORLD.waterLevel - 2.5); // sink film
+      amp[i] = 0;
+    } else {
+      amp[i] = clamp(depth / 1.2, 0, 1);
+    }
+    const dMaw = Math.hypot(x - WORLD.maw.x, z - WORLD.maw.z);
+    const blood = Math.max(
+      razorfinHazard(x, z),
+      smoothstep(WORLD.maw.r + 6, WORLD.maw.r - 12, dMaw) * 0.85
+    );
+    cw.copy(cSafe).lerp(cBlood, blood);
     wCol[i * 3] = cw.r;
     wCol[i * 3 + 1] = cw.g;
     wCol[i * 3 + 2] = cw.b;
@@ -114,15 +137,18 @@ export function buildWater(scene) {
   mesh.name = 'water';
   scene.add(mesh);
 
-  // gentle swell so the river reads as liquid even without textures
+  // gentle swell so the river reads as liquid even without textures;
+  // depth-scaled so puddle edges hold still instead of pulsing
   const base = geo.attributes.position.array.slice();
   mesh.userData.tick = (t) => {
     const arr = geo.attributes.position.array;
-    for (let i = 0; i < arr.length; i += 3) {
+    for (let i = 0, v = 0; i < arr.length; i += 3, v++) {
+      if (amp[v] === 0) continue;
       const x = base[i];
       const z = base[i + 2];
-      arr[i + 1] = Math.sin(t * 1.1 + x * 0.11 + z * 0.13) * 0.09
-        + Math.sin(t * 0.7 + z * 0.07) * 0.06;
+      arr[i + 1] = base[i + 1] + amp[v] * (
+        Math.sin(t * 1.1 + x * 0.11 + z * 0.13) * 0.09
+        + Math.sin(t * 0.7 + z * 0.07) * 0.06);
     }
     geo.attributes.position.needsUpdate = true;
   };

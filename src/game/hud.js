@@ -27,6 +27,12 @@ export function createHud(playerRef, weapons, game, director, grenades, sim) {
     grenades: document.getElementById('grenades'),
     buff: document.getElementById('buff-timer'),
     scope: document.getElementById('scope'),
+    staminaBg: document.getElementById('stamina-bar-bg'),
+    stamina: document.getElementById('stamina-bar'),
+    locationCard: document.getElementById('location-card'),
+    bossWrap: document.getElementById('boss-wrap'),
+    bossName: document.getElementById('boss-name'),
+    bossBar: document.getElementById('boss-bar'),
   };
 
   // build compass marks once: cardinals + ticks every 45deg + extraction marker
@@ -55,6 +61,7 @@ export function createHud(playerRef, weapons, game, director, grenades, sim) {
 
   let hitmarkerT = 0;
   let toastT = 0;
+  let locationT = 0;
 
   function angleDiff(a, b) {
     let d = a - b;
@@ -108,6 +115,17 @@ export function createHud(playerRef, weapons, game, director, grenades, sim) {
     els.healthBar.style.width = `${frac * 100}%`;
     els.healthBar.classList.toggle('low', frac < 0.33);
     els.lowhp.style.opacity = frac < 0.3 ? (0.4 + 0.3 * Math.sin(performance.now() / 180)) : 0;
+
+    // sprint stamina: visible whenever it is not full (round-3 fix: the
+    // drain was invisible - "is there a hidden stamina variable??")
+    els.stamina.style.width = `${p.stamina * 100}%`;
+    els.staminaBg.style.opacity = p.stamina > 0.995 ? 0 : 1;
+
+    // location card fade
+    if (locationT > 0) {
+      locationT -= dt;
+      if (locationT <= 0) els.locationCard.style.opacity = 0;
+    }
 
     // grenades
     if (els.grenades && grenades) {
@@ -186,6 +204,24 @@ export function createHud(playerRef, weapons, game, director, grenades, sim) {
     els.objective.textContent = text;
   }
 
+  // the grand named-place reveal (bigger than a toast, once per place)
+  function showLocation(name) {
+    els.locationCard.querySelector('.loc-name').textContent = name;
+    els.locationCard.style.opacity = 1;
+    locationT = 3.2;
+  }
+
+  // apex predator health bar; pass null to hide
+  function showBoss(name, frac) {
+    if (frac === null) {
+      els.bossWrap.style.display = 'none';
+      return;
+    }
+    els.bossWrap.style.display = 'block';
+    els.bossName.textContent = name;
+    els.bossBar.style.width = `${Math.max(0, frac) * 100}%`;
+  }
+
   function showExtract(progress) {
     els.extractChannel.style.display = progress === null ? 'none' : 'block';
     if (progress !== null) {
@@ -193,5 +229,5 @@ export function createHud(playerRef, weapons, game, director, grenades, sim) {
     }
   }
 
-  return { update, hitmarker, toast, setObjective, showExtract };
+  return { update, hitmarker, toast, setObjective, showExtract, showLocation, showBoss };
 }
