@@ -3,8 +3,27 @@ import { makeRng, hash2 } from '../src/core/rng.js';
 import { fbm, valueNoise } from '../src/core/noise.js';
 import {
   WORLD, terrainHeight, moisture, terrainNormal, moveSpeedFactor, riverX,
-  gorgeZ, razorfinHazard,
+  gorgeZ, palisadeZ, fractureZ, razorfinHazard, blockedStep, isThicket,
+  LANDMARKS, landmarkPos,
 } from '../src/world/heightmap.js';
+import { routeWaypoints } from '../src/game/autotest.js';
+import { RUIN_SITES } from '../src/world/props.js';
+
+// Walk a straight leg on foot (grounded), obeying the round-3 movement law.
+// Returns null if fully walkable, else the first blocked point.
+function walkLeg(ax, az, bx, bz, step = 0.6) {
+  const dist = Math.hypot(bx - ax, bz - az);
+  if (dist < 0.01) return null;
+  const dx = (bx - ax) / dist;
+  const dz = (bz - az) / dist;
+  const n = Math.ceil(dist / step);
+  for (let i = 0; i < n; i++) {
+    const x = ax + dx * step * i;
+    const z = az + dz * step * i;
+    if (blockedStep(x, z, dx, dz, terrainHeight(x, z))) return { x, z };
+  }
+  return null;
+}
 
 describe('rng', () => {
   it('is deterministic for the same seed', () => {
@@ -87,7 +106,7 @@ describe('terrain layout', () => {
     expect(hi).toBeGreaterThan(WORLD.waterLevel + 0.5);
     expect(he).toBeGreaterThan(WORLD.waterLevel + 0.5);
     expect(hi).toBeLessThan(25);
-    expect(he).toBeLessThan(40); // extraction mesa is deliberately high ground
+    expect(he).toBeLessThan(52); // extraction mesa is a true butte (round 3)
   });
   it('moisture in [0,1], wetter in swamp than on ridge', () => {
     let sw = 0, ri = 0, n = 0;
@@ -178,5 +197,162 @@ describe('gorge rift (round 2: no straight line to extraction)', () => {
       n++;
     }
     expect(top).toBeGreaterThan(ring / n + 4);
+  });
+});
+
+describe('round 3: physical geography kills the straight line', () => {
+  it('the Palisade wall cannot be crossed on foot away from its gates', () => {
+    let checked = 0;
+    for (let x = -300; x <= 300; x += 8) {
+      if (WORLD.gates.some((g) => Math.abs(x - g.x) < 30)) continue;
+      const pz = palisadeZ(x);
+      const hit = walkLeg(x, pz + 42, x, pz - 42);
+      expect(hit, `palisade climbable at x=${x}`).not.toBeNull();
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(40);
+  });
+  it('every Palisade gate is a walkable way through', () => {
+    for (const g of WORLD.gates) {
+      const pz = palisadeZ(g.x);
+      const hit = walkLeg(g.x, pz + 38, g.x, pz - 38);
+      expect(hit, `${g.name} blocked at ${hit && JSON.stringify(hit)}`).toBeNull();
+    }
+  });
+  it('the Fracture step cannot be climbed except at Bonebridge and the Scree', () => {
+    let checked = 0;
+    for (let x = -300; x <= 300; x += 8) {
+      if (Math.abs(x - WORLD.bonebridge.x) < 30) continue;
+      if (Math.abs(x - WORLD.scree.x) < 70) continue;
+      const fz = fractureZ(x);
+      const hit = walkLeg(x, fz + 26, x, fz - 26);
+      expect(hit, `fracture climbable at x=${x}`).not.toBeNull();
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(40);
+  });
+  it('the Fracture south face lets you retreat back down everywhere', () => {
+    for (let x = -300; x <= 300; x += 14) {
+      const fz = fractureZ(x);
+      // heading SOUTH (retreat, downhill) is never a wall
+      const hit = walkLeg(x, fz - 26, x, fz + 26);
+      expect(hit, `cannot retreat south at x=${x}`).toBeNull();
+    }
+  });
+  it('Bonebridge and the Scree are walkable ways onto the highlands', () => {
+    for (const w of [WORLD.bonebridge, WORLD.scree]) {
+      const fz = fractureZ(w.x);
+      const hit = walkLeg(w.x, fz + 30, w.x, fz - 30);
+      expect(hit, `${w.name} blocked at ${hit && JSON.stringify(hit)}`).toBeNull();
+    }
+  });
+  it('the beeline from insertion to extraction is physically blocked at 3+ separate belts', () => {
+    const a = WORLD.insertion;
+    const b = WORLD.extraction;
+    const dist = Math.hypot(b.x - a.x, b.z - a.z);
+    const dx = (b.x - a.x) / dist;
+    const dz = (b.z - a.z) / dist;
+    const blockedZs = [];
+    for (let t = 0; t < dist; t += 0.6) {
+      const x = a.x + dx * t;
+      const z = a.z + dz * t;
+      if (blockedStep(x, z, dx, dz, terrainHeight(x, z))) {
+        if (!blockedZs.length || Math.abs(blockedZs[blockedZs.length - 1] - z) > 40) {
+          blockedZs.push(z);
+        }
+      }
+    }
+    expect(blockedZs.length, `blocked belts at z=${blockedZs.map((z) => Math.round(z))}`)
+      .toBeGreaterThanOrEqual(3);
+  });
+  it('all three advertised routes are walkable end to end (no cliff, no thicket, no razorfin)', () => {
+    for (const route of ['river', 'ridge', 'swamp']) {
+      const wps = routeWaypoints(route);
+      for (let i = 0; i < wps.length - 1; i++) {
+        const hit = walkLeg(wps[i].x, wps[i].z, wps[i + 1].x, wps[i + 1].z);
+        expect(hit, `${route} leg ${i} (${JSON.stringify(wps[i])} -> ${JSON.stringify(wps[i + 1])}) blocked at ${hit && JSON.stringify(hit)}`).toBeNull();
+        // and the route never swims with razorfins
+        const dist = Math.hypot(wps[i + 1].x - wps[i].x, wps[i + 1].z - wps[i].z);
+        for (let t = 0; t <= dist; t += 2) {
+          const x = wps[i].x + (wps[i + 1].x - wps[i].x) * (t / dist);
+          const z = wps[i].z + (wps[i + 1].z - wps[i].z) * (t / dist);
+          expect(razorfinHazard(x, z), `${route} razorfin at ${Math.round(x)},${Math.round(z)}`)
+            .toBeLessThan(0.55);
+        }
+      }
+    }
+  });
+  it('the mesa is cliff-walled except the stair wedge', () => {
+    const ex = WORLD.extraction;
+    const stairAz = Math.atan2(WORLD.maw.x - ex.x, WORLD.maw.z - ex.z);
+    for (let a = -Math.PI; a < Math.PI; a += 0.13) {
+      let da = Math.abs(a - stairAz);
+      if (da > Math.PI) da = Math.PI * 2 - da;
+      const sx = ex.x + Math.sin(a) * 40;
+      const sz = ex.z + Math.cos(a) * 40;
+      if (Math.max(Math.abs(sx), Math.abs(sz)) > WORLD.playable) continue;
+      const hit = walkLeg(sx, sz, ex.x + Math.sin(a) * 10, ex.z + Math.cos(a) * 10);
+      if (da < 0.35) {
+        expect(hit, `stair wedge blocked at az=${a.toFixed(2)}`).toBeNull();
+      } else if (da > 1.25) {
+        expect(hit, `mesa climbable off-stair at az=${a.toFixed(2)}`).not.toBeNull();
+      }
+    }
+  });
+  it('Cinder Fang flanks are unclimbable (a landmark, not a route)', () => {
+    const F = WORLD.fang;
+    let blockedDirs = 0;
+    for (let a = 0; a < Math.PI * 2; a += Math.PI / 4) {
+      const sx = F.x + Math.cos(a) * 44;
+      const sz = F.z + Math.sin(a) * 44;
+      if (Math.max(Math.abs(sx), Math.abs(sz)) > WORLD.playable) continue;
+      if (walkLeg(sx, sz, F.x, F.z)) blockedDirs++;
+    }
+    expect(blockedDirs).toBeGreaterThanOrEqual(5);
+  });
+  it('the Sunken Maw is a wet arena, escapable both back out and up the stair', () => {
+    const M = WORLD.maw;
+    expect(terrainHeight(M.x, M.z)).toBeLessThan(WORLD.waterLevel);
+    // retreat: the west/north half of the rim (where you came from) is
+    // wadeable back out. The east side is the butte's wall - intended.
+    let open = 0;
+    let tried = 0;
+    for (let a = Math.PI * 0.4; a < Math.PI * 1.6; a += 0.2) {
+      tried++;
+      const hit = walkLeg(M.x, M.z, M.x + Math.cos(a) * (M.r + 18), M.z + Math.sin(a) * (M.r + 18));
+      if (!hit) open++;
+    }
+    expect(open / tried, `only ${open}/${tried} west-rim exits open`).toBeGreaterThan(0.6);
+    // and the stair itself: maw floor -> drowned ramp -> mesa top
+    const path = [
+      [M.x, M.z], [44, -274], [58, -284], [70, -295],
+      [WORLD.extraction.x, WORLD.extraction.z],
+    ];
+    for (let i = 0; i < path.length - 1; i++) {
+      const hit = walkLeg(path[i][0], path[i][1], path[i + 1][0], path[i + 1][1]);
+      expect(hit, `stair leg ${i} blocked at ${hit && JSON.stringify(hit)}`).toBeNull();
+    }
+  });
+  it('no key location sits inside a thicket wall', () => {
+    const spots = [
+      [WORLD.insertion.x, WORLD.insertion.z, 'insertion'],
+      [WORLD.extraction.x, WORLD.extraction.z, 'extraction'],
+      [WORLD.maw.x, WORLD.maw.z, 'maw'],
+      ...WORLD.crossings.map((c) => [c.x, gorgeZ(c.x), c.name]),
+      ...WORLD.gates.map((g) => [g.x, palisadeZ(g.x), g.name]),
+      [WORLD.bonebridge.x, fractureZ(WORLD.bonebridge.x), 'bonebridge'],
+      [WORLD.scree.x, fractureZ(WORLD.scree.x), 'scree'],
+      ...RUIN_SITES.map((r) => [r.x, r.z, r.name]),
+    ];
+    for (const [x, z, name] of spots) {
+      expect(isThicket(x, z), `${name} is inside a thicket`).toBe(false);
+    }
+  });
+  it('landmarks resolve to positions inside the playable area', () => {
+    for (const l of LANDMARKS) {
+      const p = landmarkPos(l);
+      expect(Math.abs(p.x), l.name).toBeLessThanOrEqual(WORLD.playable);
+      expect(Math.abs(p.z), l.name).toBeLessThanOrEqual(WORLD.playable);
+    }
   });
 });

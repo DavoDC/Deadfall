@@ -9,35 +9,68 @@
 // prioritises bloomcallers (the summoner dies first), and detours around
 // trunk walls when it stops making progress.
 
-import { WORLD, riverX, gorgeZ, razorfinHazard } from '../world/heightmap.js';
+import {
+  WORLD, riverX, gorgeZ, palisadeZ, fractureZ, razorfinHazard,
+} from '../world/heightmap.js';
 import { hasLOS } from '../world/colliders.js';
 
-// waypoint lines south -> north for the three advertised routes; each one
-// threads its own gorge crossing (causeway / rapids / fallen giant)
-function routeWaypoints(route) {
+// Waypoint lines south -> north for the three advertised routes. Round 3
+// made the world physically gated, so every route threads: a Palisade gate,
+// its gorge crossing, a Fracture way up to the highlands, then winds around
+// the thicket walls to the mesa stair (which climbs out of the Sunken Maw).
+// Exported so the unit tests can prove every route is actually walkable.
+export function routeWaypoints(route) {
   const wps = [];
   const cross = (i, pad = 26) => {
     const c = WORLD.crossings[i];
     const zg = gorgeZ(c.x);
     wps.push({ x: c.x, z: zg + pad }, { x: c.x, z: zg }, { x: c.x, z: zg - pad });
   };
+  const gate = (i, pad = 22) => {
+    const g = WORLD.gates[i];
+    const zg = palisadeZ(g.x);
+    wps.push({ x: g.x, z: zg + pad }, { x: g.x, z: zg }, { x: g.x, z: zg - pad });
+  };
+  const fractureAt = (x, pad = 20) => {
+    const zf = fractureZ(x);
+    wps.push({ x, z: zf + pad }, { x, z: zf }, { x, z: zf - pad });
+  };
+  // shared final leg: wade INTO the Sunken Maw (the boss's moat), then up
+  // the drowned stair ramp that climbs out of it onto the butte
+  const stair = () => {
+    wps.push(
+      { x: 6, z: -250 }, { x: 26, z: -262 }, { x: 44, z: -274 },
+      { x: 58, z: -284 }, { x: 70, z: -295 },
+    );
+  };
   if (route === 'river') {
-    for (let z = 280; z >= 20; z -= 30) wps.push({ x: riverX(z), z });
+    wps.push({ x: -18, z: 292 }, { x: riverX(250), z: 250 }, { x: riverX(210), z: 210 });
+    gate(1);
+    for (let z = 120; z >= 20; z -= 25) wps.push({ x: riverX(z), z });
     cross(1);
-    for (let z = -90; z >= -240; z -= 30) wps.push({ x: riverX(z), z });
-    wps.push({ x: 30, z: -270 }, { x: 62, z: -292 });
+    wps.push({ x: -30, z: -100 }, { x: -52, z: -140 });
+    fractureAt(WORLD.bonebridge.x);
+    wps.push({ x: -34, z: -232 });
+    stair();
   } else if (route === 'ridge') {
-    wps.push({ x: 30, z: 280 }, { x: 80, z: 240 });
-    for (let z = 200; z >= 0; z -= 30) {
-      wps.push({ x: 112 + 22 * Math.sin(z * 0.008 + 0.6), z });
-    }
+    wps.push({ x: 10, z: 290 }, { x: 44, z: 278 }, { x: 104, z: 240 }, { x: 128, z: 206 });
+    gate(2);
+    wps.push({ x: 135, z: 90 }, { x: 146, z: 34 }, { x: 140, z: 0 });
     cross(2);
-    wps.push({ x: 148, z: -112 }, { x: 128, z: -170 }, { x: 108, z: -230 }, { x: 96, z: -275 });
+    wps.push({ x: 144, z: -130 });
+    fractureAt(WORLD.scree.x);
+    // the thicket below the scree forces the long way round, east then south
+    wps.push({ x: 176, z: -230 }, { x: 148, z: -262 }, { x: 108, z: -266 });
+    wps.push({ x: 76, z: -256 }, { x: 52, z: -272 }, { x: 63, z: -288 }, { x: 74, z: -298 });
   } else { // swamp
-    wps.push({ x: -60, z: 280 }, { x: -100, z: 250 });
-    for (let z = 220; z >= 10; z -= 30) wps.push({ x: -118, z });
+    wps.push({ x: -60, z: 285 }, { x: -95, z: 262 });
+    gate(0);
+    wps.push({ x: -112, z: 110 }, { x: -118, z: 80 }, { x: -118, z: 40 }, { x: -112, z: 8 });
     cross(0);
-    wps.push({ x: -90, z: -120 }, { x: -56, z: -176 }, { x: 10, z: -230 }, { x: 48, z: -272 });
+    wps.push({ x: -90, z: -110 }, { x: -70, z: -150 });
+    fractureAt(WORLD.bonebridge.x);
+    wps.push({ x: -34, z: -232 });
+    stair();
   }
   wps.push({ x: WORLD.extraction.x, z: WORLD.extraction.z });
   return wps;

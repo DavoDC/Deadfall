@@ -11,7 +11,7 @@ import { makeRng } from '../core/rng.js';
 // gorge approaches and a final cache before the mesa climb.
 export const RUIN_SITES = [
   { x: -118, z: 80, name: 'swamp shrine' },
-  { x: 58, z: 160, name: 'south ruin' },
+  { x: 52, z: 190, name: 'south ruin' }, // moved off the Palisade line (round 3)
   { x: 146, z: 34, name: 'ridge watchpost' }, // just east of the crest walk
   { x: 4, z: -14, name: 'rapids altar' },       // south approach, river route
   { x: -108, z: -16, name: 'causeway shrine' }, // south approach, swamp route

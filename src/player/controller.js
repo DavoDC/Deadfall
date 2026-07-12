@@ -3,7 +3,7 @@
 // has weight; sprint drains stamina; swamp mud and water drag you down.
 
 import * as THREE from 'three';
-import { terrainHeight, moveSpeedFactor, WORLD } from '../world/heightmap.js';
+import { terrainHeight, moveSpeedFactor, blockedStep, WORLD } from '../world/heightmap.js';
 import { pushOut } from '../world/colliders.js';
 import { clamp, lerp } from '../core/noise.js';
 
@@ -107,6 +107,26 @@ export function createPlayer(camera) {
       p.grounded = false;
     }
     p.vel.y -= GRAVITY * dt;
+
+    // --- the round-3 movement law: cliffs and thicket are WALLS ---
+    // Reject horizontal motion onto unclimbable grade / strangler growth,
+    // with axis-separated fallback so you slide along the wall face.
+    const hv = Math.hypot(p.vel.x, p.vel.z);
+    if (hv > 0.01) {
+      const feetY = p.pos.y - EYE_HEIGHT;
+      if (blockedStep(p.pos.x, p.pos.z, p.vel.x / hv, p.vel.z / hv, feetY)) {
+        const sx = Math.sign(p.vel.x);
+        const sz = Math.sign(p.vel.z);
+        if (sx !== 0 && !blockedStep(p.pos.x, p.pos.z, sx, 0, feetY)) {
+          p.vel.z = 0;
+        } else if (sz !== 0 && !blockedStep(p.pos.x, p.pos.z, 0, sz, feetY)) {
+          p.vel.x = 0;
+        } else {
+          p.vel.x = 0;
+          p.vel.z = 0;
+        }
+      }
+    }
 
     // --- integrate position ---
     p.pos.x += p.vel.x * dt;

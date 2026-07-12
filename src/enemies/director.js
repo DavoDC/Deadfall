@@ -7,8 +7,19 @@
 // jungle's tollgates.
 
 import { hasLOS } from '../world/colliders.js';
-import { terrainHeight, gorgeZ, WORLD } from '../world/heightmap.js';
+import {
+  terrainHeight, gorgeZ, palisadeZ, fractureZ, isThicket, WORLD,
+} from '../world/heightmap.js';
 import { clamp, lerp } from '../core/noise.js';
+
+// Every place the world forces you through is a tollgate the jungle can
+// garrison: gorge sills (round 2), plus the round-3 gates and fracture ways.
+const CHOKEPOINTS = [
+  ...WORLD.crossings.map((c) => ({ x: c.x, z: () => gorgeZ(c.x), name: c.name })),
+  ...WORLD.gates.map((g) => ({ x: g.x, z: () => palisadeZ(g.x), name: g.name })),
+  { x: WORLD.bonebridge.x, z: () => fractureZ(WORLD.bonebridge.x), name: WORLD.bonebridge.name },
+  { x: WORLD.scree.x, z: () => fractureZ(WORLD.scree.x), name: WORLD.scree.name },
+];
 
 const COSTS = {
   prowler: 1, stingerwing: 0.6, spitter: 2, shrike: 2, bloomcaller: 3, juggernaut: 5,
@@ -82,19 +93,20 @@ export function createDirector(enemyMgr, playerRef, opts = {}) {
     return Math.round(2 + t * (d.surge ? 7 : 4.5)) + bonus;
   }
 
-  // The crossing the player is currently approaching from the south, if any.
+  // The chokepoint the player is currently approaching from the south, if
+  // any - the far side gets garrisoned. Gates, sills and fracture ways are
+  // all tollgates now.
   function approachedCrossing() {
     const pp = playerRef.p.pos;
-    const zg = gorgeZ(pp.x);
-    if (pp.z < zg + 8) return null; // already across (north)
     let best = null;
     let bestD = 75;
-    for (const c of WORLD.crossings) {
-      const cz = gorgeZ(c.x);
+    for (const c of CHOKEPOINTS) {
+      const cz = c.z();
+      if (pp.z < cz + 8) continue; // already through (north of it)
       const dd = Math.hypot(pp.x - c.x, pp.z - cz);
       if (dd < bestD) {
         bestD = dd;
-        best = c;
+        best = { x: c.x, cz };
       }
     }
     return best;
@@ -111,10 +123,19 @@ export function createDirector(enemyMgr, playerRef, opts = {}) {
       let x;
       let z;
       if (crossing && Math.random() < 0.45) {
-        // hold the far bank of the sill they are heading for
-        const cz = gorgeZ(crossing.x);
+        // hold the far side of the chokepoint they are heading for
         x = crossing.x + (Math.random() - 0.5) * 26;
-        z = cz - 12 - Math.random() * 18;
+        z = crossing.cz - 12 - Math.random() * 18;
+      } else if (d.surge && Math.random() < 0.6) {
+        // the final stand: waves pour UP THE STAIR toward the beacon, so
+        // they actually arrive (spawning under the mesa cliffs would strand
+        // them). Spawn along the stair-wedge azimuth from the mesa centre.
+        const ex = WORLD.extraction;
+        const stairAz = Math.atan2(WORLD.maw.x - ex.x, WORLD.maw.z - ex.z)
+          + (Math.random() - 0.5) * 0.9;
+        const r = 26 + Math.random() * 26;
+        x = ex.x + Math.sin(stairAz) * r;
+        z = ex.z + Math.cos(stairAz) * r;
       } else {
         const biasAhead = Math.random() < 0.6;
         const ang = biasAhead
@@ -129,6 +150,11 @@ export function createDirector(enemyMgr, playerRef, opts = {}) {
       if (Math.max(Math.abs(x), Math.abs(z)) > WORLD.playable - 6) continue;
       const h = terrainHeight(x, z);
       if (h < WORLD.waterLevel - 0.5) continue;
+      if (isThicket(x, z)) continue; // nothing hunts from inside the walls
+      // don't strand ground squads on the wrong side of a cliff band:
+      // when the player holds high ground, spawn at comparable height or
+      // on the stair side (flyers get placed by the branches above anyway)
+      if (d.surge && terrainHeight(pp.x, pp.z) - h > 10 && Math.random() < 0.7) continue;
       // never spawn in view
       if (hasLOS(pp.x, pp.y, pp.z, x, h + 1.4, z)) continue;
       return { x, z };
@@ -186,6 +212,7 @@ export function createDirector(enemyMgr, playerRef, opts = {}) {
       const z = pos.z + Math.sin(a) * r;
       if (Math.max(Math.abs(x), Math.abs(z)) > WORLD.playable - 6) continue;
       if (terrainHeight(x, z) < WORLD.waterLevel - 0.5) continue;
+      if (isThicket(x, z)) continue;
       enemyMgr.spawn('prowler', x, z);
       spawned++;
     }

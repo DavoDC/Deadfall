@@ -21,7 +21,7 @@
 
 import * as THREE from 'three';
 import { BUILDERS } from './models.js';
-import { terrainHeight, moveSpeedFactor, WORLD } from '../world/heightmap.js';
+import { terrainHeight, moveSpeedFactor, blockedStep, isThicket, WORLD } from '../world/heightmap.js';
 import { pushOut, hasLOS } from '../world/colliders.js';
 import { clamp, lerp } from '../core/noise.js';
 import { sfxCreature, sfxAcidSpit, sfxAcidSplat, sfxBloomPulse } from '../audio/engine.js';
@@ -328,8 +328,28 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
 
     const sf = moveSpeedFactor(e.pos.x, e.pos.z);
     const v = speed * sf;
-    e.pos.x += (Math.sin(e.heading) * v + sepX * 2.2) * dt;
-    e.pos.z += (Math.cos(e.heading) * v + sepZ * 2.2) * dt;
+    // cliffs and thicket stop hunters too - slide along the wall face
+    let mx = Math.sin(e.heading);
+    let mz = Math.cos(e.heading);
+    if (blockedStep(e.pos.x, e.pos.z, mx, mz, e.pos.y)) {
+      let moved = false;
+      for (const off of [0.85, -0.85, 1.6, -1.6]) {
+        const hx = Math.sin(e.heading + off);
+        const hz = Math.cos(e.heading + off);
+        if (!blockedStep(e.pos.x, e.pos.z, hx, hz, e.pos.y)) {
+          mx = hx;
+          mz = hz;
+          moved = true;
+          break;
+        }
+      }
+      if (!moved) {
+        mx = 0;
+        mz = 0;
+      }
+    }
+    e.pos.x += (mx * v + sepX * 2.2) * dt;
+    e.pos.z += (mz * v + sepZ * 2.2) * dt;
     resolveGround(e);
     e.walkPhase += dt * v * 2.2;
     return dist;
@@ -403,8 +423,10 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
       }
     } else if (e.state === 'lunge') {
       e.stateT += dt;
-      e.pos.x += e.lungeVec.x * e.def.lungeSpeed * dt;
-      e.pos.z += e.lungeVec.z * e.def.lungeSpeed * dt;
+      if (!blockedStep(e.pos.x, e.pos.z, e.lungeVec.x, e.lungeVec.z, e.pos.y)) {
+        e.pos.x += e.lungeVec.x * e.def.lungeSpeed * dt;
+        e.pos.z += e.lungeVec.z * e.def.lungeSpeed * dt;
+      }
       resolveGround(e);
       const d2 = _v.subVectors(pp, e.pos).length();
       if (d2 < 1.7) {
@@ -507,9 +529,12 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
       }
     } else if (e.state === 'charge') {
       e.stateT += dt;
-      e.pos.x += e.lungeVec.x * e.def.chargeSpeed * dt;
-      e.pos.z += e.lungeVec.z * e.def.chargeSpeed * dt;
-      const blocked = pushOut(e.pos, e.def.radius, e.pos.y);
+      const cliffBlocked = blockedStep(e.pos.x, e.pos.z, e.lungeVec.x, e.lungeVec.z, e.pos.y);
+      if (!cliffBlocked) {
+        e.pos.x += e.lungeVec.x * e.def.chargeSpeed * dt;
+        e.pos.z += e.lungeVec.z * e.def.chargeSpeed * dt;
+      }
+      const blocked = pushOut(e.pos, e.def.radius, e.pos.y) || cliffBlocked;
       e.pos.y = terrainHeight(e.pos.x, e.pos.z);
       e.walkPhase += dt * 14;
       const d2 = _v.subVectors(pp, e.pos).length();
@@ -633,6 +658,10 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
           );
           _v2.x = clamp(_v2.x, -WORLD.playable + 4, WORLD.playable - 4);
           _v2.z = clamp(_v2.z, -WORLD.playable + 4, WORLD.playable - 4);
+          // never hop INTO strangler thicket; shorten the hop instead
+          if (isThicket(_v2.x, _v2.z)) {
+            _v2.set(e.pos.x + d.x * 3, 0, e.pos.z + d.z * 3);
+          }
           _v2.y = terrainHeight(_v2.x, _v2.z);
           startHop(e, _v2, false);
         }
