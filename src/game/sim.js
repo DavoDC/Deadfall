@@ -19,10 +19,11 @@ import { createGrenades } from '../weapons/grenades.js';
 import { createEnemyManager } from '../enemies/enemies.js';
 import { createDirector } from '../enemies/director.js';
 import { createPickups } from './pickups.js';
+import { createTraps } from './traps.js';
 import { createWeather } from './weather.js';
 import { getDifficulty, DEFAULT_DIFFICULTY } from './difficulty.js';
 
-const AYAHUASCA_DURATION = 20;
+const AYAHUASCA_DURATION = 25;
 
 export function createSim({ scene, camera, effects, ui = {} }) {
   const noop = () => {};
@@ -81,6 +82,7 @@ export function createSim({ scene, camera, effects, ui = {} }) {
   }
 
   let pickupsRef = null;
+  let trapsRef = null;
   const boss = { ref: null, spawned: false, maxHp: 1, name: 'THE MIREMOTHER' };
   const enemyMgr = createEnemyManager(scene, player, effects, {
     damagePlayer,
@@ -101,7 +103,8 @@ export function createSim({ scene, camera, effects, ui = {} }) {
       // dying enemies feed the run
       if (type === 'juggernaut') pickupsRef.dropAt(pos.x, pos.z, true);
       else if (type === 'bloomcaller' && Math.random() < 0.8) pickupsRef.dropAt(pos.x, pos.z, false);
-      else if (type !== 'stingerwing' && Math.random() < 0.35) pickupsRef.dropAt(pos.x, pos.z, false);
+      else if (type === 'viperblossom' && Math.random() < 0.6) pickupsRef.dropAt(pos.x, pos.z, false);
+      else if (type !== 'stingerwing' && type !== 'viperblossom' && Math.random() < 0.35) pickupsRef.dropAt(pos.x, pos.z, false);
     },
     onSummon(pos) {
       director.assistSpawn(pos, director.threat());
@@ -149,6 +152,16 @@ export function createSim({ scene, camera, effects, ui = {} }) {
     },
   });
   pickupsRef = pickups;
+
+  // --- traps ---
+  const traps = createTraps(scene, player, {
+    damagePlayer,
+    toast: (msg) => U.toast(msg),
+    onNoise: () => {
+      director.onShot();
+    },
+  });
+  trapsRef = traps;
 
   // --- extraction ---
   const extraction = {
@@ -258,6 +271,8 @@ export function createSim({ scene, camera, effects, ui = {} }) {
     enemyMgr.reset();
     director.reset();
     pickups.reset();
+    traps.reset();
+    enemyMgr.spawnViperblossoms();
     extraction.progress = 0;
     extraction.active = false;
     extraction.committed = false;
@@ -292,6 +307,7 @@ export function createSim({ scene, camera, effects, ui = {} }) {
     enemyMgr.update(dt);
     director.update(dt);
     pickups.update(dt);
+    traps.update(dt);
     updateBoss();
     updateBuff(dt);
     updateHazards(dt);
@@ -300,7 +316,7 @@ export function createSim({ scene, camera, effects, ui = {} }) {
 
   return {
     game, player, weapons, weaponHooks, grenades, enemyMgr, director,
-    pickups, extraction, buff, weather, boss,
+    pickups, traps, extraction, buff, weather, boss,
     step, resetRun, setDifficulty, updateExtraction,
     get difficulty() { return difficulty; },
   };
