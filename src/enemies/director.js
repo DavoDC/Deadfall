@@ -67,6 +67,11 @@ export function createDirector(enemyMgr, playerRef, opts = {}) {
     d.diff = diff;
   }
 
+  let weatherRef = null;
+  function setWeather(weather) {
+    weatherRef = weather;
+  }
+
   function progressNorth() {
     const a = WORLD.insertion.z;
     const b = WORLD.extraction.z;
@@ -82,9 +87,11 @@ export function createDirector(enemyMgr, playerRef, opts = {}) {
   }
 
   function onShot() {
-    // noise nudges the jungle, it does not command it
+    // noise nudges the jungle, it does not command it - and a storm
+    // swallows most of it (weather is a mechanic, not just a mood)
     const gain = d.diff ? d.diff.heatGain : 1;
-    d.heat = Math.min(0.18, d.heat + 0.008 * gain);
+    const wMult = weatherRef ? weatherRef.mods().heatMult : 1;
+    d.heat = Math.min(0.18, d.heat + 0.008 * gain * wMult);
   }
 
   function cap() {
@@ -259,6 +266,6 @@ export function createDirector(enemyMgr, playerRef, opts = {}) {
 
   return {
     update, onShot, startSurge, stopSurge, reset, threat, setDifficulty,
-    assistSpawn, progressNorth, state: d,
+    setWeather, assistSpawn, progressNorth, state: d,
   };
 }

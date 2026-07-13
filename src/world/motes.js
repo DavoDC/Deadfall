@@ -61,7 +61,8 @@ export function createMotes(scene) {
   return { update };
 }
 
-// Drizzle for the grey-mist mood: fast thin streaks in a wrap box.
+// Rain streaks in a wrap box around the player. Level-driven (round 3):
+// 0 = dry, ~0.45 = mood drizzle, 1 = storm rain (faster, denser, slanted).
 export function createDrizzle(scene) {
   const N = 420;
   const geo = new THREE.PlaneGeometry(0.012, 0.5);
@@ -75,6 +76,7 @@ export function createDrizzle(scene) {
   scene.add(mesh);
 
   const R = 18;
+  let level = 0;
   const drops = [];
   for (let i = 0; i < N; i++) {
     drops.push({
@@ -91,9 +93,19 @@ export function createDrizzle(scene) {
 
   function update(dt, playerPos, camYawQuat) {
     if (!mesh.visible) return;
+    const active = Math.ceil(N * Math.min(1, 0.25 + level * 0.75));
+    const speedMult = 0.8 + level * 0.9;
+    const slant = level > 0.6 ? (level - 0.6) * 9 : 0; // storm wind
     for (let i = 0; i < N; i++) {
       const d = drops[i];
-      d.y -= d.v * dt;
+      if (i >= active) {
+        _m.makeScale(0, 0, 0);
+        mesh.setMatrixAt(i, _m);
+        continue;
+      }
+      d.y -= d.v * speedMult * dt;
+      d.x += slant * dt;
+      if (d.x > R) d.x -= R * 2;
       if (d.y < 0) {
         d.y = 13 + Math.random() * 2;
         d.x = (Math.random() * 2 - 1) * R;
@@ -110,6 +122,11 @@ export function createDrizzle(scene) {
     update,
     setEnabled(on) {
       mesh.visible = on;
+    },
+    setLevel(l) {
+      level = l;
+      mesh.visible = l > 0.03;
+      mat.opacity = 0.22 + l * 0.24;
     },
   };
 }

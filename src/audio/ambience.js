@@ -90,10 +90,13 @@ export function startAmbience() {
   nodes = { windGain, insGain, droneGain, rainGain, birdTimer: 2, danger: 0 };
 }
 
-export function setRain(on) {
+// level in [0,1]: 0 dry, ~0.45 drizzle, 1 storm rain (accepts booleans
+// from the old mood API too)
+export function setRain(level) {
   if (!nodes) return;
+  const l = level === true ? 0.5 : level === false ? 0 : level;
   const ctx = audioCtx();
-  nodes.rainGain.gain.setTargetAtTime(on ? 0.06 : 0, ctx.currentTime, 1.2);
+  nodes.rainGain.gain.setTargetAtTime(0.12 * l, ctx.currentTime, 1.2);
 }
 
 function birdCall() {

@@ -531,6 +531,44 @@ export function sfxAyahuasca() {
   }
 }
 
+// Thunder: a crack, a sub-bass body, and a long rolling tail. Loudness ~
+// distance (far strikes just rumble).
+export function sfxThunder(loud = 1) {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  if (loud > 0.55) {
+    const n1 = noiseSource();
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 900;
+    const g1 = ctx.createGain();
+    env(g1.gain, t, [[0, 0.5 * loud], [0.09, 0.001]]);
+    n1.connect(hp).connect(g1);
+    out(g1);
+    n1.start(t);
+    n1.stop(t + 0.12);
+  }
+  const osc = ctx.createOscillator();
+  osc.type = 'sine';
+  env(osc.frequency, t, [[0, 64], [1.3, 26]]);
+  const g2 = ctx.createGain();
+  env(g2.gain, t, [[0, 0.001], [0.05, 0.6 * loud], [1.5, 0.001]]);
+  osc.connect(g2);
+  out(g2);
+  osc.start(t);
+  osc.stop(t + 1.6);
+  const n2 = noiseSource();
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  env(lp.frequency, t, [[0, 520], [2.6, 70]]);
+  const g3 = ctx.createGain();
+  env(g3.gain, t, [[0, 0.001], [0.12, 0.45 * loud], [2.8, 0.001]]);
+  n2.connect(lp).connect(g3);
+  out(g3);
+  n2.start(t);
+  n2.stop(t + 2.9);
+}
+
 export function sfxHeartbeat() {
   if (!ctx) return;
   const t = ctx.currentTime;

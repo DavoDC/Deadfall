@@ -19,6 +19,7 @@ import { DIFFICULTIES, DEFAULT_DIFFICULTY } from './game/difficulty.js';
 import {
   initAudio, resumeAudio, setListener, sfxFootstep, sfxLand, sfxHurt,
   sfxExtractTone, sfxStinger, sfxHeartbeat, sfxRazorfin, sfxAyahuasca,
+  sfxThunder,
 } from './audio/engine.js';
 import { startAmbience, updateAmbience, setRain } from './audio/ambience.js';
 import { createMotes, createDrizzle } from './world/motes.js';
@@ -49,7 +50,7 @@ window.addEventListener('resize', () => {
 // --- world ---
 console.log('[deadfall] building world, seed', WORLD.seed);
 const t0 = performance.now();
-const { sun, applyMood } = buildSky(scene, renderer);
+const { sun, hemi, applyMood } = buildSky(scene, renderer);
 buildTerrain(scene);
 const water = buildWater(scene);
 buildVegetation(scene);
@@ -63,8 +64,28 @@ console.log('[deadfall] world built in', Math.round(performance.now() - t0), 'ms
 const vignetteEl = document.getElementById('vignette');
 const underwaterEl = document.getElementById('underwater');
 const feverEl = document.getElementById('fever');
+const lightningEl = document.getElementById('lightning');
 let vignette = 0;
 let hud = null; // created after sim
+
+// --- weather presentation state (the sim owns the weather MECHANIC;
+// this block owns how it looks and sounds) ---
+let currentMood = MOODS.bloom;
+let weatherFx = { key: 'clear', fogMult: 1, sunMult: 1, rain: 0 };
+let lightningT = 5;      // seconds to next strike (storm only)
+let lightningGlow = 0;   // current flash brightness (sun boost), decays fast
+let lightningFlash = 0;  // screen overlay opacity, decays fast
+const _fogTarget = new THREE.Color();
+const STORM_SLATE = new THREE.Color(0x707a96);
+
+function applyWeatherFx(w, initial) {
+  weatherFx = w;
+  const rainLevel = Math.max(w.rain, currentMood.drizzle ? 0.45 : 0);
+  drizzle.setLevel(rainLevel);
+  setRain(rainLevel);
+  if (!initial && hud) hud.toast(w.label, 3);
+  if (w.key === 'storm') lightningT = 1.5 + Math.random() * 3;
+}
 
 const ui = {
   toast: (msg, secs) => hud && hud.toast(msg, secs),
@@ -92,6 +113,7 @@ const ui = {
   onExtractTone: (progress) => sfxExtractTone(progress),
   onSurge: () => {},
   onBuff: () => sfxAyahuasca(),
+  onWeather: (w, initial) => applyWeatherFx(w, initial),
 };
 
 // --- the game itself ---
@@ -180,12 +202,13 @@ function startRun() {
   initAudio();
   resumeAudio();
   startAmbience();
-  // roll the weather - same jungle, different day
+  // roll the mood - same jungle, different fever. Live weather (storms,
+  // fog banks) then evolves DURING the run, driven by the sim.
   const moodKeys = Object.keys(MOODS);
-  const mood = MOODS[moodKeys[Math.floor(Math.random() * moodKeys.length)]];
-  applyMood(mood);
-  drizzle.setEnabled(!!mood.drizzle);
-  setRain(!!mood.drizzle);
+  currentMood = MOODS[moodKeys[Math.floor(Math.random() * moodKeys.length)]];
+  applyMood(currentMood);
+  drizzle.setLevel(currentMood.drizzle ? 0.45 : 0);
+  setRain(currentMood.drizzle ? 0.45 : 0);
   sim.resetRun();
   vignette = 0;
   seenLandmarks.clear();
@@ -306,6 +329,36 @@ function tick(now) {
     const fever = Math.min(1, player.p.buffT / 3); // fades over the last 3s
     feverEl.style.opacity = fever * 0.85;
     renderer.toneMappingExposure = 1.05 + fever * 0.35;
+  }
+
+  // --- live weather look: ease fog/light toward the current weather's
+  // targets; storms darken toward slate and walk lightning through ---
+  {
+    const ease = Math.min(1, dt * 0.4);
+    const targetDensity = currentMood.fogDensity * weatherFx.fogMult;
+    scene.fog.density += (targetDensity - scene.fog.density) * ease;
+    const stormy = weatherFx.key === 'storm' ? 1 : 0;
+    _fogTarget.set(currentMood.fogColor).lerp(STORM_SLATE, stormy * 0.55);
+    scene.fog.color.lerp(_fogTarget, ease);
+    scene.background.lerp(_fogTarget, ease);
+    lightningGlow = Math.max(0, lightningGlow - dt * 5);
+    const targetSun = currentMood.sunIntensity * weatherFx.sunMult;
+    sun.intensity += (targetSun - sun.intensity) * ease;
+    sun.intensity += lightningGlow * 5;
+    hemi.intensity += (currentMood.hemiIntensity * (1 - stormy * 0.3) - hemi.intensity) * ease;
+
+    if (weatherFx.key === 'storm' && game.state === 'RUNNING' && input.state.locked) {
+      lightningT -= dt;
+      if (lightningT <= 0) {
+        lightningT = 2.5 + Math.random() * 6.5;
+        lightningGlow = 1;
+        lightningFlash = 0.5 + Math.random() * 0.4;
+        const dist = Math.random(); // 0 = overhead, 1 = far
+        setTimeout(() => sfxThunder(1 - dist * 0.65), 300 + dist * 1900);
+      }
+    }
+    lightningFlash = Math.max(0, lightningFlash - dt * 3);
+    lightningEl.style.opacity = lightningFlash;
   }
 
   if (water.userData.tick) water.userData.tick(now / 1000);

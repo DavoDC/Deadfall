@@ -128,7 +128,9 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
   // hooks: { damagePlayer(amount, srcPos), onKill(type, pos),
   //          onSummon(pos, threat) -> spawned count (director assist) }
   const enemies = [];
-  const tuning = { hpMult: 1 }; // set per-run from difficulty
+  // hpMult set per-run from difficulty; fixNoiseMult written by the sim
+  // each step from weather (fog makes hunters track you far worse)
+  const tuning = { hpMult: 1, fixNoiseMult: 1 };
   const _v = new THREE.Vector3();
   const _v2 = new THREE.Vector3();
   let flankCounter = 0;
@@ -368,12 +370,14 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
       e.fix.copy(playerRef.p.pos);
       e.fixTimer = 0.5;
     } else if (e.fixTimer <= 0) {
-      // hunters re-acquire a noisy fix periodically - they track, not teleport
+      // hunters re-acquire a noisy fix periodically - they track, not
+      // teleport; fog widens the error dramatically (sneaking weather)
       e.fixTimer = 2.4 + Math.random() * 1.2;
+      const err = 9 * tuning.fixNoiseMult;
       e.fix.set(
-        playerRef.p.pos.x + (Math.random() - 0.5) * 9,
+        playerRef.p.pos.x + (Math.random() - 0.5) * err,
         playerRef.p.pos.y,
-        playerRef.p.pos.z + (Math.random() - 0.5) * 9
+        playerRef.p.pos.z + (Math.random() - 0.5) * err
       );
     }
   }

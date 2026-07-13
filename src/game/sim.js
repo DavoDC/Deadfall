@@ -19,6 +19,7 @@ import { createGrenades } from '../weapons/grenades.js';
 import { createEnemyManager } from '../enemies/enemies.js';
 import { createDirector } from '../enemies/director.js';
 import { createPickups } from './pickups.js';
+import { createWeather } from './weather.js';
 import { getDifficulty, DEFAULT_DIFFICULTY } from './difficulty.js';
 
 const AYAHUASCA_DURATION = 20;
@@ -37,6 +38,7 @@ export function createSim({ scene, camera, effects, ui = {} }) {
     onExtractTone: ui.onExtractTone || noop,
     onSurge: ui.onSurge || noop,
     onBuff: ui.onBuff || noop,
+    onWeather: ui.onWeather || noop,
   };
 
   const game = {
@@ -93,6 +95,8 @@ export function createSim({ scene, camera, effects, ui = {} }) {
     },
   });
   const director = createDirector(enemyMgr, player);
+  const weather = createWeather(U);
+  director.setWeather(weather);
 
   const grenades = createGrenades(scene, camera, player, effects, {
     enemies: () => enemyMgr.aliveList(),
@@ -226,6 +230,7 @@ export function createSim({ scene, camera, effects, ui = {} }) {
     extraction.committed = false;
     extraction.toneAt = 0;
     buff.t = 0;
+    weather.reset();
     game.state = 'RUNNING';
     game.time = 0;
     game.kills = 0;
@@ -241,6 +246,8 @@ export function createSim({ scene, camera, effects, ui = {} }) {
   function step(intent, dt) {
     if (game.state !== 'RUNNING') return;
     game.time += dt;
+    weather.update(dt);
+    enemyMgr.tuning.fixNoiseMult = weather.mods().fixNoiseMult;
     player.update(intent, dt);
     // keep the camera's matrices honest even without a render pass
     // (headless: nobody else calls updateMatrixWorld)
@@ -257,7 +264,7 @@ export function createSim({ scene, camera, effects, ui = {} }) {
 
   return {
     game, player, weapons, weaponHooks, grenades, enemyMgr, director,
-    pickups, extraction, buff,
+    pickups, extraction, buff, weather,
     step, resetRun, setDifficulty, updateExtraction,
     get difficulty() { return difficulty; },
   };
