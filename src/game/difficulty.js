@@ -48,19 +48,27 @@ export const DIFFICULTIES = {
     key: 'hard',
     label: 'DEADFALL',
     blurb: 'The jungle expects you. Extraction is a rumour.',
-    playerDamageTaken: 1.2,
-    enemyHp: 1.1,
-    budgetRate: 1.25,
+    // round-3 matrix (45-run) found hard fully unwinnable (0/15) once the
+    // boss + traps + mimics stacked onto round-2's tuning - deaths were
+    // spread across many sources with zero survivor margin, not one
+    // dominant killer, so this trims incoming damage broadly rather than
+    // nerfing any single mechanism (round-2 lesson: fix the economy).
+    // First pass overcorrected to 9/15 (60% win) - split back toward
+    // round-2's numbers; second pass landed 4/15 (see difficulty.js log
+    // in HISTORY.md for the full tuning trail).
+    playerDamageTaken: 1.12,
+    enemyHp: 1.08,
+    budgetRate: 1.18,
     capBonus: 1,
-    tickScale: 0.9,
-    rampTime: 255,
+    tickScale: 0.92,
+    rampTime: 262,
     grace: 8,
     holdTime: 20,
-    heatGain: 1.3,
-    razorfinDps: 8,
+    heatGain: 1.25,
+    razorfinDps: 7,
     startGrenades: 2,
-    bossHp: 1.12,
-    bossDmg: 1.1,
+    bossHp: 1.06,
+    bossDmg: 1.0,
   },
 };
 

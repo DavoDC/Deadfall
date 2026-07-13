@@ -65,8 +65,10 @@ export function routeWaypoints(route) {
   } else { // swamp
     wps.push({ x: -60, z: 285 }, { x: -95, z: 262 });
     gate(0);
-    // (skirt the swamp shrine ruin itself - its blocks wedge the bot)
-    wps.push({ x: -112, z: 110 }, { x: -126, z: 74 }, { x: -120, z: 40 }, { x: -112, z: 8 });
+    // (skirt the swamp shrine ruin itself - its blocks wedge the bot; the
+    // straight line to -126,74 still clipped the cluster at 5m, so swing
+    // wide through -138,88 for real clearance)
+    wps.push({ x: -112, z: 110 }, { x: -138, z: 88 }, { x: -128, z: 62 }, { x: -120, z: 40 }, { x: -112, z: 8 });
     cross(0);
     wps.push({ x: -90, z: -110 }, { x: -70, z: -150 });
     fractureAt(WORLD.bonebridge.x);
