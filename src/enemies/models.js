@@ -85,6 +85,31 @@ function mesh(geo, mat, x, y, z) {
   return m;
 }
 
+// A READABLE eye (round-3 legibility pass - "cant make out eyes"): a dark
+// socket ring behind a big emissive iris with a dark pupil. The contrast
+// ring is what makes it read at 25m through fog, the size sells character.
+const SOCKET_MAT = new THREE.MeshStandardMaterial({ color: 0x0e0b08, roughness: 1 });
+const PUPIL_MAT = new THREE.MeshStandardMaterial({ color: 0x14060a, roughness: 0.4 });
+function eye(r, irisMat, x, y, z, fwdZ = -1) {
+  const g = new THREE.Group();
+  const socket = new THREE.Mesh(G(`eyeSock${r}`, () => {
+    const s = new THREE.SphereGeometry(r * 1.35, 8, 6);
+    s.scale(1, 1, 0.55);
+    return s;
+  }), SOCKET_MAT);
+  g.add(socket);
+  const iris = new THREE.Mesh(G(`eyeIris${r}`, () => new THREE.SphereGeometry(r, 8, 6)), irisMat);
+  iris.position.z = fwdZ * r * 0.45;
+  iris.castShadow = false;
+  g.add(iris);
+  const pupil = new THREE.Mesh(G(`eyePup${r}`, () => new THREE.SphereGeometry(r * 0.4, 6, 5)), PUPIL_MAT);
+  pupil.position.z = fwdZ * r * 1.15;
+  pupil.castShadow = false;
+  g.add(pupil);
+  g.position.set(x, y, z);
+  return g;
+}
+
 // Two-segment leg: thigh pivots at hip, shin hangs from knee. Animate the
 // hip (rotation.x) and the knee counter-bends in enemies.animate - real
 // limbs, not stilts (round-1 feedback: "not proper legs").
@@ -129,13 +154,19 @@ export function buildProwler() {
 
   const head = mesh(G('prHead', () => new THREE.BoxGeometry(0.3, 0.26, 0.38)), MAT.prowlerHide, 0, 0.74, -0.62);
   g.add(head);
-  const jaw = mesh(G('prJaw', () => new THREE.BoxGeometry(0.24, 0.09, 0.3)), MAT.prowlerStripe, 0, 0.62, -0.66);
+  // jaw sits flush under the muzzle now (was floating), coral for contrast
+  const jaw = mesh(G('prJaw', () => new THREE.BoxGeometry(0.24, 0.08, 0.28)), MAT.prowlerStripe, 0, 0.645, -0.63);
   g.add(jaw);
-  const eyeL = mesh(G('prEye', () => new THREE.SphereGeometry(0.05, 6, 5)), MAT.emberEye, -0.09, 0.78, -0.78);
-  const eyeR = mesh(G('prEye', () => new THREE.SphereGeometry(0.05, 6, 5)), MAT.emberEye, 0.09, 0.78, -0.78);
-  eyeL.castShadow = false;
-  eyeR.castShadow = false;
+  // big ember cat-eyes in dark sockets + ear cones: the face READS now
+  const eyeL = eye(0.075, MAT.emberEye, -0.095, 0.79, -0.79);
+  const eyeR = eye(0.075, MAT.emberEye, 0.095, 0.79, -0.79);
   g.add(eyeL, eyeR);
+  const earGeo = G('prEar', () => new THREE.ConeGeometry(0.06, 0.14, 5));
+  for (const ex of [-0.1, 0.1]) {
+    const ear = mesh(earGeo, MAT.prowlerHide, ex, 0.9, -0.52);
+    ear.rotation.x = -0.25;
+    g.add(ear);
+  }
 
   const legs = [];
   const knees = [];
@@ -143,6 +174,13 @@ export function buildProwler() {
     const { hip, knee } = twoSegLeg(MAT.prowlerHide, MAT.prowlerHide, 0.34, 0.32, 0.055);
     hip.position.set(x, 0.62, z);
     knee.rotation.x = 0.35;
+    // paw at the shin's end - feet ground the silhouette
+    const paw = mesh(G('prPaw', () => {
+      const s = new THREE.SphereGeometry(0.065, 6, 5);
+      s.scale(1.1, 0.7, 1.3);
+      return s;
+    }), MAT.prowlerStripe, 0, -0.32, -0.02);
+    knee.add(paw);
     legs.push(hip);
     knees.push(knee);
     g.add(hip);
@@ -188,11 +226,25 @@ export function buildSpitter() {
     return h;
   }), MAT.spitterSkin, 0, 1.38, -0.32);
   g.add(head);
-  const eyeL = mesh(G('spEye', () => new THREE.SphereGeometry(0.05, 6, 5)), MAT.emberEye, -0.1, 1.46, -0.4);
-  const eyeR = mesh(G('spEye', () => new THREE.SphereGeometry(0.05, 6, 5)), MAT.emberEye, 0.1, 1.46, -0.4);
-  eyeL.castShadow = false;
-  eyeR.castShadow = false;
-  g.add(eyeL, eyeR);
+  // frog eyes on raised turrets atop the head - unmistakably an amphibian
+  const turretGeo = G('spTurret', () => new THREE.SphereGeometry(0.085, 7, 6));
+  for (const ex of [-0.11, 0.11]) {
+    const turret = mesh(turretGeo, MAT.spitterSkin, ex, 1.53, -0.36);
+    g.add(turret);
+    g.add(eye(0.07, MAT.emberEye, ex, 1.56, -0.41));
+  }
+  // wide dark mouth slit + two fang nubs (the bite is real - 7dmg)
+  const mouth = mesh(G('spMouth', () => {
+    const s = new THREE.BoxGeometry(0.3, 0.045, 0.16);
+    return s;
+  }), SOCKET_MAT, 0, 1.3, -0.5);
+  g.add(mouth);
+  const fangGeoSp = G('spFang', () => new THREE.ConeGeometry(0.022, 0.07, 5));
+  for (const ex of [-0.09, 0.09]) {
+    const fang = mesh(fangGeoSp, MAT.juggPlate, ex, 1.26, -0.53);
+    fang.rotation.x = Math.PI;
+    g.add(fang);
+  }
 
   // glowing acid sacs on the back - the tell (brighten before it spits),
   // the weakpoint (crit), and the rage gauge (swell as it takes fire)
@@ -224,7 +276,11 @@ export function buildSpitter() {
     return a;
   });
   const arms = [];
+  const shoulderGeoSp = G('spShoulder', () => new THREE.SphereGeometry(0.075, 6, 5));
   for (const x of [-0.32, 0.32]) {
+    // shoulder sphere anchors the arm to the torso (they floated before)
+    const shoulder = mesh(shoulderGeoSp, MAT.spitterSkin, x * 0.92, 1.22, -0.05);
+    g.add(shoulder);
     const arm = mesh(armGeo, MAT.spitterSkin, x, 1.2, -0.05);
     arm.rotation.z = x > 0 ? -0.35 : 0.35;
     arm.rotation.x = -0.5;
@@ -288,11 +344,34 @@ export function buildJuggernaut() {
   // headshots on the juggernaut are mostly wasted (headMultScale below)
   const plate = mesh(G('juPlate', () => new THREE.BoxGeometry(0.36, 0.36, 0.08)), MAT.juggPlate, 0, 2.28, -0.42);
   g.add(plate);
-  const eyeL = mesh(G('juEye', () => new THREE.SphereGeometry(0.05, 6, 5)), MAT.emberEye, -0.1, 2.33, -0.47);
-  const eyeR = mesh(G('juEye', () => new THREE.SphereGeometry(0.05, 6, 5)), MAT.emberEye, 0.1, 2.33, -0.47);
-  eyeL.castShadow = false;
-  eyeR.castShadow = false;
-  g.add(eyeL, eyeR);
+  // eye SLOTS cut into the plate: dark recesses with embers burning deep -
+  // the skull-mask reads as armour, the eyes read as alive
+  for (const ex of [-0.1, 0.1]) {
+    const slot = mesh(G('juSlot', () => new THREE.BoxGeometry(0.11, 0.07, 0.06)), SOCKET_MAT, ex, 2.33, -0.45);
+    g.add(slot);
+    g.add(eye(0.055, MAT.emberEye, ex, 2.33, -0.47));
+  }
+  // tusks curving up from the jawline - silhouette hook at any range
+  const tuskGeo = G('juTusk', () => {
+    const t = new THREE.ConeGeometry(0.05, 0.34, 6);
+    t.rotateX(-0.9);
+    return t;
+  });
+  for (const ex of [-0.19, 0.19]) {
+    const tusk = mesh(tuskGeo, MAT.juggPlate, ex, 2.13, -0.5);
+    tusk.rotation.z = ex > 0 ? -0.22 : 0.22;
+    g.add(tusk);
+  }
+  // moss drape bridging mantle to torso (there was a visible gap line)
+  const drapeGeo = G('juDrape', () => {
+    const s = new THREE.SphereGeometry(0.5, 8, 6);
+    s.scale(0.55, 0.8, 0.9);
+    return s;
+  });
+  for (const ex of [-0.62, 0.62]) {
+    const drape = mesh(drapeGeo, MAT.juggMoss, ex, 1.75, 0.04);
+    g.add(drape);
+  }
 
   // the amber boil on its back - the real weakpoint. Bait the charge,
   // shoot the pass.
@@ -327,6 +406,12 @@ export function buildJuggernaut() {
       l.translate(0, -0.55, 0);
       return l;
     }), MAT.juggHide, x, 1.1, 0.05);
+    // stone-toed foot - the titan stands ON something now
+    const foot = mesh(G('juFoot', () => {
+      const f = new THREE.BoxGeometry(0.34, 0.14, 0.44);
+      return f;
+    }), MAT.juggPlate, 0, -1.08, -0.06);
+    leg.add(foot);
     legs.push(leg);
     g.add(leg);
   }
@@ -355,6 +440,13 @@ export function buildStingerwing() {
   const abdomen = mesh(G('swAbd', () => new THREE.SphereGeometry(0.11, 6, 5)), MAT.wingAbdomen, 0, -0.02, 0.2);
   abdomen.castShadow = false;
   g.add(abdomen);
+  // a face: head bulb + two big forward eyes - it flies AT yours, so the
+  // last thing you see should have a last thing to see you with
+  const swHead = mesh(G('swHead', () => new THREE.SphereGeometry(0.075, 7, 6)), MAT.wingBody, 0, 0.02, -0.16);
+  g.add(swHead);
+  for (const ex of [-0.045, 0.045]) {
+    g.add(eye(0.038, MAT.wingAbdomen, ex, 0.045, -0.2));
+  }
   const stinger = mesh(G('swSting', () => new THREE.ConeGeometry(0.035, 0.16, 5)), MAT.claw, 0, -0.03, 0.34);
   stinger.rotation.x = Math.PI / 2;
   g.add(stinger);
@@ -400,10 +492,14 @@ export function buildShrike() {
     return h;
   }), MAT.shrikeFur, 0, 1.32, -0.12);
   g.add(head);
-  // glowing eye stripe - the airborne streak you track through the trees
-  const stripe = mesh(G('shStripe', () => new THREE.BoxGeometry(0.3, 0.05, 0.1)), MAT.shrikeStripe, 0, 1.34, -0.24);
+  // glowing brow stripe - the airborne streak you track through the trees
+  const stripe = mesh(G('shStripe', () => new THREE.BoxGeometry(0.3, 0.05, 0.1)), MAT.shrikeStripe, 0, 1.4, -0.22);
   stripe.castShadow = false;
   g.add(stripe);
+  // two big cyan eyes UNDER the brow - a face, not a smear
+  for (const ex of [-0.075, 0.075]) {
+    g.add(eye(0.06, MAT.shrikeStripe, ex, 1.31, -0.25));
+  }
 
   // long two-segment arms - it swings, you duck
   const arms = [];
@@ -413,6 +509,13 @@ export function buildShrike() {
     shoulder.position.set(x, 1.18, 0);
     shoulder.rotation.z = x > 0 ? -0.5 : 0.5;
     elbow.rotation.x = -0.4;
+    // hooked hand-claws at the arm ends (it swings; now you see with what)
+    const clawHand = mesh(G('shClaw', () => {
+      const s = new THREE.ConeGeometry(0.045, 0.16, 5);
+      s.rotateX(Math.PI * 0.5);
+      return s;
+    }), MAT.claw, 0, -0.55, -0.04);
+    elbow.add(clawHand);
     arms.push(shoulder);
     elbows.push(elbow);
     g.add(shoulder);
@@ -459,9 +562,25 @@ export function buildBloomcaller() {
   // bulb head with a ring of petals that OPEN when it calls
   const bulb = mesh(G('blBulb', () => new THREE.SphereGeometry(0.34, 8, 7)), MAT.bloomStalk, 0, 2.0, 0);
   g.add(bulb);
+  // the core is an EYEBALL that watches you while it screams - iris ring
+  // + pupil on the golden sphere (crit zone unchanged)
   const core = mesh(G('blCore', () => new THREE.SphereGeometry(0.2, 8, 6)), MAT.bloomCore, 0, 2.05, -0.12);
   core.castShadow = false;
   g.add(core);
+  const coreIris = mesh(G('blIris', () => {
+    const s = new THREE.SphereGeometry(0.105, 8, 6);
+    s.scale(1, 1, 0.5);
+    return s;
+  }), MAT.orchid, 0, 2.05, -0.29);
+  coreIris.castShadow = false;
+  g.add(coreIris);
+  const corePupil = mesh(G('blPupil', () => {
+    const s = new THREE.SphereGeometry(0.055, 6, 5);
+    s.scale(1, 1, 0.5);
+    return s;
+  }), SOCKET_MAT, 0, 2.05, -0.315);
+  corePupil.castShadow = false;
+  g.add(corePupil);
   const petals = [];
   const petalGeo = G('blPetal', () => {
     const p = new THREE.PlaneGeometry(0.3, 0.62, 1, 2);
