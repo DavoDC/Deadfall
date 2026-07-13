@@ -15,6 +15,7 @@ import { makeRng } from '../core/rng.js';
 import { clamp } from '../core/noise.js';
 
 const swayMats = [];
+let swayMult = 1; // ayahuasca cranks this - the whole jungle writhes
 
 // Inject a cheap wind sway into any material: bends vertices by their local
 // height, phase-offset by instance world position.
@@ -22,14 +23,16 @@ function windify(mat, strength = 1) {
   mat.userData.swayStrength = strength;
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = { value: 0 };
+    shader.uniforms.uSwayMult = { value: swayMult };
     mat.userData.shader = shader;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>
-        uniform float uTime;`)
+        uniform float uTime;
+        uniform float uSwayMult;`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
         {
           float phase = instanceMatrix[3].x * 0.31 + instanceMatrix[3].z * 0.47;
-          float amt = ${strength.toFixed(3)} * max(0.0, position.y);
+          float amt = ${strength.toFixed(3)} * max(0.0, position.y) * uSwayMult;
           transformed.x += sin(uTime * 1.35 + phase) * 0.045 * amt;
           transformed.z += cos(uTime * 1.02 + phase * 1.3) * 0.036 * amt;
         }`);
@@ -40,8 +43,16 @@ function windify(mat, strength = 1) {
 
 export function tickWind(t) {
   for (const m of swayMats) {
-    if (m.userData.shader) m.userData.shader.uniforms.uTime.value = t;
+    if (m.userData.shader) {
+      m.userData.shader.uniforms.uTime.value = t;
+      m.userData.shader.uniforms.uSwayMult.value = swayMult;
+    }
   }
+}
+
+// The vine opens your eyes: the whole understory breathes with you.
+export function setSwayMult(m) {
+  swayMult = m;
 }
 
 // ---------- geometry builders (shared by all instances of a species) ----------

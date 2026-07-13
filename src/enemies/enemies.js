@@ -1407,8 +1407,15 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
   }
 
   function aliveCount() {
+    // the director's population check: counts only ITS spawns. Sim-owned
+    // specials (dormant mimics, the boss) must not eat squad slots - 12
+    // dormant flowers once silenced the entire director for a whole run.
     let n = 0;
-    for (const e of enemies) if (!e.dead && e.state !== 'dying') n++;
+    for (const e of enemies) {
+      if (e.dead || e.state === 'dying') continue;
+      if (e.type === 'viperblossom' || e.type === 'miremother') continue;
+      n++;
+    }
     return n;
   }
 

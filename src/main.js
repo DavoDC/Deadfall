@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { WORLD, LANDMARKS, landmarkPos } from './world/heightmap.js';
 import { buildTerrain, buildWater } from './world/terrain.js';
 import { buildSky, trackShadow, MOODS } from './world/sky.js';
-import { buildVegetation, tickWind } from './world/vegetation.js';
+import { buildVegetation, tickWind, setSwayMult } from './world/vegetation.js';
 import { buildProps } from './world/props.js';
 import { colliderCount } from './world/colliders.js';
 import { createInput } from './player/input.js';
@@ -88,6 +88,50 @@ function applyWeatherFx(w, initial) {
   setRain(rainLevel);
   if (!initial && hud) hud.toast(w.label, 3);
   if (w.key === 'storm') lightningT = 1.5 + Math.random() * 3;
+}
+
+// --- the ayahuasca trip: the world goes wavy and you SEE DIFFERENTLY ---
+// X-ray: every creature material stops depth-testing and ignores fog, so
+// the fauna glows through trees, terrain, everything. Wavy: an SVG
+// displacement filter warps the whole canvas while the global vegetation
+// sway multiplier makes the jungle itself writhe.
+let tripActive = false;
+let xrayReapplyT = 0;
+const xrayOriginals = new Map(); // material -> saved props
+const ayaTurbEl = document.getElementById('ayaturb');
+const ayaDispEl = document.getElementById('ayadisp');
+
+function applyXray(on) {
+  const mats = new Set();
+  for (const e of sim.enemyMgr.enemies) {
+    e.model.group.traverse((o) => {
+      if (o.isMesh && o.material) mats.add(o.material);
+    });
+  }
+  for (const m of mats) {
+    if (on) {
+      if (!xrayOriginals.has(m)) {
+        xrayOriginals.set(m, {
+          depthTest: m.depthTest,
+          fog: m.fog,
+          emissiveIntensity: m.emissiveIntensity,
+        });
+        m.depthTest = false;
+        m.fog = false;
+        if (m.emissiveIntensity !== undefined) m.emissiveIntensity *= 1.9;
+        m.needsUpdate = true;
+      }
+    }
+  }
+  if (!on) {
+    for (const [m, orig] of xrayOriginals) {
+      m.depthTest = orig.depthTest;
+      m.fog = orig.fog;
+      m.emissiveIntensity = orig.emissiveIntensity;
+      m.needsUpdate = true;
+    }
+    xrayOriginals.clear();
+  }
 }
 
 const ui = {
@@ -320,10 +364,13 @@ function tick(now) {
       heartbeatT = 0.65 + (player.p.hp / 30) * 0.55; // faster when closer to death
     }
 
-    // FOV: sprint widens, ADS narrows toward the weapon's sight picture
+    // FOV: sprint widens, ADS narrows toward the weapon's sight picture,
+    // and the vine makes the whole view BREATHE
+    const tripInten = Math.min(1, player.p.buffT / 3);
     const ads = weapons.state.adsBlend;
     const hipFov = player.p.sprinting ? BASE_FOV + 5 : BASE_FOV;
-    const targetFov = hipFov + (weapons.def().adsFov - hipFov) * ads;
+    const targetFov = hipFov + (weapons.def().adsFov - hipFov) * ads
+      + Math.sin(now / 1000 * 1.3) * 2.5 * tripInten;
     if (Math.abs(camera.fov - targetFov) > 0.05) {
       camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 14);
       camera.updateProjectionMatrix();
@@ -339,10 +386,36 @@ function tick(now) {
     const submerged = camera.position.y < WORLD.waterLevel + 0.12;
     underwaterEl.style.opacity = submerged ? 1 : 0;
 
-    // ayahuasca fever: the world saturates and breathes
-    const fever = Math.min(1, player.p.buffT / 3); // fades over the last 3s
-    feverEl.style.opacity = fever * 0.85;
-    renderer.toneMappingExposure = 1.05 + fever * 0.35;
+    // ayahuasca: overlay fever + the full trip (x-ray, wavy world)
+    feverEl.style.opacity = tripInten * 0.85;
+    renderer.toneMappingExposure = 1.05 + tripInten * 0.35;
+
+    const tripping = player.p.buffT > 0;
+    if (tripping !== tripActive) {
+      tripActive = tripping;
+      applyXray(tripping);
+      setSwayMult(tripping ? 3.6 : 1);
+      if (!tripping) {
+        ayaDispEl.setAttribute('scale', '0');
+        renderer.domElement.style.filter = BASE_FILTER;
+        camera.rotation.z = 0;
+      }
+    }
+    if (tripActive) {
+      // catch creatures spawned mid-trip
+      xrayReapplyT -= dt;
+      if (xrayReapplyT <= 0) {
+        xrayReapplyT = 1.2;
+        applyXray(true);
+      }
+      const tt = now / 1000;
+      ayaDispEl.setAttribute('scale', String(24 * tripInten + Math.sin(tt * 1.7) * 6 * tripInten));
+      ayaTurbEl.setAttribute('baseFrequency',
+        `${(0.010 + Math.sin(tt * 0.23) * 0.004).toFixed(4)} ${(0.015 + Math.cos(tt * 0.19) * 0.004).toFixed(4)}`);
+      const hue = Math.sin(tt * 0.5) * 22 * tripInten;
+      renderer.domElement.style.filter = `${BASE_FILTER} hue-rotate(${hue.toFixed(1)}deg) url(#ayawave)`;
+      camera.rotation.z += Math.sin(tt * 0.9) * 0.012 * tripInten;
+    }
   }
 
   // --- live weather look: ease fog/light toward the current weather's
