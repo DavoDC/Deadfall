@@ -65,7 +65,8 @@ export function routeWaypoints(route) {
   } else { // swamp
     wps.push({ x: -60, z: 285 }, { x: -95, z: 262 });
     gate(0);
-    wps.push({ x: -112, z: 110 }, { x: -118, z: 80 }, { x: -118, z: 40 }, { x: -112, z: 8 });
+    // (skirt the swamp shrine ruin itself - its blocks wedge the bot)
+    wps.push({ x: -112, z: 110 }, { x: -126, z: 74 }, { x: -120, z: 40 }, { x: -112, z: 8 });
     cross(0);
     wps.push({ x: -90, z: -110 }, { x: -70, z: -150 });
     fractureAt(WORLD.bonebridge.x);
@@ -84,7 +85,11 @@ const AIM_Y = {
   stingerwing: 0,     // aim at its centre - it IS the body
   shrike: 1.0,
   bloomcaller: 1.6,
+  miremother: 0,      // e.pos IS her head
 };
+
+// Miremother states in which she can actually be shot
+const BOSS_TARGETABLE = new Set(['coil', 'telegraph', 'strike', 'recover', 'venom', 'erupt']);
 
 export function createBot(ctx) {
   // ctx: { sim, startRun } - startRun must put sim into a fresh RUNNING state
@@ -155,26 +160,36 @@ export function createBot(ctx) {
       let target = null;
       let tDist = Infinity;
       let sawBloom = false;
+      let sawBoss = false;
       // on DEADFALL the winning strategy is different: fight even less,
       // keep moving - you cannot out-kill the hard director's budget
       const hardMode = sim.difficulty.key === 'hard';
       for (const e of enemyMgr.aliveList()) {
         const dd = Math.hypot(e.pos.x - pp.x, e.pos.z - pp.z);
+        const isBoss = e.type === 'miremother';
+        if (isBoss && !BOSS_TARGETABLE.has(e.state)) continue; // she's under
         const attacking = e.state === 'windup' || e.state === 'lunge'
-          || e.state === 'charge' || e.state === 'chargewind' || e.state === 'air';
+          || e.state === 'charge' || e.state === 'chargewind' || e.state === 'air'
+          || e.state === 'telegraph' || e.state === 'strike';
         const isBloom = e.type === 'bloomcaller';
-        const engage = isBloom ? dd < 42
-          : attacking ? dd < (hardMode ? 24 : 30)
-            : dd < (hardMode ? 13 : 18);
+        const engage = isBoss ? dd < 44
+          : isBloom ? dd < 42
+            : attacking ? dd < (hardMode ? 24 : 30)
+              : dd < (hardMode ? 13 : 18);
         if (!engage) continue;
         const aimY = e.pos.y + (AIM_Y[e.type] ?? 0.8);
         if (!hasLOS(pp.x, pp.y, pp.z, e.pos.x, aimY, e.pos.z)) continue;
-        if (isBloom && !sawBloom) {
+        if (isBoss) {
+          // the apex outranks everything - she blocks the stair
+          target = e;
+          tDist = dd;
+          sawBoss = true;
+        } else if (isBloom && !sawBloom && !sawBoss) {
           // priority override: the summoner dies first
           target = e;
           tDist = dd;
           sawBloom = true;
-        } else if (!sawBloom && dd < tDist) {
+        } else if (!sawBloom && !sawBoss && dd < tDist) {
           target = e;
           tDist = dd;
         }
@@ -322,10 +337,27 @@ export function createBot(ctx) {
         }
       }
 
-      // dodge committed attacks like a human: a charging juggernaut and a
-      // pouncing shrike are locked onto a line - step OFF the line, hard
+      // the Miremother's wake hunts you underwater - if the foam line is
+      // close, sprint off it (standing still eats the eruption)
       for (const e of enemyMgr.aliveList()) {
-        const charging = e.type === 'juggernaut' && (e.state === 'charge' || e.state === 'chargewind');
+        if (e.type !== 'miremother') continue;
+        if ((e.state === 'wake' || e.state === 'erupt') && e.wakePos) {
+          const wd = Math.hypot(pp.x - e.wakePos.x, pp.z - e.wakePos.z);
+          if (wd < 8) {
+            intent.moveX = Math.sin(game.time * 0.9) > 0 ? 1 : -1;
+            intent.moveZ = -1;
+            intent.sprint = true;
+            intent.aim = false;
+          }
+        }
+      }
+
+      // dodge committed attacks like a human: a charging juggernaut, a
+      // pouncing shrike and a striking Miremother are locked onto a line -
+      // step OFF the line, hard
+      for (const e of enemyMgr.aliveList()) {
+        const charging = (e.type === 'juggernaut' && (e.state === 'charge' || e.state === 'chargewind'))
+          || (e.type === 'miremother' && (e.state === 'telegraph' || e.state === 'strike'));
         const pouncing = e.type === 'shrike' && e.state === 'air' && e.pouncing;
         if (!charging && !pouncing) continue;
         const ex = pp.x - e.pos.x;

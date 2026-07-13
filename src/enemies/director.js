@@ -97,7 +97,10 @@ export function createDirector(enemyMgr, playerRef, opts = {}) {
   function cap() {
     const t = threat();
     const bonus = d.diff ? d.diff.capBonus : 0;
-    return Math.round(2 + t * (d.surge ? 7 : 4.5)) + bonus;
+    // while the apex hunts you in her moat, the jungle holds its breath -
+    // the boss fight is the fight (trash trickles, not floods)
+    const bossCut = d.bossFight ? 2 : 0;
+    return Math.max(1, Math.round(2 + t * (d.surge ? 7 : 4.5)) + bonus - bossCut);
   }
 
   // The chokepoint the player is currently approaching from the south, if
@@ -240,7 +243,8 @@ export function createDirector(enemyMgr, playerRef, opts = {}) {
       // budget regen saturates at full threat - the overdrive band (>1)
       // sharpens cadence and cap, not spawn volume, or the surge becomes
       // an unwinnable faucet on hard
-      d.budget = Math.min(12, d.budget + lerp(0.9, 3, Math.min(t, 1)) * budgetRate);
+      const bossMult = d.bossFight ? 0.35 : 1;
+      d.budget = Math.min(12, d.budget + lerp(0.9, 3, Math.min(t, 1)) * budgetRate * bossMult);
       trySpend();
     }
   }

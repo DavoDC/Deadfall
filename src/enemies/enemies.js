@@ -119,6 +119,23 @@ export const ENEMY_DEFS = {
     radius: 0.6,
     eyeH: 1.9,
   },
+  // THE MIREMOTHER - apex serpent of the Sunken Maw. Not director-spawned:
+  // the sim wakes her once, when you reach her moat. Leashed to the arena.
+  miremother: {
+    hp: 820,
+    speed: 7.5,          // coil drift
+    turnRate: 3,
+    strikeSpeed: 26,
+    strikeDamage: 26,
+    strikeRange: 22,     // she commits from this far - dodge the line
+    venomRange: 36,
+    eruptDamage: 22,
+    wakeSpeed: 5.2,      // outrunnable if you MOVE, even wading
+    leash: 40,           // metres beyond the maw centre she will not pass
+    callEvery: [4, 8],
+    radius: 1.2,
+    eyeH: 1.2,
+  },
 };
 
 const GLOB_POOL = 14;
@@ -129,8 +146,9 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
   //          onSummon(pos, threat) -> spawned count (director assist) }
   const enemies = [];
   // hpMult set per-run from difficulty; fixNoiseMult written by the sim
-  // each step from weather (fog makes hunters track you far worse)
-  const tuning = { hpMult: 1, fixNoiseMult: 1 };
+  // each step from weather (fog makes hunters track you far worse);
+  // bossHp/bossDmg scale only the Miremother
+  const tuning = { hpMult: 1, fixNoiseMult: 1, bossHp: 1, bossDmg: 1 };
   const _v = new THREE.Vector3();
   const _v2 = new THREE.Vector3();
   let flankCounter = 0;
@@ -240,11 +258,38 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
       e.pouncing = false;
     } else if (type === 'bloomcaller') {
       e.bloomCd = 3 + Math.random() * 3;
+    } else if (type === 'miremother') {
+      // the boss: hp scales on its own knob, chain starts coiled underwater
+      e.maxHp = def.hp * tuning.bossHp;
+      e.hp = e.maxHp;
+      e.baseScale = 1;
+      e.state = 'emerge';
+      e.homeX = x;
+      e.homeZ = z;
+      e.pos.y = WORLD.waterLevel - 2.5;
+      if (!e.chain) {
+        e.chain = [];
+        for (let i = 0; i < 14; i++) e.chain.push(new THREE.Vector3());
+      }
+      for (let i = 0; i < e.chain.length; i++) {
+        e.chain[i].set(x - i * 1.2, WORLD.waterLevel - 2, z + Math.sin(i * 0.9) * 3);
+      }
+      e.facing = e.facing || new THREE.Vector3(0, 0, -1);
+      e.hoodOpen = 0;
+      e.orbitAng = Math.random() * Math.PI * 2;
+      e.orbitDir = Math.random() < 0.5 ? 1 : -1;
+      e.phase = 0;
+      e.pendingDive = false;
+      e.eruptCount = 0;
+      e.wakePos = e.wakePos || new THREE.Vector3();
+      e.attackCd = 2;
     }
     e.model.group.visible = true;
-    e.model.group.position.copy(e.pos);
-    e.model.group.rotation.set(0, e.heading, 0);
-    e.model.group.scale.setScalar(e.baseScale);
+    if (type !== 'miremother') {
+      e.model.group.position.copy(e.pos);
+      e.model.group.rotation.set(0, e.heading, 0);
+      e.model.group.scale.setScalar(e.baseScale);
+    }
     return e;
   }
 
@@ -258,6 +303,11 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
 
   function applyDamage(e, dmg, headshot, point, crit = false) {
     if (e.dead || e.state === 'dying') return 'dead';
+    // the Miremother cannot be hurt while emerging or under the water
+    if (e.type === 'miremother'
+      && (e.state === 'emerge' || e.state === 'dive' || e.state === 'wake')) {
+      return 'hit';
+    }
     e.hp -= dmg;
     e.flash = 1;
     effects.burst(point, crit ? 'crit' : 'flesh', crit ? 14 : headshot ? 10 : 6, crit ? 4 : 2.6);
@@ -746,6 +796,288 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
     }
   }
 
+  // ---- THE MIREMOTHER (the finale set-piece) ----
+  // Head position IS e.pos; the body chain follows it. She circles, rears
+  // with her hood open (the tell AND the crit window), strikes along a
+  // committed line, spits venom fans at range, and at 66%/33% hp dives -
+  // a foam wake chases you, then she ERUPTS out of the water beneath it.
+  function updateMiremother(e, dt) {
+    const pp = playerRef.p.pos;
+    const dx = pp.x - e.pos.x;
+    const dz = pp.z - e.pos.z;
+    const distP = Math.hypot(dx, dz);
+    creatureCall(e, dt, distP);
+    e.attackCd = Math.max(0, e.attackCd - dt);
+
+    const homeD = Math.hypot(pp.x - e.homeX, pp.z - e.homeZ);
+    const playerInArena = homeD < e.def.leash;
+    const waterY = WORLD.waterLevel;
+
+    // hood: opens for telegraph/strike/recover, eases shut otherwise
+    const hoodTarget = (e.state === 'telegraph' || e.state === 'strike' || e.state === 'recover') ? 1 : 0;
+    e.hoodOpen += (hoodTarget - e.hoodOpen) * Math.min(1, dt * 6);
+
+    // phase breaks queue a dive
+    const frac = e.hp / e.maxHp;
+    if ((frac < 0.66 && e.phase === 0) || (frac < 0.33 && e.phase === 1)) {
+      e.phase += 1;
+      e.pendingDive = true;
+      e.eruptCount = 0;
+    }
+
+    const faceTo = (tx, ty, tz, rate = 4) => {
+      _v2.set(tx - e.pos.x, ty - e.pos.y, tz - e.pos.z).normalize();
+      e.facing.lerp(_v2, Math.min(1, dt * rate)).normalize();
+    };
+
+    if (e.state === 'emerge') {
+      e.stateT += dt;
+      const t = Math.min(1, e.stateT / 2.5);
+      e.pos.y = waterY - 2.5 + (t * t * (3 - 2 * t)) * 5.9; // rise to +3.4
+      faceTo(pp.x, pp.y, pp.z, 6);
+      if (e.stateT < 0.4 && effects) {
+        effects.burst(_v.set(e.pos.x, waterY + 0.2, e.pos.z), 'razor', 10, 5);
+      }
+      if (e.stateT >= 2.5) {
+        e.state = 'coil';
+        e.stateT = 0;
+        e.attackCd = 1.2;
+      }
+    } else if (e.state === 'coil') {
+      e.stateT += dt;
+      // orbit the player inside the arena (or the moat centre if they left)
+      e.orbitAng += dt * 0.55 * e.orbitDir;
+      const ax = playerInArena ? pp.x : e.homeX;
+      const az = playerInArena ? pp.z : e.homeZ;
+      let tx = ax + Math.sin(e.orbitAng) * 12;
+      let tz = az + Math.cos(e.orbitAng) * 12;
+      // leash clamp
+      const hd = Math.hypot(tx - e.homeX, tz - e.homeZ);
+      if (hd > e.def.leash) {
+        tx = e.homeX + (tx - e.homeX) / hd * e.def.leash;
+        tz = e.homeZ + (tz - e.homeZ) / hd * e.def.leash;
+      }
+      const mx = tx - e.pos.x;
+      const mz = tz - e.pos.z;
+      const md = Math.hypot(mx, mz);
+      if (md > 0.5) {
+        e.pos.x += mx / md * e.def.speed * dt;
+        e.pos.z += mz / md * e.def.speed * dt;
+      }
+      pushOut(e.pos, e.def.radius, e.pos.y);
+      const swimY = waterY + 1.8 + Math.sin(e.stateT * 1.4) * 0.5;
+      e.pos.y += (swimY - e.pos.y) * Math.min(1, dt * 3);
+      faceTo(pp.x, pp.y, pp.z, 3);
+
+      if (e.pendingDive && e.stateT > 0.8) {
+        e.pendingDive = false;
+        e.state = 'dive';
+        e.stateT = 0;
+        sfxCreature('miremother', e.pos, 1.3);
+      } else if (e.attackCd <= 0 && e.stateT > 1.2) {
+        if (playerInArena && distP < e.def.strikeRange) {
+          e.state = 'telegraph';
+          e.stateT = 0;
+          sfxCreature('miremother', e.pos, 1.6);
+        } else if (distP < e.def.venomRange + (playerInArena ? 0 : 20)
+          && hasLOS(e.pos.x, e.pos.y + 1, e.pos.z, pp.x, pp.y, pp.z)) {
+          e.state = 'venom';
+          e.stateT = 0;
+          e.venomShots = 0;
+        }
+      }
+    } else if (e.state === 'telegraph') {
+      e.stateT += dt;
+      // rear up, hood flaring - THE tell. Step off her line now.
+      e.pos.y += (waterY + 4.8 - e.pos.y) * Math.min(1, dt * 5);
+      faceTo(pp.x, pp.y, pp.z, 8);
+      if (e.stateT >= 0.75) {
+        e.state = 'strike';
+        e.stateT = 0;
+        _v2.set(pp.x - e.pos.x, (pp.y - 0.4) - e.pos.y, pp.z - e.pos.z).normalize();
+        e.lungeVec.copy(_v2);
+        e.facing.copy(_v2);
+      }
+    } else if (e.state === 'strike') {
+      e.stateT += dt;
+      e.pos.addScaledVector(e.lungeVec, e.def.strikeSpeed * dt);
+      const ground = terrainHeight(e.pos.x, e.pos.z);
+      if (e.pos.y < ground + 0.8) e.pos.y = ground + 0.8;
+      const d2 = _v.subVectors(pp, e.pos).length();
+      const homeD2 = Math.hypot(e.pos.x - e.homeX, e.pos.z - e.homeZ);
+      if (d2 < 2.6) {
+        hooks.damagePlayer(e.def.strikeDamage * tuning.bossDmg, e.pos, 'miremother');
+        _v2.subVectors(pp, e.pos).setY(0).normalize();
+        playerRef.p.vel.addScaledVector(_v2, 11);
+        playerRef.p.vel.y = 4;
+        e.state = 'recover';
+        e.stateT = 0;
+      } else if (e.stateT > 0.55 || homeD2 > e.def.leash + 6) {
+        e.state = 'recover';
+        e.stateT = 0;
+      }
+    } else if (e.state === 'recover') {
+      // hood still open, head low and slow - THE punish window
+      e.stateT += dt;
+      e.pos.y += (waterY + 1.2 - e.pos.y) * Math.min(1, dt * 3);
+      if (e.stateT >= 1.6) {
+        e.state = 'coil';
+        e.stateT = 0;
+        e.attackCd = 2.2 + Math.random() * 1.2;
+      }
+    } else if (e.state === 'venom') {
+      e.stateT += dt;
+      faceTo(pp.x, pp.y, pp.z, 6);
+      const want = e.stateT > 0.5 ? 3 : e.stateT > 0.3 ? 2 : e.stateT > 0.1 ? 1 : 0;
+      while (e.venomShots < want) {
+        e.venomShots += 1;
+        _v2.set(e.pos.x + e.facing.x * 1.5, e.pos.y + 0.4, e.pos.z + e.facing.z * 1.5);
+        // fan: lead the player, then spread
+        _flank.set(
+          pp.x + playerRef.p.vel.x * 0.4 + (e.venomShots - 2) * 2.2,
+          pp.y - 1,
+          pp.z + playerRef.p.vel.z * 0.4 + (e.venomShots - 2) * 1.4
+        );
+        throwGlob(_v2, _flank);
+      }
+      if (e.stateT >= 0.75) {
+        e.state = 'coil';
+        e.stateT = 0;
+        e.attackCd = 2.4 + Math.random() * 1.4;
+      }
+    } else if (e.state === 'dive') {
+      e.stateT += dt;
+      e.pos.y += (waterY - 2.8 - e.pos.y) * Math.min(1, dt * 4);
+      if (e.stateT < 0.3 && effects) {
+        effects.burst(_v.set(e.pos.x, waterY + 0.2, e.pos.z), 'razor', 12, 6);
+      }
+      if (e.stateT >= 1.0) {
+        e.state = 'wake';
+        e.stateT = 0;
+        e.wakePos.set(e.pos.x, waterY, e.pos.z);
+      }
+    } else if (e.state === 'wake') {
+      // the foam line hunts you, then LOCKS for the final second - keep
+      // moving and step off the boil. Standing still eats the eruption.
+      e.stateT += dt;
+      const wx = pp.x - e.wakePos.x;
+      const wz = pp.z - e.wakePos.z;
+      const wd = Math.hypot(wx, wz);
+      if (wd > 0.3 && e.stateT < 2.3) {
+        const sp = e.def.wakeSpeed;
+        e.wakePos.x += wx / wd * sp * dt;
+        e.wakePos.z += wz / wd * sp * dt;
+      }
+      // keep the wake inside the arena
+      const hd = Math.hypot(e.wakePos.x - e.homeX, e.wakePos.z - e.homeZ);
+      if (hd > e.def.leash) {
+        e.wakePos.x = e.homeX + (e.wakePos.x - e.homeX) / hd * e.def.leash;
+        e.wakePos.z = e.homeZ + (e.wakePos.z - e.homeZ) / hd * e.def.leash;
+      }
+      e.pos.set(e.wakePos.x, waterY - 2.6, e.wakePos.z);
+      e.foamT = (e.foamT || 0) - dt;
+      if (e.foamT <= 0 && effects) {
+        e.foamT = 0.22;
+        effects.burst(_v.set(e.wakePos.x, waterY + 0.15, e.wakePos.z), 'razor', 6, 2.5);
+      }
+      if (e.stateT >= 3.2) {
+        e.state = 'erupt';
+        e.stateT = 0;
+      }
+    } else if (e.state === 'erupt') {
+      e.stateT += dt;
+      if (e.stateT < 0.5) {
+        // boiling telegraph ring
+        if (effects && Math.random() < 0.5) {
+          const a = Math.random() * Math.PI * 2;
+          effects.burst(_v.set(
+            e.wakePos.x + Math.cos(a) * 3.2, waterY + 0.2, e.wakePos.z + Math.sin(a) * 3.2
+          ), 'razor', 5, 3);
+        }
+      } else if (!e.erupted) {
+        e.erupted = true;
+        e.pos.set(e.wakePos.x, waterY + 4.2, e.wakePos.z);
+        if (effects) effects.burst(_v.set(e.wakePos.x, waterY + 0.6, e.wakePos.z), 'razor', 26, 9);
+        sfxCreature('miremother', e.pos, 1.7);
+        playerRef.p.camShake = Math.min(1, playerRef.p.camShake + 0.6);
+        const pd = Math.hypot(pp.x - e.wakePos.x, pp.z - e.wakePos.z);
+        if (pd < 4.4) {
+          hooks.damagePlayer(e.def.eruptDamage * tuning.bossDmg, e.pos, 'miremother');
+          playerRef.p.vel.y = 7;
+        }
+      }
+      if (e.stateT >= 1.1) {
+        e.erupted = false;
+        e.eruptCount += 1;
+        if (e.eruptCount < 2) {
+          e.state = 'dive';
+          e.stateT = 0.6; // shorter re-dive
+        } else {
+          e.state = 'coil';
+          e.stateT = 0;
+          e.attackCd = 1.6;
+        }
+      }
+    }
+  }
+
+  // the boss's body: follow-the-leader chain behind the head, written in
+  // world space (her model group never moves - the segments do)
+  function animateMiremother(e, dt) {
+    const refs = e.model.refs;
+    const chain = e.chain;
+
+    if (e.state === 'dying') {
+      e.dying += dt;
+      for (const c of chain) c.y -= dt * 0.7;
+      if (effects && Math.random() < 0.3) {
+        effects.burst(_v.set(e.pos.x, WORLD.waterLevel + 0.2, e.pos.z), 'razor', 6, 4);
+      }
+      if (e.dying > 3) {
+        e.dead = true;
+        e.model.group.visible = false;
+        return;
+      }
+    } else {
+      chain[0].copy(e.pos);
+    }
+
+    for (let i = 1; i < chain.length; i++) {
+      const spacing = 1.5 * (1 - (i / chain.length) * 0.55);
+      _v.subVectors(chain[i], chain[i - 1]);
+      let len = _v.length();
+      if (len < 1e-4) {
+        _v.set(0.01, 0, 0.01);
+        len = _v.length();
+      }
+      chain[i].copy(chain[i - 1]).addScaledVector(_v, spacing / len);
+      // the body swims: never below ground, sags toward the waterline
+      const ground = terrainHeight(chain[i].x, chain[i].z);
+      const swimY = Math.max(ground + 0.5, WORLD.waterLevel - 0.3 + Math.sin(performance.now() / 1000 * 2 + i) * 0.18);
+      chain[i].y += (swimY - chain[i].y) * Math.min(1, dt * 2.5);
+    }
+
+    // head pose
+    refs.head.position.copy(chain[0]);
+    _v.copy(chain[0]).add(e.facing);
+    refs.head.lookAt(_v);
+    // hood flare + jaw gape scale with hoodOpen
+    refs.hoodL.rotation.z = 0.9 - e.hoodOpen * 0.8;
+    refs.hoodR.rotation.z = -0.9 + e.hoodOpen * 0.8;
+    refs.hoodL.scale.setScalar(1 + e.hoodOpen * 0.45);
+    refs.hoodR.scale.setScalar(1 + e.hoodOpen * 0.45);
+    refs.jaw.rotation.x = e.hoodOpen * 0.55;
+    for (const eye of refs.eyes) {
+      eye.material.emissiveIntensity = 2.4 + e.hoodOpen * 3.2;
+    }
+    // segments trail the chain
+    for (let i = 0; i < refs.segments.length; i++) {
+      const seg = refs.segments[i];
+      seg.position.copy(chain[i + 1]);
+      seg.lookAt(chain[i]);
+    }
+  }
+
   const TYPE_UPDATE = {
     prowler: updateProwler,
     spitter: updateSpitter,
@@ -753,12 +1085,17 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
     stingerwing: updateStingerwing,
     shrike: updateShrike,
     bloomcaller: updateBloomcaller,
+    miremother: updateMiremother,
   };
 
   const _flank = new THREE.Vector3();
 
   // ---- animation ----
   function animate(e, dt) {
+    if (e.type === 'miremother') {
+      animateMiremother(e, dt);
+      return;
+    }
     const g = e.model.group;
     const refs = e.model.refs;
     g.position.copy(e.pos);
@@ -880,7 +1217,8 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
     for (const e of enemies) {
       if (e.dead) continue;
       if (e.state !== 'dying') {
-        updatePerception(e, dt);
+        // the Miremother needs no noisy fix - she IS the arena
+        if (e.type !== 'miremother') updatePerception(e, dt);
         TYPE_UPDATE[e.type](e, dt);
       }
       animate(e, dt);
@@ -910,6 +1248,35 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
     let bestMult = 1;
     for (const e of enemies) {
       if (e.dead || e.state === 'dying') continue;
+
+      // the Miremother: dynamic spheres along her chain. Untargetable
+      // while emerging/underwater; her skull sheds bullets unless the
+      // hood is open (the strike tell IS the crit window).
+      if (e.type === 'miremother') {
+        if (e.state === 'emerge' || e.state === 'dive' || e.state === 'wake') continue;
+        const hood = e.hoodOpen > 0.5;
+        const headT = raySphere(origin.x, origin.y, origin.z, dir.x, dir.y, dir.z,
+          e.chain[0].x, e.chain[0].y, e.chain[0].z, 1.2);
+        if (headT < best) {
+          best = headT;
+          bestEnemy = e;
+          bestZone = hood ? 'crit' : 'head';
+          bestMult = hood ? 2.5 : 0.3;
+        }
+        for (let ci = 2; ci < e.chain.length; ci += 2) {
+          const cr = 1.0 * (1 - (ci / e.chain.length) * 0.55);
+          const bt = raySphere(origin.x, origin.y, origin.z, dir.x, dir.y, dir.z,
+            e.chain[ci].x, e.chain[ci].y, e.chain[ci].z, cr);
+          if (bt < best) {
+            best = bt;
+            bestEnemy = e;
+            bestZone = 'body';
+            bestMult = 1;
+          }
+        }
+        continue;
+      }
+
       const s = e.model.group.scale.x;
 
       const testSphere = (off, r, zone, mult) => {

@@ -23,6 +23,8 @@ import {
 } from './audio/engine.js';
 import { startAmbience, updateAmbience, setRain } from './audio/ambience.js';
 import { createMotes, createDrizzle } from './world/motes.js';
+import { createRazorfins } from './world/razorfins.js';
+import { sfxCreature } from './audio/engine.js';
 import { createBot } from './game/autotest.js';
 import { createSnapshot } from './game/snapshot.js';
 
@@ -57,6 +59,7 @@ buildVegetation(scene);
 const { tickProps } = buildProps(scene);
 const motes = createMotes(scene);
 const drizzle = createDrizzle(scene);
+let razorfins = null; // needs effects; created after the sim below
 console.log('[deadfall] world built in', Math.round(performance.now() - t0), 'ms,',
   colliderCount(), 'colliders');
 
@@ -114,10 +117,12 @@ const ui = {
   onSurge: () => {},
   onBuff: () => sfxAyahuasca(),
   onWeather: (w, initial) => applyWeatherFx(w, initial),
+  onBoss: () => sfxCreature('miremother', { x: WORLD.maw.x, y: 0, z: WORLD.maw.z }, 1.8),
 };
 
 // --- the game itself ---
 const effects = createEffects(scene);
+razorfins = createRazorfins(scene, effects);
 const sim = createSim({ scene, camera, effects, ui });
 const { game, player, weapons, grenades, enemyMgr, director, pickups, extraction } = sim;
 
@@ -286,6 +291,15 @@ function tick(now) {
     setListener(player.p.pos, camera.getWorldDirection(_listenerFwd));
     hud.update(dt);
     updateLandmarkCallout();
+    razorfins.update(dt, now / 1000, player.p.pos, player.p.inWater);
+
+    // apex health bar while she lives
+    const bref = sim.boss.ref;
+    if (bref && !bref.dead && bref.state !== 'dying') {
+      hud.showBoss(sim.boss.name, bref.hp / sim.boss.maxHp);
+    } else {
+      hud.showBoss('', null);
+    }
 
     // reactive dread: nearest hostile drives ambience; extraction keeps it hot
     let nearest = Infinity;

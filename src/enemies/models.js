@@ -521,6 +521,136 @@ export function buildBloomcaller() {
   };
 }
 
+// ---------- THE MIREMOTHER (apex serpent of the Sunken Maw, ~22m) ----------
+// The finale's set-piece. The model group stays at the ORIGIN: the boss
+// behaviour writes world positions into refs.head / refs.segments each
+// frame (a follow-the-leader chain), so there is no group transform.
+// Hood open = strike tell AND crit window (enemies.js special-cases her).
+const MIRE = {
+  scale: new THREE.MeshStandardMaterial({ color: 0x1e6e4e, roughness: 0.55, metalness: 0.1 }),
+  scaleGlow: new THREE.MeshStandardMaterial({
+    color: 0x2ee8c8, emissive: 0x14b898, emissiveIntensity: 1.1, roughness: 0.4,
+  }),
+  belly: new THREE.MeshStandardMaterial({ color: 0xd8d2b4, roughness: 0.8 }),
+  hood: new THREE.MeshStandardMaterial({
+    color: 0x8a2456, emissive: 0xd0186a, emissiveIntensity: 0.7,
+    roughness: 0.6, side: THREE.DoubleSide,
+  }),
+  fang: new THREE.MeshStandardMaterial({ color: 0xf2ecd8, roughness: 0.4 }),
+  maw: new THREE.MeshStandardMaterial({ color: 0x40060e, roughness: 0.9 }),
+};
+
+export function buildMiremother() {
+  const g = new THREE.Group();
+
+  // head: broad wedge skull with a hinged jaw
+  const head = new THREE.Group();
+  const skull = mesh(G('mmSkull', () => {
+    const s = new THREE.SphereGeometry(1.05, 10, 8);
+    s.scale(1.15, 0.8, 1.5);
+    return s;
+  }), MIRE.scale, 0, 0, 0);
+  head.add(skull);
+  const snout = mesh(G('mmSnout', () => {
+    const s = new THREE.SphereGeometry(0.62, 8, 6);
+    s.scale(1, 0.62, 1.3);
+    return s;
+  }), MIRE.scale, 0, -0.12, -1.35);
+  head.add(snout);
+  // the maw: dark open throat + upper fangs (readable even mid-lunge)
+  const throat = mesh(G('mmThroat', () => {
+    const s = new THREE.SphereGeometry(0.5, 8, 6);
+    s.scale(1, 0.5, 1.1);
+    return s;
+  }), MIRE.maw, 0, -0.42, -1.3);
+  head.add(throat);
+  const jaw = mesh(G('mmJaw', () => {
+    const s = new THREE.SphereGeometry(0.55, 8, 6);
+    s.scale(1, 0.35, 1.35);
+    return s;
+  }), MIRE.scale, 0, -0.62, -1.25);
+  head.add(jaw);
+  const fangGeo = G('mmFang', () => new THREE.ConeGeometry(0.09, 0.55, 6));
+  for (const [fx, fz] of [[-0.42, -1.9], [0.42, -1.9], [-0.6, -1.4], [0.6, -1.4]]) {
+    const fang = mesh(fangGeo, MIRE.fang, fx, -0.42, fz);
+    fang.rotation.x = Math.PI; // points down
+    head.add(fang);
+  }
+  // eyes: HUGE amber slits in dark sockets - she must read at 60m
+  const eyes = [];
+  for (const ex of [-0.62, 0.62]) {
+    const socket = mesh(G('mmSocket', () => new THREE.SphereGeometry(0.34, 8, 6)), MIRE.maw, ex, 0.3, -0.75);
+    head.add(socket);
+    const eye = mesh(G('mmEye', () => {
+      const s = new THREE.SphereGeometry(0.26, 8, 6);
+      s.scale(1, 1.45, 0.6);
+      return s;
+    }), MAT.emberEye.clone(), ex, 0.3, -0.92);
+    eye.castShadow = false;
+    eyes.push(eye);
+    head.add(eye);
+  }
+  // the hood: two membrane fans that FLARE as the strike tell
+  const hoodGeo = G('mmHood', () => {
+    const p = new THREE.PlaneGeometry(1.7, 2.4, 2, 3);
+    const pos = p.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const y = pos.getY(i);
+      const x = pos.getX(i);
+      pos.setZ(i, -Math.abs(x) * 0.4 + Math.sin((y + 1.2) / 2.4 * Math.PI) * 0.3);
+    }
+    return p;
+  });
+  const hoodL = new THREE.Mesh(hoodGeo, MIRE.hood);
+  hoodL.position.set(-0.7, 0.5, 0.4);
+  hoodL.rotation.set(0.25, 0.55, 0.9); // folded flat against the neck
+  const hoodR = new THREE.Mesh(hoodGeo, MIRE.hood);
+  hoodR.position.set(0.7, 0.5, 0.4);
+  hoodR.rotation.set(0.25, -0.55, -0.9);
+  head.add(hoodL, hoodR);
+  g.add(head);
+
+  // body: tapering segment chain, glow-banded so her coils read in murk
+  const segments = [];
+  const N_SEG = 13;
+  for (let i = 0; i < N_SEG; i++) {
+    const t = i / (N_SEG - 1);
+    const r = 0.95 * (1 - t * 0.72);
+    const seg = new THREE.Group();
+    const scaleMesh = mesh(G(`mmSeg${i}`, () => {
+      const s = new THREE.SphereGeometry(r, 9, 7);
+      s.scale(1, 0.92, 1.35);
+      return s;
+    }), i % 3 === 1 ? MIRE.scaleGlow : MIRE.scale, 0, 0, 0);
+    seg.add(scaleMesh);
+    const bellyMesh = mesh(G(`mmBelly${i}`, () => {
+      const s = new THREE.SphereGeometry(r * 0.82, 8, 6);
+      s.scale(1.05, 0.6, 1.3);
+      return s;
+    }), MIRE.belly, 0, -r * 0.42, 0);
+    bellyMesh.castShadow = false;
+    seg.add(bellyMesh);
+    // dorsal spines on the fore-body
+    if (i < 7 && i % 2 === 0) {
+      const spine = mesh(G(`mmSpine${i}`, () => new THREE.ConeGeometry(r * 0.28, r * 1.3, 5)), MIRE.hood, 0, r * 0.95, 0);
+      seg.add(spine);
+    }
+    g.add(seg);
+    segments.push(seg);
+  }
+
+  return {
+    group: g,
+    refs: { head, jaw, hoodL, hoodR, eyes, segments },
+    // ray-test spheres are DYNAMIC (chain positions) - enemies.rayEnemies
+    // special-cases the miremother; these statics are never used
+    headOffset: new THREE.Vector3(0, 0, 0),
+    bodyOffset: new THREE.Vector3(0, 0, 0),
+    headR: 1.15,
+    bodyR: 0.95,
+  };
+}
+
 export const BUILDERS = {
   prowler: buildProwler,
   spitter: buildSpitter,
@@ -528,4 +658,5 @@ export const BUILDERS = {
   stingerwing: buildStingerwing,
   shrike: buildShrike,
   bloomcaller: buildBloomcaller,
+  miremother: buildMiremother,
 };

@@ -23,6 +23,8 @@ export const DIFFICULTIES = {
     heatGain: 0.8,            // gunfire noise multiplier
     razorfinDps: 4,
     startGrenades: 2,
+    bossHp: 0.72,             // the Miremother's constitution
+    bossDmg: 0.8,             // her strike/venom scaling (on top of playerDamageTaken)
   },
   normal: {
     key: 'normal',
@@ -39,6 +41,8 @@ export const DIFFICULTIES = {
     heatGain: 1.0,
     razorfinDps: 6,
     startGrenades: 2,
+    bossHp: 1.0,
+    bossDmg: 1.0,
   },
   hard: {
     key: 'hard',
@@ -55,6 +59,8 @@ export const DIFFICULTIES = {
     heatGain: 1.3,
     razorfinDps: 8,
     startGrenades: 2,
+    bossHp: 1.12,
+    bossDmg: 1.1,
   },
 };
 

@@ -312,6 +312,46 @@ export function sfxCreature(kind, pos, intensity = 1) {
     osc2.stop(t + 1.35);
     return;
   }
+  if (kind === 'miremother') {
+    // the apex: a chest-crushing sub bellow under a rising serpent scream
+    const sub = ctx.createOscillator();
+    sub.type = 'sawtooth';
+    env(sub.frequency, t, [[0, 38], [0.4, 52], [1.6, 24]]);
+    const subLp = ctx.createBiquadFilter();
+    subLp.type = 'lowpass';
+    subLp.frequency.value = 160;
+    const gSub = ctx.createGain();
+    env(gSub.gain, t, [[0, 0.001], [0.15, 0.85 * intensity], [1.8, 0.001]]);
+    sub.connect(subLp).connect(gSub);
+    out(gSub, pos);
+    sub.start(t);
+    sub.stop(t + 1.9);
+    const scream = ctx.createOscillator();
+    scream.type = 'sawtooth';
+    env(scream.frequency, t + 0.15, [[0, 240], [0.5, 690], [1.1, 180]]);
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 900;
+    bp.Q.value = 1.6;
+    const gScr = ctx.createGain();
+    env(gScr.gain, t + 0.15, [[0, 0.001], [0.1, 0.4 * intensity], [1.2, 0.001]]);
+    scream.connect(bp).connect(gScr);
+    out(gScr, pos);
+    scream.start(t + 0.15);
+    scream.stop(t + 1.5);
+    // hiss bed
+    const n = noiseSource();
+    const hp2 = ctx.createBiquadFilter();
+    hp2.type = 'highpass';
+    hp2.frequency.value = 3200;
+    const gH = ctx.createGain();
+    env(gH.gain, t, [[0, 0.001], [0.3, 0.14 * intensity], [1.6, 0.001]]);
+    n.connect(hp2).connect(gH);
+    out(gH, pos);
+    n.start(t);
+    n.stop(t + 1.7);
+    return;
+  }
   if (kind === 'prowler') {
     // low feline growl: saw through wobbling lowpass
     const osc = ctx.createOscillator();

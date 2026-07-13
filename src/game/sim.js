@@ -39,6 +39,7 @@ export function createSim({ scene, camera, effects, ui = {} }) {
     onSurge: ui.onSurge || noop,
     onBuff: ui.onBuff || noop,
     onWeather: ui.onWeather || noop,
+    onBoss: ui.onBoss || noop,
   };
 
   const game = {
@@ -80,10 +81,22 @@ export function createSim({ scene, camera, effects, ui = {} }) {
   }
 
   let pickupsRef = null;
+  const boss = { ref: null, spawned: false, maxHp: 1, name: 'THE MIREMOTHER' };
   const enemyMgr = createEnemyManager(scene, player, effects, {
     damagePlayer,
     onKill(type, pos) {
       game.kills += 1;
+      if (type === 'miremother') {
+        // APEX SLAIN: the moat is yours - a feast of loot, and the jungle
+        // holds its breath for a while
+        U.toast('APEX SLAIN - THE STAIR IS YOURS', 3.5);
+        director.state.heat = 0;
+        if (pickupsRef) {
+          pickupsRef.dropAt(pos.x + 2.5, pos.z, true);
+          pickupsRef.dropAt(pos.x - 2.5, pos.z + 2, true);
+        }
+        return;
+      }
       if (!pickupsRef) return;
       // dying enemies feed the run
       if (type === 'juggernaut') pickupsRef.dropAt(pos.x, pos.z, true);
@@ -180,6 +193,24 @@ export function createSim({ scene, camera, effects, ui = {} }) {
     U.showExtract(extraction.committed ? extraction.progress : null);
   }
 
+  // --- the apex: wake her when the player reaches the moat (or commits
+  // to extraction without ever having crossed it) ---
+  function updateBoss() {
+    const dm = Math.hypot(player.p.pos.x - WORLD.maw.x, player.p.pos.z - WORLD.maw.z);
+    // the jungle defers to its apex: director throttles during her fight
+    director.state.bossFight = !!(boss.ref && !boss.ref.dead
+      && boss.ref.state !== 'dying' && dm < 52);
+    if (boss.spawned) return;
+    if (dm < 46 || extraction.committed) {
+      boss.spawned = true;
+      boss.ref = enemyMgr.spawn('miremother', WORLD.maw.x, WORLD.maw.z);
+      boss.maxHp = boss.ref.maxHp;
+      player.p.camShake = 1;
+      U.onBoss(boss.name);
+      U.toast('THE MIREMOTHER WAKES', 3);
+    }
+  }
+
   // --- environmental hazards ---
   let razorT = 0;
   function updateHazards(dt) {
@@ -212,6 +243,8 @@ export function createSim({ scene, camera, effects, ui = {} }) {
     difficulty = getDifficulty(name);
     director.setDifficulty(difficulty);
     enemyMgr.tuning.hpMult = difficulty.enemyHp;
+    enemyMgr.tuning.bossHp = difficulty.bossHp;
+    enemyMgr.tuning.bossDmg = difficulty.bossDmg;
     return difficulty;
   }
   setDifficulty(DEFAULT_DIFFICULTY);
@@ -230,6 +263,8 @@ export function createSim({ scene, camera, effects, ui = {} }) {
     extraction.committed = false;
     extraction.toneAt = 0;
     buff.t = 0;
+    boss.ref = null;
+    boss.spawned = false;
     weather.reset();
     game.state = 'RUNNING';
     game.time = 0;
@@ -257,6 +292,7 @@ export function createSim({ scene, camera, effects, ui = {} }) {
     enemyMgr.update(dt);
     director.update(dt);
     pickups.update(dt);
+    updateBoss();
     updateBuff(dt);
     updateHazards(dt);
     if (game.state === 'RUNNING') updateExtraction(dt);
@@ -264,7 +300,7 @@ export function createSim({ scene, camera, effects, ui = {} }) {
 
   return {
     game, player, weapons, weaponHooks, grenades, enemyMgr, director,
-    pickups, extraction, buff, weather,
+    pickups, extraction, buff, weather, boss,
     step, resetRun, setDifficulty, updateExtraction,
     get difficulty() { return difficulty; },
   };
