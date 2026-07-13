@@ -465,8 +465,9 @@ requestAnimationFrame(tick);
 const bot = createBot({ sim, startRun: () => sim.resetRun() });
 const { snapshot } = createSnapshot({ sim, seed: WORLD.seed });
 window.__deadfall = {
-  version: 2,
+  version: 3,
   sim,
+  input, // playtest API: input.state.locked can be forced for headed verification
   game,
   player,
   weapons,
