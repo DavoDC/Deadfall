@@ -82,6 +82,8 @@ export function createEffects(scene) {
 
   function burst(point, kind, count = 7, speed = 3.2) {
     const cols = COLORS[kind] || COLORS.dirt;
+    const distToCamera = point.distanceTo(lastCamPos);
+    const sizeMult = Math.min(1, distToCamera / 6);
     for (let i = 0; i < count; i++) {
       const p = particles[pIdx];
       pIdx = (pIdx + 1) % PARTICLE_POOL;
@@ -92,14 +94,16 @@ export function createEffects(scene) {
         (Math.random() - 0.5) * speed
       );
       p.life = p.maxLife = 0.28 + Math.random() * 0.22;
-      p.size = 0.7 + Math.random() * 1.3;
+      p.size = (0.7 + Math.random() * 1.3) * sizeMult;
       p.color.copy(cols[i % cols.length]);
     }
   }
 
   const camQuat = new THREE.Quaternion();
+  const lastCamPos = new THREE.Vector3();
 
   function update(dt, camera) {
+    lastCamPos.copy(camera.position);
     // tracers
     for (const t of tracers) {
       if (t.life > 0) {

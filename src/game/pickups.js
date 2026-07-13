@@ -102,6 +102,7 @@ export function createPickups(scene, playerRef, weapons, hooks) {
     // starter cache at insertion
     place('rifleAmmo', WORLD.insertion.x - 2.5, WORLD.insertion.z - 2);
     place('grenade', WORLD.insertion.x + 2.8, WORLD.insertion.z - 1.5);
+    place('longRounds', WORLD.insertion.x + 0.2, WORLD.insertion.z + 2.3);
   }
 
   // juggernaut / kill drops
@@ -110,6 +111,7 @@ export function createPickups(scene, playerRef, weapons, hooks) {
     if (generous) {
       place('rifleAmmo', x - 0.7, z + 0.5);
       place('shells', x, z - 0.8);
+      place('longRounds', x + 1.1, z + 0.3);
     }
   }
 
@@ -134,13 +136,17 @@ export function createPickups(scene, playerRef, weapons, hooks) {
     } else {
       const kind = item.type === 'rifleAmmo' ? 'carbine'
         : item.type === 'longRounds' ? 'longarm' : 'breacher';
+      const magWasEmpty = weapons.state.mag[kind] === 0;
       const added = weapons.addAmmo(kind, TYPES[item.type].amount);
       if (added <= 0) {
         hooks.toast('AMMO FULL');
         return false;
       }
-      const label = item.type === 'rifleAmmo' ? `+${added} 5.56`
+      let label = item.type === 'rifleAmmo' ? `+${added} 5.56`
         : item.type === 'longRounds' ? `+${added} LONG ROUNDS` : `+${added} SHELLS`;
+      if (item.type === 'longRounds' && magWasEmpty) {
+        label += ' - CHAMBERED';
+      }
       hooks.toast(label);
     }
     sfxPickup(item.type === 'medkit' ? 'medkit' : 'ammo');

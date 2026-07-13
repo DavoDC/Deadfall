@@ -401,8 +401,16 @@ export function createWeapons(camera, playerRef, hooks) {
   function addAmmo(kind, amount) {
     const d = WEAPON_DEFS[kind];
     const before = state.reserve[kind];
+    const magWasEmpty = state.mag[kind] === 0;
     state.reserve[kind] = Math.min(d.maxReserve, before + amount);
-    return state.reserve[kind] - before;
+    const added = state.reserve[kind] - before;
+    // longarm: auto-chamber on first pickup when mag is empty
+    if (kind === 'longarm' && magWasEmpty && added > 0) {
+      const toChambered = Math.min(d.magSize, state.reserve[kind]);
+      state.mag[kind] = toChambered;
+      state.reserve[kind] -= toChambered;
+    }
+    return added;
   }
 
   function reset() {

@@ -142,7 +142,7 @@ export function createGrenades(scene, camera, playerRef, effects, hooks) {
       }
       dots[i].position.copy(p);
       dots[i].visible = true;
-      dots[i].scale.setScalar(1 - i / PREVIEW_DOTS * 0.6);
+      dots[i].scale.setScalar((1 - i / PREVIEW_DOTS * 0.6) * 1.6);
     }
   }
 
