@@ -3,7 +3,7 @@
 // with tail wag, converging and circling the player when in hazard water.
 
 import * as THREE from 'three';
-import { WORLD, waterLevel as getWaterLevel, razorfinHazard, gorgeZ } from './heightmap.js';
+import { WORLD, razorfinHazard, gorgeZ } from './heightmap.js';
 
 // Main.js hookup (do not edit main.js - put this snippet in your session notes):
 // import { createRazorfins } from './world/razorfins.js';
@@ -22,7 +22,7 @@ const SILL_CENTERS = [-112, -7, 138];
 const SILL_AVOID = 18;  // skip within this distance of sill centers
 
 export function createRazorfins(scene, effects) {
-  const waterLevel = getWaterLevel || WORLD.waterLevel;
+  const waterLevel = WORLD.waterLevel;
 
   // Create merged geometry for one fish:
   // body (torpedo), tail plane, dorsal spike, 2 jaw teeth

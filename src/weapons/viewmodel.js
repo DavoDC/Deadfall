@@ -16,6 +16,14 @@ const WOOD = new THREE.MeshStandardMaterial({ color: 0x6e5232, roughness: 0.85 }
 const ACCENT = new THREE.MeshStandardMaterial({ color: 0x2e3330, roughness: 0.6, metalness: 0.1 });
 const BLADE = new THREE.MeshStandardMaterial({ color: 0xb8c4c8, roughness: 0.25, metalness: 0.7 });
 
+// Alien hand materials
+const ALIEN_SKIN = new THREE.MeshStandardMaterial({
+  color: 0x3aa8a0, roughness: 0.6, metalness: 0.0,
+  emissive: 0x0a4844, emissiveIntensity: 0.5
+});
+const ALIEN_KNUCKLE = new THREE.MeshStandardMaterial({ color: 0x1e4a48, roughness: 0.7 });
+const ALIEN_CLAW = new THREE.MeshStandardMaterial({ color: 0x1e4a48, roughness: 0.6 });
+
 const HIP = new THREE.Vector3(0.17, -0.16, -0.32);
 const SPRINT_POS = new THREE.Vector3(0.04, -0.06, -0.03); // added at full sprint
 const RIG_SCALE = 0.55;
@@ -33,6 +41,85 @@ function cyl(r1, r2, len, mat, x, y, z, rotX = Math.PI / 2) {
   return m;
 }
 
+function cone(rBase, len, mat, x, y, z) {
+  const m = new THREE.Mesh(new THREE.ConeGeometry(rBase, len, 6), mat);
+  m.position.set(x, y, z);
+  return m;
+}
+
+function alienHand(mirror) {
+  const hand = new THREE.Group();
+
+  // Palm: box ~0.055 x 0.02 x 0.06, slightly offset for natural grip
+  const palm = box(0.055, 0.02, 0.06, ALIEN_SKIN, 0, 0, 0);
+  hand.add(palm);
+
+  // Three fingers, each with 2 segments, angled inward as if wrapped around grip
+  // Finger 1 (index) - outer
+  const f1p1 = box(0.012, 0.012, 0.03, ALIEN_SKIN, 0.018, 0.008, -0.03);
+  f1p1.rotation.z = -0.3; // angle inward
+  hand.add(f1p1);
+  const f1p2 = box(0.01, 0.01, 0.028, ALIEN_SKIN, 0.022, 0.012, -0.055);
+  f1p2.rotation.z = -0.4;
+  hand.add(f1p2);
+  const f1claw = cone(0.006, 0.014, ALIEN_CLAW, 0.024, 0.014, -0.068);
+  hand.add(f1claw);
+
+  // Finger 2 (middle) - center
+  const f2p1 = box(0.012, 0.012, 0.03, ALIEN_SKIN, 0, 0.012, -0.032);
+  f2p1.rotation.z = -0.15;
+  hand.add(f2p1);
+  const f2p2 = box(0.01, 0.01, 0.03, ALIEN_SKIN, 0, 0.016, -0.06);
+  f2p2.rotation.z = -0.25;
+  hand.add(f2p2);
+  const f2claw = cone(0.006, 0.014, ALIEN_CLAW, 0, 0.018, -0.074);
+  hand.add(f2claw);
+
+  // Finger 3 (ring) - outer
+  const f3p1 = box(0.012, 0.012, 0.03, ALIEN_SKIN, -0.018, 0.008, -0.03);
+  f3p1.rotation.z = 0.3; // angle inward
+  hand.add(f3p1);
+  const f3p2 = box(0.01, 0.01, 0.028, ALIEN_SKIN, -0.022, 0.012, -0.055);
+  f3p2.rotation.z = 0.4;
+  hand.add(f3p2);
+  const f3claw = cone(0.006, 0.014, ALIEN_CLAW, -0.024, 0.014, -0.068);
+  hand.add(f3claw);
+
+  // Thumb (opposing) - 2 segments
+  const thumbp1 = box(0.01, 0.01, 0.025, ALIEN_SKIN, 0.028, -0.005, -0.012);
+  thumbp1.rotation.z = 0.8;
+  hand.add(thumbp1);
+  const thumbp2 = box(0.009, 0.009, 0.024, ALIEN_SKIN, 0.035, -0.008, -0.032);
+  thumbp2.rotation.z = 1.0;
+  hand.add(thumbp2);
+  const thumbClaw = cone(0.005, 0.013, ALIEN_CLAW, 0.038, -0.009, -0.044);
+  hand.add(thumbClaw);
+
+  // Forearm: tapered cylinder from wrist back toward camera's shoulder line
+  // Positioned to angle from the wrist back to the bottom-right/left
+  const forearmLen = 0.16;
+  const forearm = cyl(0.028, 0.021, forearmLen, ALIEN_SKIN, 0, -0.008, 0.08, 0);
+  forearm.rotation.x = 0.25; // angle back toward camera
+  if (mirror) forearm.rotation.y = Math.PI * 0.15; // slight outward angle for natural pose
+  hand.add(forearm);
+
+  // Wrist band: thin glowing torus
+  const wristBand = new THREE.Mesh(
+    new THREE.TorusGeometry(0.018, 0.004, 6, 12),
+    new THREE.MeshStandardMaterial({ color: 0x1a7a76, emissive: 0x0a9a96, emissiveIntensity: 0.8 })
+  );
+  wristBand.rotation.x = Math.PI / 2;
+  wristBand.position.set(0, -0.010, 0.15);
+  hand.add(wristBand);
+
+  // Mirror geometry if needed
+  if (mirror) {
+    hand.scale.x = -1;
+  }
+
+  return hand;
+}
+
 function buildCarbine() {
   const g = new THREE.Group();
   g.add(box(0.052, 0.07, 0.30, GUNMETAL, 0, 0, -0.02));        // receiver
@@ -45,11 +132,26 @@ function buildCarbine() {
   g.children[5].rotation.x = -0.18;
   g.add(box(0.045, 0.06, 0.2, POLYMER, 0, 0.0, 0.20));         // stock
   g.add(box(0.055, 0.085, 0.045, POLYMER, 0, -0.005, 0.31));   // stock pad
+  // Front sight + riser
   g.add(box(0.012, 0.03, 0.012, ACCENT, 0, 0.055, -0.36));     // front sight
+  g.add(box(0.015, 0.008, 0.025, ACCENT, 0, 0.029, -0.36));    // front sight riser (bridges to handguard)
+  // Rear sight block + riser
   g.add(box(0.03, 0.028, 0.05, ACCENT, 0, 0.055, 0.05));       // rear sight block
+  g.add(box(0.03, 0.008, 0.05, ACCENT, 0, 0.039, 0.05));       // rear sight riser (bridges to receiver)
   const muzzle = new THREE.Object3D();
   muzzle.position.set(0, 0.005, -0.61);
   g.add(muzzle);
+
+  // Add alien hands
+  const rightHand = alienHand(false);
+  rightHand.position.set(0, -0.10, 0.02);
+  rightHand.rotation.z = 0.35; // match grip rotation
+  g.add(rightHand);
+  const leftHand = alienHand(true);
+  leftHand.position.set(0, -0.035, -0.28);
+  leftHand.rotation.x = 0.3;
+  g.add(leftHand);
+
   // ADS: rear sight notch to camera centre (sight top ~y 0.07 local),
   // held far enough out that the receiver doesn't swallow the view
   return { group: g, muzzle, pump: null, adsPos: new THREE.Vector3(0, -0.047, -0.3) };
@@ -69,6 +171,18 @@ function buildBreacher() {
   const muzzle = new THREE.Object3D();
   muzzle.position.set(0, 0.02, -0.58);
   g.add(muzzle);
+
+  // Add alien hands
+  const rightHand = alienHand(false);
+  rightHand.position.set(0, -0.09, 0.09);
+  rightHand.rotation.z = 0.5;
+  g.add(rightHand);
+  // Left hand ATTACHED TO PUMP MESH - money detail, animates with pump
+  const leftHand = alienHand(true);
+  leftHand.position.set(0, -0.035, -0.15);
+  leftHand.rotation.x = 0.4;
+  pump.add(leftHand);
+
   return { group: g, muzzle, pump, adsPos: new THREE.Vector3(0, -0.046, -0.33) };
 }
 
@@ -89,9 +203,28 @@ function buildLongarm() {
   const ring = new THREE.Mesh(new THREE.TorusGeometry(0.02, 0.004, 6, 14), ACCENT);
   ring.position.set(0, 0.078, 0.055);
   g.add(ring);
+
+  // Scope mount blocks (bridging scope to receiver top)
+  g.add(box(0.016, 0.045, 0.02, GUNMETAL, 0, 0.056, -0.10));  // rear mount
+  g.add(box(0.016, 0.045, 0.02, GUNMETAL, 0, 0.056, 0.0));    // front mount
+
+  // Forend collar (bridging stock front to barrel)
+  g.add(cyl(0.02, 0.02, 0.1, WOOD, 0, 0.004, -0.20, Math.PI / 2));
+
   const muzzle = new THREE.Object3D();
   muzzle.position.set(0, 0.012, -0.81);
   g.add(muzzle);
+
+  // Add alien hands
+  const rightHand = alienHand(false);
+  rightHand.position.set(0, -0.10, 0.10);
+  rightHand.rotation.z = 0.4;
+  g.add(rightHand);
+  const leftHand = alienHand(true);
+  leftHand.position.set(0, -0.045, -0.18);
+  leftHand.rotation.x = 0.35;
+  g.add(leftHand);
+
   return { group: g, muzzle, pump: null, adsPos: new THREE.Vector3(0, -0.052, -0.27) };
 }
 
@@ -102,6 +235,12 @@ function buildMachete() {
   g.add(blade);
   const tip = box(0.008, 0.075, 0.09, BLADE, 0, 0.02, -0.3);
   g.add(tip);
+
+  // Add alien right hand (no left for single-handed machete)
+  const rightHand = alienHand(false);
+  rightHand.position.set(0, -0.05, 0.06);
+  g.add(rightHand);
+
   return { group: g, muzzle: null, pump: null, adsPos: null };
 }
 
