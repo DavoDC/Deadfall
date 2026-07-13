@@ -658,4 +658,67 @@ export function sfxStinger(kind) {
   });
 }
 
+// Viperblossom shriek: a piercing creature cry, the reveal tell.
+export function sfxMimicShriek(pos) {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  osc.type = 'sawtooth';
+  env(osc.frequency, t, [[0, 450], [0.08, 820], [0.2, 380]]);
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.value = 1200;
+  bp.Q.value = 2;
+  const g = ctx.createGain();
+  env(g.gain, t, [[0, 0.001], [0.05, 0.4], [0.24, 0.001]]);
+  osc.connect(bp).connect(g);
+  out(g, pos);
+  osc.start(t);
+  osc.stop(t + 0.26);
+}
+
+// Snapjaw trap trigger: bone jaws snap shut + harmonic crunch.
+export function sfxTrapSnap(pos) {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  // bone snap: quick impact with a ring
+  const osc = ctx.createOscillator();
+  osc.type = 'triangle';
+  env(osc.frequency, t, [[0, 340], [0.08, 260]]);
+  const g = ctx.createGain();
+  env(g.gain, t, [[0, 0.001], [0.04, 0.3], [0.12, 0.001]]);
+  osc.connect(g);
+  out(g, pos);
+  osc.start(t);
+  osc.stop(t + 0.14);
+  // crunch: noise burst with crackle
+  const n = noiseSource();
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.value = 600;
+  bp.Q.value = 3;
+  const g2 = ctx.createGain();
+  env(g2.gain, t, [[0, 0.22], [0.08, 0.001]]);
+  n.connect(bp).connect(g2);
+  out(g2, pos);
+  n.start(t);
+  n.stop(t + 0.1);
+}
+
+// Dart projectile: a fast air-cut whoosh.
+export function sfxDart(pos) {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const n = noiseSource();
+  const hp = ctx.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.value = 2400;
+  const g = ctx.createGain();
+  env(g.gain, t, [[0, 0.18], [0.08, 0.001]]);
+  n.connect(hp).connect(g);
+  out(g, pos);
+  n.start(t);
+  n.stop(t + 0.1);
+}
+
 export { master };

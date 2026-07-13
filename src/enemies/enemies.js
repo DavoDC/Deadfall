@@ -21,10 +21,12 @@
 
 import * as THREE from 'three';
 import { BUILDERS } from './models.js';
-import { terrainHeight, moveSpeedFactor, blockedStep, isThicket, WORLD } from '../world/heightmap.js';
+import { terrainHeight, moveSpeedFactor, blockedStep, isThicket, terrainNormal, WORLD } from '../world/heightmap.js';
 import { pushOut, hasLOS } from '../world/colliders.js';
 import { clamp, lerp } from '../core/noise.js';
-import { sfxCreature, sfxAcidSpit, sfxAcidSplat, sfxBloomPulse } from '../audio/engine.js';
+import { sfxCreature, sfxAcidSpit, sfxAcidSplat, sfxBloomPulse, sfxMimicShriek } from '../audio/engine.js';
+import { RUIN_SITES } from '../world/props.js';
+import { makeRng } from '../core/rng.js';
 
 export const ENEMY_DEFS = {
   prowler: {
@@ -135,6 +137,20 @@ export const ENEMY_DEFS = {
     callEvery: [4, 8],
     radius: 1.2,
     eyeH: 1.2,
+  },
+  // VIPERBLOSSOM - dormant flower mimic. Placed at run reset, not director-spawned.
+  // Triggers when player draws near (3.2m) or takes damage. Rooted to its seed.
+  viperblossom: {
+    hp: 40,
+    speed: 2.0,          // shuffle within root zone
+    turnRate: 4,
+    attackRange: 3.6,
+    strikeDamage: 12,
+    strikeCooldown: 0.9,
+    rootRange: 6.0,      // max distance from seed point
+    callEvery: [2, 4],
+    radius: 0.35,
+    eyeH: 1.5,
   },
 };
 
@@ -258,6 +274,11 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
       e.pouncing = false;
     } else if (type === 'bloomcaller') {
       e.bloomCd = 3 + Math.random() * 3;
+    } else if (type === 'viperblossom') {
+      e.state = 'dormant';
+      e.seedX = x;
+      e.seedZ = z;
+      e.emissivePhase = Math.random() * 10;
     } else if (type === 'miremother') {
       // the boss: hp scales on its own knob, chain starts coiled underwater
       e.maxHp = def.hp * tuning.bossHp;
@@ -313,6 +334,10 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
     effects.burst(point, crit ? 'crit' : 'flesh', crit ? 14 : headshot ? 10 : 6, crit ? 4 : 2.6);
     // getting shot reveals the player exactly
     e.fix.copy(playerRef.p.pos);
+    // viperblossom wakes on damage
+    if (e.type === 'viperblossom' && e.state === 'dormant') {
+      e.damageTaken = true;
+    }
     // spitters enrage as they lose ichor - they swell, hurry, and spit faster
     if (e.type === 'spitter') {
       e.rage = Math.min(4, Math.floor((1 - e.hp / e.maxHp) * 5));
@@ -1078,6 +1103,50 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
     }
   }
 
+  function updateViperblossom(e, dt) {
+    const pp = playerRef.p.pos;
+    const dist = _v.subVectors(pp, e.pos).length();
+    e.attackCd = Math.max(0, e.attackCd - dt);
+
+    if (e.state === 'dormant') {
+      // trigger when player within 3.2m or takes damage
+      if (dist < 3.2 || e.damageTaken) {
+        e.state = 'burst';
+        e.stateT = 0;
+        e.damageTaken = false;
+        sfxMimicShriek(e.pos);
+      }
+    } else if (e.state === 'burst') {
+      e.stateT += dt;
+      if (e.stateT >= 0.35) {
+        e.state = 'lash';
+        e.stateT = 0;
+      }
+    } else if (e.state === 'lash') {
+      creatureCall(e, dt, dist);
+      // rooted: shuffle within 6m of seed point, never leave
+      const toSeedX = e.seedX - e.pos.x;
+      const toSeedZ = e.seedZ - e.pos.z;
+      const distToSeed = Math.hypot(toSeedX, toSeedZ);
+      let target = e.fix;
+      if (distToSeed > e.def.rootRange) {
+        // pull back toward seed
+        target = _v2.set(e.seedX, pp.y, e.seedZ);
+      } else {
+        // shuffle toward player if in range
+        if (dist < e.def.attackRange * 2) {
+          target = pp;
+        }
+      }
+      moveToward(e, target, e.def.speed, dt);
+      // lash attack: melee 12dmg
+      if (dist < e.def.attackRange + 0.4 && e.attackCd <= 0) {
+        hooks.damagePlayer(e.def.strikeDamage, e.pos, 'viperblossom');
+        e.attackCd = e.def.strikeCooldown;
+      }
+    }
+  }
+
   const TYPE_UPDATE = {
     prowler: updateProwler,
     spitter: updateSpitter,
@@ -1086,6 +1155,7 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
     shrike: updateShrike,
     bloomcaller: updateBloomcaller,
     miremother: updateMiremother,
+    viperblossom: updateViperblossom,
   };
 
   const _flank = new THREE.Vector3();
@@ -1209,6 +1279,25 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
       refs.core.material.emissiveIntensity = e.state === 'bloom'
         ? 2.8 + (e.stateT / e.def.bloomChannel) * 4
         : 1.6;
+    } else if (e.type === 'viperblossom') {
+      // dormant: gentle sway + emissive pulse (wrong hue tells it's off)
+      if (e.state === 'dormant') {
+        const sway = Math.sin(performance.now() / 1000 * 0.8 + e.emissivePhase) * 0.03;
+        g.rotation.z = sway;
+        refs.bulb.material.emissiveIntensity = 0.5 + Math.sin(performance.now() / 1000 * 1.1 + e.emissivePhase) * 0.3;
+      } else {
+        // burst/lash: petals open from closed to fully open
+        const petalsOpen = e.state === 'burst'
+          ? (e.stateT / 0.35) * 1.3
+          : 1.3;
+        for (const petal of refs.petals) petal.rotation.x = petalsOpen;
+        // eye emissive pulses while lashing
+        if (e.state === 'lash') {
+          refs.eyeIris.material.emissiveIntensity = 2.4 + Math.sin(performance.now() / 500 + e.emissivePhase) * 1.2;
+        } else {
+          refs.eyeIris.material.emissiveIntensity = 2.4;
+        }
+      }
     }
   }
 
@@ -1327,6 +1416,51 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
     return enemies.filter((e) => !e.dead && e.state !== 'dying');
   }
 
+  function spawnViperblossoms() {
+    // Place ~12 seeded viperblossoms with careful validation
+    const rng = makeRng(WORLD.seed + 1234);
+    const candidates = [];
+    // sample 40 random points in playable area
+    for (let tries = 0; tries < 40; tries++) {
+      const x = rng.range(-WORLD.playable + 20, WORLD.playable - 20);
+      const z = rng.range(-WORLD.playable + 20, WORLD.playable - 20);
+
+      // validation checks
+      if (isThicket(x, z)) continue;
+      const h = terrainHeight(x, z);
+      if (h < WORLD.waterLevel + 0.3) continue;
+
+      // too close to insertion/extraction
+      const distToInsert = Math.hypot(x - WORLD.insertion.x, z - WORLD.insertion.z);
+      const distToExtract = Math.hypot(x - WORLD.extraction.x, z - WORLD.extraction.z);
+      if (distToInsert < 20 || distToExtract < 20) continue;
+
+      // check terrain steepness: normal.y should be >= 0.8 (not too steep)
+      const normal = new THREE.Vector3();
+      terrainNormal(x, z, normal);
+      if (normal.y < 0.8) continue;
+
+      // bias toward ruin sites: accept only if within 25m of a site OR 30% chance
+      let nearSite = false;
+      for (const site of RUIN_SITES) {
+        if (Math.hypot(x - site.x, z - site.z) < 25) {
+          nearSite = true;
+          break;
+        }
+      }
+      if (!nearSite && !rng.chance(0.3)) continue;
+
+      candidates.push({ x, z });
+    }
+
+    // spawn the best ~12 candidates
+    const toSpawn = Math.min(12, candidates.length);
+    for (let i = 0; i < toSpawn; i++) {
+      const c = candidates[i];
+      spawn('viperblossom', c.x, c.z);
+    }
+  }
+
   function reset() {
     for (const e of enemies) {
       e.dead = true;
@@ -1340,6 +1474,7 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
 
   return {
     update, spawn, applyDamage, rayEnemies, aliveCount, aliveList, reset,
+    spawnViperblossoms,
     enemies, tuning,
   };
 }

@@ -651,6 +651,71 @@ export function buildMiremother() {
   };
 }
 
+// ---------- VIPERBLOSSOM (dormant flower mimic, 0.9m) ----------
+export function buildViperblossom() {
+  const g = new THREE.Group();
+  const stalk = mesh(G('vbStalk', () => {
+    const s = new THREE.CylinderGeometry(0.12, 0.2, 1.2, 6);
+    s.translate(0, 0.6, 0);
+    return s;
+  }), MAT.bloomStalk, 0, 0.15, 0);
+  g.add(stalk);
+
+  // bulb head: closed petals hugging it
+  const bulb = mesh(G('vbBulb', () => new THREE.SphereGeometry(0.28, 8, 7)), MAT.bloomStalk, 0, 1.45, 0);
+  g.add(bulb);
+
+  // petals: arranged around the bulb, closed position hugs it tight
+  const petals = [];
+  const petalGeo = G('vbPetal', () => {
+    const p = new THREE.PlaneGeometry(0.24, 0.5, 1, 2);
+    const pos = p.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const y = pos.getY(i);
+      pos.setZ(i, Math.sin((y + 0.25) / 0.5 * Math.PI) * 0.08);
+    }
+    p.translate(0, 0.25, 0);
+    return p;
+  });
+  for (let i = 0; i < 6; i++) {
+    const pivot = new THREE.Group();
+    pivot.position.set(0, 1.4, 0);
+    pivot.rotation.y = (i / 6) * Math.PI * 2;
+    const petal = new THREE.Mesh(petalGeo, MAT.bloomPetal);
+    petal.position.set(0, 0, 0.15);
+    petal.rotation.x = 0.05; // closed: petals hug the bulb tight
+    petal.castShadow = false;
+    pivot.add(petal);
+    petals.push(petal);
+    g.add(pivot);
+  }
+
+  // the eye: dark socket + amber iris, hidden until burst
+  const eyeSocket = mesh(G('vbSocket', () => new THREE.SphereGeometry(0.16, 6, 5)), MAT.juggHide, 0, 1.55, -0.22);
+  eyeSocket.castShadow = false;
+  g.add(eyeSocket);
+  const eyeIris = mesh(G('vbIris', () => new THREE.SphereGeometry(0.12, 6, 5)), MAT.emberEye.clone(), 0, 1.55, -0.28);
+  eyeIris.castShadow = false;
+  g.add(eyeIris);
+
+  // fanged maw: a small dark opening
+  const maw = mesh(G('vbMaw', () => new THREE.SphereGeometry(0.14, 6, 5)), MAT.juggHide, 0, 1.25, -0.15);
+  maw.castShadow = false;
+  g.add(maw);
+
+  return {
+    group: g,
+    refs: { stalk, bulb, petals, eyeIris, maw },
+    headOffset: new THREE.Vector3(0, 1.55, -0.25),
+    bodyOffset: new THREE.Vector3(0, 1.45, 0),
+    headR: 0.25,
+    bodyR: 0.4,
+    // the eye is a crit only when petals are open (burst/lash states)
+    crits: [{ off: new THREE.Vector3(0, 1.55, -0.28), r: 0.15, mult: 2.5, when: 'burst' },
+            { off: new THREE.Vector3(0, 1.55, -0.28), r: 0.15, mult: 2.5, when: 'lash' }],
+  };
+}
+
 export const BUILDERS = {
   prowler: buildProwler,
   spitter: buildSpitter,
@@ -659,4 +724,5 @@ export const BUILDERS = {
   shrike: buildShrike,
   bloomcaller: buildBloomcaller,
   miremother: buildMiremother,
+  viperblossom: buildViperblossom,
 };

@@ -86,6 +86,7 @@ const AIM_Y = {
   shrike: 1.0,
   bloomcaller: 1.6,
   miremother: 0,      // e.pos IS her head
+  viperblossom: 1.4,  // aim at the bulb/eye
 };
 
 // Miremother states in which she can actually be shot
@@ -168,9 +169,12 @@ export function createBot(ctx) {
         const dd = Math.hypot(e.pos.x - pp.x, e.pos.z - pp.z);
         const isBoss = e.type === 'miremother';
         if (isBoss && !BOSS_TARGETABLE.has(e.state)) continue; // she's under
+        // skip dormant viperblossoms (they look innocent)
+        if (e.type === 'viperblossom' && e.state === 'dormant') continue;
         const attacking = e.state === 'windup' || e.state === 'lunge'
           || e.state === 'charge' || e.state === 'chargewind' || e.state === 'air'
-          || e.state === 'telegraph' || e.state === 'strike';
+          || e.state === 'telegraph' || e.state === 'strike'
+          || (e.type === 'viperblossom' && (e.state === 'burst' || e.state === 'lash'));
         const isBloom = e.type === 'bloomcaller';
         const engage = isBoss ? dd < 44
           : isBloom ? dd < 42
