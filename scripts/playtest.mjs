@@ -56,29 +56,49 @@ const bot = createBot({ sim, startRun: () => sim.resetRun() });
 
 // ---- run the matrix ----
 const results = [];
-for (const difficulty of difficulties) {
-  for (const route of routes) {
-    for (let r = 0; r < runsPer; r++) {
-      const tRun = Date.now();
-      const rep = await bot.runBot(route, { difficulty });
-      rep.wallMs = Date.now() - tRun;
-      results.push(rep);
-      console.log(
-        `[run] ${difficulty.padEnd(6)} ${route.padEnd(6)} -> ${String(rep.result).padEnd(7)}`
-        + ` t=${fmtTime(rep.timeSec)} kills=${String(rep.kills).padStart(2)}`
-        + ` dmg=${String(Math.round(rep.dmgTaken)).padStart(3)} hp=${String(rep.endHp).padStart(3)}`
-        + ` shots=${rep.shots} nades=${rep.grenadesThrown}`
-        + ` ammo(r/s/l)=${rep.ammoLeft.rifle}/${rep.ammoLeft.shells}/${rep.ammoLeft.long}`
-        + (rep.stuck ? ` STUCK@${JSON.stringify(rep.stuckAt)}` : '')
-        + ` [${(rep.wallMs / 1000).toFixed(1)}s wall]`
-      );
-      const srcs = Object.entries(rep.dmgBySource || {}).sort((a, b) => b[1] - a[1]);
-      if (srcs.length) {
-        console.log(`      hurt by: ${srcs.map(([k, v]) => `${k} ${v}`).join(', ')}`);
-      }
-      if (rep.stuck) {
-        const tail = rep.posTrail.slice(-10).map((p) => `${p.x},${p.z}`).join(' > ');
-        console.log(`      trail: ${tail}`);
+if (isCoopTest) {
+  console.log('[coop] Running dual-bot co-op tests');
+  // Co-op: test different route combinations
+  const routePairs = [
+    ['river', 'ridge'],
+    ['ridge', 'swamp'],
+    ['swamp', 'river']
+  ];
+  for (const [r1, r2] of routePairs) {
+    const tRun = Date.now();
+    const rep = await bot.runDualBots(r1, r2, { difficulty: 'easy' });
+    rep.wallMs = Date.now() - tRun;
+    results.push(rep);
+    console.log(
+      `[coop] routes ${r1.padEnd(6)} + ${r2.padEnd(6)} -> ${String(rep.result).padEnd(20)}`
+      + ` [${(rep.wallMs / 1000).toFixed(1)}s wall]`
+    );
+  }
+} else {
+  for (const difficulty of difficulties) {
+    for (const route of routes) {
+      for (let r = 0; r < runsPer; r++) {
+        const tRun = Date.now();
+        const rep = await bot.runBot(route, { difficulty });
+        rep.wallMs = Date.now() - tRun;
+        results.push(rep);
+        console.log(
+          `[run] ${difficulty.padEnd(6)} ${route.padEnd(6)} -> ${String(rep.result).padEnd(7)}`
+          + ` t=${fmtTime(rep.timeSec)} kills=${String(rep.kills).padStart(2)}`
+          + ` dmg=${String(Math.round(rep.dmgTaken)).padStart(3)} hp=${String(rep.endHp).padStart(3)}`
+          + ` shots=${rep.shots} nades=${rep.grenadesThrown}`
+          + ` ammo(r/s/l)=${rep.ammoLeft.rifle}/${rep.ammoLeft.shells}/${rep.ammoLeft.long}`
+          + (rep.stuck ? ` STUCK@${JSON.stringify(rep.stuckAt)}` : '')
+          + ` [${(rep.wallMs / 1000).toFixed(1)}s wall]`
+        );
+        const srcs = Object.entries(rep.dmgBySource || {}).sort((a, b) => b[1] - a[1]);
+        if (srcs.length) {
+          console.log(`      hurt by: ${srcs.map(([k, v]) => `${k} ${v}`).join(', ')}`);
+        }
+        if (rep.stuck) {
+          const tail = rep.posTrail.slice(-10).map((p) => `${p.x},${p.z}`).join(' > ');
+          console.log(`      trail: ${tail}`);
+        }
       }
     }
   }

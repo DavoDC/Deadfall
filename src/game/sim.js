@@ -451,7 +451,7 @@ export function createSim({ scene, camera, effects, ui = {} }) {
   }
 
   return {
-    game, player, weapons, weaponHooks, grenades, enemyMgr, director,
+    game, player, players, weapons, weaponHooks, grenades, enemyMgr, director,
     pickups, traps, extraction, buff, weather, boss,
     step, resetRun, setDifficulty, updateExtraction,
     get difficulty() { return difficulty; },

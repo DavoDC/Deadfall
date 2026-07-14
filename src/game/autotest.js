@@ -454,5 +454,118 @@ export function createBot(ctx) {
     return report;
   }
 
-  return { runBot };
+  async function runDualBots(route1 = 'river', route2 = 'ridge', opts = {}) {
+    // Run two bots concurrently on different routes in the SAME sim
+    const difficulty = opts.difficulty || 'easy';
+    if (difficulty) sim.setDifficulty(difficulty);
+    ctx.startRun();
+
+    const wps1 = routeWaypoints(route1);
+    const wps2 = routeWaypoints(route2);
+    let wpIdx1 = 0, wpIdx2 = 0;
+    const dt = 1 / 60;
+
+    const maxFrames = (opts.maxMinutes || 18) * 60 * 60;
+    const players = sim.players || [sim.player];
+
+    // Bail if we don't have 2 players
+    if (players.length < 2) {
+      return {
+        route1, route2, difficulty,
+        result: 'SKIP',
+        reason: 'Only 1 player in sim, need 2 for coop test'
+      };
+    }
+
+    // Track state for each bot
+    const bots = [
+      { player: players[0], wps: wps1, wpIdx: 0, report: { route: route1, alive: 0, extracted: false } },
+      { player: players[1], wps: wps2, wpIdx: 0, report: { route: route2, alive: 0, extracted: false } }
+    ];
+
+    for (let frame = 0; frame < maxFrames; frame++) {
+      // Generate intents for each bot
+      const intents = [];
+      for (let botIdx = 0; botIdx < 2; botIdx++) {
+        const bot = bots[botIdx];
+        const pp = bot.player.p.pos;
+        const wps = bot.wps;
+
+        // Simple waypoint following: move toward current waypoint
+        if (bot.wpIdx < wps.length) {
+          const wp = wps[bot.wpIdx];
+          const dx = wp.x - pp.x;
+          const dz = wp.z - pp.z;
+          const dist = Math.hypot(dx, dz);
+
+          if (dist < 3) {
+            bot.wpIdx++;
+          }
+        }
+
+        const intent = {
+          moveX: 0, moveZ: 0, lookDX: 0, lookDY: 0, sprint: true, jump: false,
+          reload: false, weapon1: false, weapon2: false, weapon3: false,
+          swap: false, interact: false, melee: false,
+          grenadeHold: false, grenadeThrow: false, aim: false,
+          firing: false, fireDown: false,
+        };
+
+        // Move toward next waypoint
+        if (bot.wpIdx < wps.length) {
+          const wp = wps[bot.wpIdx];
+          const dx = wp.x - pp.x;
+          const dz = wp.z - pp.z;
+          const angle = Math.atan2(dx, dz);
+          intent.moveX = Math.sin(angle) * 0.8;
+          intent.moveZ = Math.cos(angle) * 0.8;
+        }
+
+        intents.push(intent);
+        bot.report.alive = bot.player.p.alive ? 1 : 0;
+      }
+
+      // Step BOTH players in the same frame
+      // Note: sim.step() takes one intent, so we step for each player
+      sim.step(intents[0], dt);  // Player 0
+      sim.step(intents[1], dt);  // Player 1
+
+      // Check extraction for each player
+      const ex = WORLD.extraction;
+      for (let i = 0; i < 2; i++) {
+        const p = bots[i];
+        const pos = p.player.p.pos;
+        const dx = pos.x - ex.x;
+        const dz = pos.z - ex.z;
+        if (dx * dx + dz * dz < ex.radius * ex.radius && p.player.p.alive) {
+          p.report.extracted = true;
+        }
+      }
+
+      // Both alive, both extracted = success
+      if (bots[0].report.extracted && bots[1].report.extracted &&
+          bots[0].player.p.alive && bots[1].player.p.alive) {
+        return {
+          route1, route2, difficulty,
+          result: 'BOTH_EXTRACTED',
+          bot1: bots[0].report,
+          bot2: bots[1].report
+        };
+      }
+
+      // If game ended (any player died and is alone), fail
+      if (sim.game.state === 'DEAD' || sim.game.state === 'WIN') {
+        break;
+      }
+    }
+
+    return {
+      route1, route2, difficulty,
+      result: 'FAILED',
+      bot1: bots[0].report,
+      bot2: bots[1].report
+    };
+  }
+
+  return { runBot, runDualBots };
 }
