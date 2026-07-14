@@ -33,10 +33,11 @@ function arg(name, fallback = null) {
 }
 const flag = (name) => args.includes('--' + name);
 
-const routes = arg('route') ? [arg('route')] : ['river', 'ridge', 'swamp'];
-const difficulties = flag('matrix')
+const isCoopTest = flag('coop');
+const routes = isCoopTest ? ['river', 'ridge', 'swamp'] : (arg('route') ? [arg('route')] : ['river', 'ridge', 'swamp']);
+const difficulties = isCoopTest ? ['easy'] : (flag('matrix')
   ? Object.keys(DIFFICULTIES)
-  : [arg('difficulty', 'normal')];
+  : [arg('difficulty', 'normal')]);
 const runsPer = parseInt(arg('runs', '1'), 10);
 const outPath = arg('out');
 
