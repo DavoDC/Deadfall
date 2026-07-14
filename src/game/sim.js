@@ -104,16 +104,35 @@ export function createSim({ scene, camera, effects, ui = {} }) {
   };
   const weapons = createWeapons(camera, player, weaponHooks);
 
-  function damagePlayer(amount, srcPos, source = 'unknown') {
-    if (game.state !== 'RUNNING' || !player.p.alive) return;
+  // damagePlayer with multi-player bleedout logic
+  function damagePlayer(amount, srcPos, source = 'unknown', targetPlayer = null) {
+    if (game.state !== 'RUNNING') return;
+    // if targetPlayer is specified, damage that player; otherwise damage player 0 (main player)
+    const target = targetPlayer || player;
+    if (target.p.alive === false || target.p.bleedoutT > 0) return; // can't damage dead/bleeding players
+
     const scaled = amount * difficulty.playerDamageTaken;
-    player.damage(scaled);
+    target.damage(scaled);
     game.damageTaken += scaled;
     game.dmgBySource[source] = (game.dmgBySource[source] || 0) + scaled;
     U.onHurt(scaled, srcPos);
-    if (!player.p.alive) {
-      game.state = 'DEAD';
-      U.onDeath();
+
+    if (!target.p.alive && target.p.hp <= 0) {
+      // Player went down - check if this is the last alive player
+      let aliveCount = 0;
+      for (const p of players) {
+        if (p.p.alive && p.p.bleedoutT === 0) aliveCount++;
+      }
+
+      if (aliveCount <= 1) {
+        // Last player down = immediate game over
+        game.state = 'DEAD';
+        U.onDeath();
+      } else {
+        // Enter bleedout state: 45 second crawl before permanent death
+        target.p.bleedoutT = 45;
+        U.toast('PLAYER DOWN - 45s UNTIL PERMANENT DEATH', 3.0);
+      }
     }
   }
 
@@ -209,11 +228,23 @@ export function createSim({ scene, camera, effects, ui = {} }) {
 
   function updateExtraction(dt) {
     const ex = WORLD.extraction;
-    const dx = player.p.pos.x - ex.x;
-    const dz = player.p.pos.z - ex.z;
-    const inZone = dx * dx + dz * dz < ex.radius * ex.radius;
 
-    if (inZone && !extraction.active) {
+    // Check if all alive players are in extraction zone
+    let playersInZone = 0;
+    let alivePlayerCount = 0;
+    for (const p of players) {
+      if (!p.p.alive) continue;
+      alivePlayerCount++;
+      const dx = p.p.pos.x - ex.x;
+      const dz = p.p.pos.z - ex.z;
+      if (dx * dx + dz * dz < ex.radius * ex.radius) {
+        playersInZone++;
+      }
+    }
+
+    const allInZone = alivePlayerCount > 0 && playersInZone === alivePlayerCount;
+
+    if (allInZone && !extraction.active) {
       extraction.active = true;
       if (!extraction.committed) {
         extraction.committed = true;
@@ -222,12 +253,16 @@ export function createSim({ scene, camera, effects, ui = {} }) {
         U.toast('HOLD THE BEACON', 2.4);
         U.setObjective('HOLD FOR EXTRACTION');
       }
-    } else if (!inZone && extraction.active) {
+    } else if (!allInZone && extraction.active) {
       extraction.active = false;
+      if (alivePlayerCount > playersInZone) {
+        const missing = alivePlayerCount - playersInZone;
+        U.toast(`${missing} PLAYER(S) MISSING FROM EXTRACTION`, 2.0);
+      }
       U.setObjective('RETURN TO THE BEACON');
     }
 
-    if (extraction.active) {
+    if (extraction.active && allInZone) {
       extraction.progress = Math.min(1, extraction.progress + dt / difficulty.holdTime);
       if (extraction.progress - extraction.toneAt >= 0.1) {
         extraction.toneAt = extraction.progress;
@@ -257,6 +292,28 @@ export function createSim({ scene, camera, effects, ui = {} }) {
       player.p.camShake = 1;
       U.onBoss(boss.name);
       U.toast('THE MIREMOTHER WAKES', 3);
+    }
+  }
+
+  // --- bleedout mechanic ---
+  function updateBleedout(dt) {
+    for (const p of players) {
+      if (p.p.bleedoutT <= 0) continue; // not bleeding out
+      p.p.bleedoutT -= dt;
+      if (p.p.bleedoutT <= 0) {
+        // Bleedout expired - permanent death
+        p.p.bleedoutT = 0;
+        p.p.alive = false;
+        // Check if all players are now dead
+        let anyAlive = false;
+        for (const pp of players) {
+          if (pp.p.alive) anyAlive = true;
+        }
+        if (!anyAlive) {
+          game.state = 'DEAD';
+          U.onDeath();
+        }
+      }
     }
   }
 
@@ -347,6 +404,7 @@ export function createSim({ scene, camera, effects, ui = {} }) {
     updateBoss();
     updateBuff(dt);
     updateHazards(dt);
+    updateBleedout(dt);
     if (game.state === 'RUNNING') updateExtraction(dt);
   }
 

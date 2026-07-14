@@ -182,10 +182,12 @@ export function createPlayer(camera) {
   }
 
   function damage(amount) {
-    if (!p.alive) return;
+    if (!p.alive || p.bleedoutT > 0) return; // can't damage while bleeding out
     p.hp = Math.max(0, p.hp - amount);
     p.camShake = Math.min(1, p.camShake + amount * 0.02);
-    if (p.hp <= 0) p.alive = false;
+    if (p.hp <= 0) {
+      p.alive = false; // hp=0 triggers bleedout (managed by sim)
+    }
   }
 
   function heal(amount) {
