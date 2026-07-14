@@ -71,15 +71,76 @@ export function buildTerrain(scene) {
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geo.computeVertexNormals();
 
+  // Add per-vertex UV variance to break up tiling. Each vertex gets a unique
+  // offset into the texture, driven by world position hash, so repeated
+  // textures don't read as wallpaper (the "texture bombing" technique).
+  const uvs = new Float32Array(pos.count * 2);
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const z = pos.getZ(i);
+    // Combine multiple scales: 0.5 and 2.0 sampling
+    const v = hash2(Math.round(x * 0.5), Math.round(z * 0.5), 137);
+    uvs[i * 2] = x * 0.04 + v * 0.5;
+    uvs[i * 2 + 1] = z * 0.04 + (1 - v) * 0.5;
+  }
+  geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+
   const mat = new THREE.MeshStandardMaterial({
     vertexColors: true,
     roughness: 1,
     metalness: 0,
   });
+
+  // Inject triplanar mapping shader
+  mat.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `#include <common>
+        varying vec3 vWorldPos;
+        varying vec3 vWorldNormal;`
+      )
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+        vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
+        vWorldNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);`
+      );
+
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>
+        varying vec3 vWorldPos;
+        varying vec3 vWorldNormal;
+        vec4 triplanarSample(sampler2D tex, vec3 pos, vec3 normal, float scale) {
+          vec3 projNormal = abs(normal);
+          projNormal /= (projNormal.x + projNormal.y + projNormal.z);
+          vec4 x = texture2D(tex, pos.yz * scale);
+          vec4 y = texture2D(tex, pos.xz * scale);
+          vec4 z = texture2D(tex, pos.xy * scale);
+          return x * projNormal.x + y * projNormal.y + z * projNormal.z;
+        }`
+      )
+      .replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+        // Triplanar texture sampling (if texture is loaded)
+        if (diffuse != vec4(1.0)) {
+          vec4 triColor = triplanarSample(map, vWorldPos * 0.5, normalize(vWorldNormal), 2.0);
+          diffuse.rgb = mix(diffuse.rgb, triColor.rgb, 0.55);
+        }`
+      );
+  };
+
   const mesh = new THREE.Mesh(geo, mat);
   mesh.receiveShadow = true;
   mesh.name = 'terrain';
   scene.add(mesh);
+
+  // Load and apply textures asynchronously (non-blocking)
+  loadTextureSet('mud', '/textures/mud/')
+    .then((textures) => {
+      applyTextures(mat, textures, 0.6);
+    })
+    .catch(() => {
+      // Silently fail - material renders with vertex colour fallback
+    });
+
   return mesh;
 }
 

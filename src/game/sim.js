@@ -317,6 +317,47 @@ export function createSim({ scene, camera, effects, ui = {} }) {
     }
   }
 
+  // --- revive mechanic: teammate holding E within 2m for 4s revives bleeding player ---
+  function updateRevive(intent, dt) {
+    // This only processes the main player's intent for now
+    // In full co-op, each player would have their own intent
+    for (const bPlayer of players) {
+      if (bPlayer.p.bleedoutT <= 0) continue; // not bleeding out
+
+      // Check if any alive teammate is close enough and holding interact
+      let revivingTeammate = false;
+      for (const tPlayer of players) {
+        if (tPlayer === bPlayer) continue;
+        if (!tPlayer.p.alive) continue;
+
+        // Check distance
+        const dx = tPlayer.p.pos.x - bPlayer.p.pos.x;
+        const dz = tPlayer.p.pos.z - bPlayer.p.pos.z;
+        const dist = Math.hypot(dx, dz);
+
+        if (dist <= 2.0 && intent.interact) {
+          revivingTeammate = true;
+          break;
+        }
+      }
+
+      if (revivingTeammate) {
+        bPlayer.p.reviveProgress = Math.min(1, bPlayer.p.reviveProgress + dt / 4.0); // 4 second revive
+        if (bPlayer.p.reviveProgress >= 1) {
+          // Revive complete
+          bPlayer.p.alive = true;
+          bPlayer.p.hp = Math.ceil(bPlayer.p.maxHp * 0.25); // 25% HP
+          bPlayer.p.bleedoutT = 0;
+          bPlayer.p.reviveProgress = 0;
+          U.toast('TEAMMATE REVIVED', 2.0);
+        }
+      } else {
+        // Revive interrupted
+        bPlayer.p.reviveProgress = Math.max(0, bPlayer.p.reviveProgress - dt * 0.5); // decay if interrupted
+      }
+    }
+  }
+
   // --- environmental hazards ---
   let razorT = 0;
   function updateHazards(dt) {
@@ -405,6 +446,7 @@ export function createSim({ scene, camera, effects, ui = {} }) {
     updateBuff(dt);
     updateHazards(dt);
     updateBleedout(dt);
+    updateRevive(intent, dt);
     if (game.state === 'RUNNING') updateExtraction(dt);
   }
 

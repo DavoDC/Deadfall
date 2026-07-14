@@ -13,6 +13,7 @@ import {
 import { addCylinder } from './colliders.js';
 import { makeRng } from '../core/rng.js';
 import { clamp } from '../core/noise.js';
+import { loadTextureSet, applyTextures } from '../core/textures.js';
 
 const swayMats = [];
 let swayMult = 1; // ayahuasca cranks this - the whole jungle writhes
@@ -560,6 +561,39 @@ export function buildVegetation(scene, opts = {}) {
     color: 0xff4fd0, emissive: 0xd0189a, emissiveIntensity: 1.8,
     roughness: 0.5, side: THREE.DoubleSide,
   });
+
+  // Load and apply textures asynchronously (non-blocking). If loading fails,
+  // materials render with their vertex-colour fallbacks. This preserves the
+  // vibrant palette and keeps the game playable in all contexts (headless,
+  // offline, missing files).
+  loadTextureSet('bark-01', '/textures/bark-01/')
+    .then((textures) => {
+      applyTextures(barkMat, textures, 0.65);
+    })
+    .catch(() => {});
+  loadTextureSet('bark-02', '/textures/bark-02/')
+    .then((textures) => {
+      applyTextures(barkMat2, textures, 0.65);
+    })
+    .catch(() => {});
+  loadTextureSet('foliage', '/textures/foliage/')
+    .then((textures) => {
+      applyTextures(canopyMat, textures, 0.5);
+      applyTextures(canopyMat2, textures, 0.5);
+    })
+    .catch(() => {});
+  loadTextureSet('foliage', '/textures/foliage/')
+    .then((textures) => {
+      applyTextures(fernMat, textures, 0.55);
+      applyTextures(leafMat, textures, 0.55);
+      applyTextures(thicketMat, textures, 0.55);
+    })
+    .catch(() => {});
+  loadTextureSet('rock', '/textures/rock/')
+    .then((textures) => {
+      applyTextures(rockMat, textures, 0.6);
+    })
+    .catch(() => {});
 
   const meshes = [
     makeInstanced(bigTreeTrunkGeo(), barkMat, bigTrunks, null, 'both'),

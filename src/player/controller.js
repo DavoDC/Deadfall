@@ -42,6 +42,8 @@ export function createPlayer(camera) {
     camShake: 0,
     onStep: null,      // audio hook (footstep)
     onLand: null,
+    bleedoutT: 0,      // seconds remaining in bleedout state (0 = not bleeding out)
+    reviveProgress: 0, // progress toward revive (0-1), reset when teammate stops holding E
   };
   p.pos.y = terrainHeight(p.pos.x, p.pos.z) + EYE_HEIGHT;
 
@@ -209,6 +211,8 @@ export function createPlayer(camera) {
     p.aimBlend = 0;
     p.moveMult = 1;
     p.buffT = 0;
+    p.bleedoutT = 0;
+    p.reviveProgress = 0;
   }
 
   return { p, update, damage, heal, reset, EYE_HEIGHT, RADIUS };
