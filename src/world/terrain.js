@@ -91,41 +91,8 @@ export function buildTerrain(scene) {
     metalness: 0,
   });
 
-  // Inject triplanar mapping shader
-  mat.onBeforeCompile = (shader) => {
-    shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', `#include <common>
-        varying vec3 vWorldPos;
-        varying vec3 vWorldNormal;`
-      )
-      .replace('#include <begin_vertex>', `#include <begin_vertex>
-        vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
-        vWorldNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);`
-      );
-
-    shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', `#include <common>
-        varying vec3 vWorldPos;
-        varying vec3 vWorldNormal;
-        vec4 triplanarSample(sampler2D tex, vec3 pos, vec3 normal, float scale) {
-          vec3 projNormal = abs(normal);
-          projNormal /= (projNormal.x + projNormal.y + projNormal.z);
-          vec4 x = texture2D(tex, pos.yz * scale);
-          vec4 y = texture2D(tex, pos.xz * scale);
-          vec4 z = texture2D(tex, pos.xy * scale);
-          return x * projNormal.x + y * projNormal.y + z * projNormal.z;
-        }`
-      )
-      .replace(
-        '#include <color_fragment>',
-        `#include <color_fragment>
-        // Triplanar texture sampling (if texture is loaded)
-        if (diffuse != vec4(1.0)) {
-          vec4 triColor = triplanarSample(map, vWorldPos * 0.5, normalize(vWorldNormal), 2.0);
-          diffuse.rgb = mix(diffuse.rgb, triColor.rgb, 0.55);
-        }`
-      );
-  };
+  // Note: Textures will be applied by applyTextures() when they load.
+  // Vertex colors are multiplied with the texture to preserve the vibrant palette.
 
   const mesh = new THREE.Mesh(geo, mat);
   mesh.receiveShadow = true;
