@@ -61,6 +61,15 @@ export function createSim({ scene, camera, effects, ui = {} }) {
   // Director uses furthest-north player + summed noise.
   const players = [player];
 
+  // Per-player combat state. weaponsList[i]/grenadesList[i] are bound to
+  // players[i] and its own camera, so each player can fire/aim/throw
+  // independently. weapons/grenades (singular, below) stay aliases for
+  // player 0 - existing single-player code (pickups, resetRun defaults)
+  // keeps working unchanged.
+  const weaponsList = [];
+  const grenadesList = [];
+  const playerCameras = [camera];
+
   function nearestPlayer(pos) {
     // Return the nearest alive player state (p) to pos
     let nearest = player.p;
@@ -104,6 +113,7 @@ export function createSim({ scene, camera, effects, ui = {} }) {
     onHitmarker: (kill, crit) => U.hitmarker(kill, crit),
   };
   const weapons = createWeapons(camera, player, weaponHooks);
+  weaponsList.push(weapons);
 
   // damagePlayer with multi-player bleedout logic
   function damagePlayer(amount, srcPos, source = 'unknown', targetPlayer = null) {
@@ -193,15 +203,35 @@ export function createSim({ scene, camera, effects, ui = {} }) {
   const weather = createWeather(U);
   director.setWeather(weather);
 
-  const grenades = createGrenades(scene, camera, player, effects, {
-    enemies: () => enemyMgr.aliveList(),
-    damageEnemy: (e, dmg, point) => enemyMgr.applyDamage(e, dmg, false, point, false),
-    damagePlayer: (amount, pos) => damagePlayer(amount, pos, 'grenade-self'),
-    onNoise: (mult) => {
-      for (let i = 0; i < mult; i++) director.onShot();
-    },
-    toast: (msg) => U.toast(msg),
-  });
+  // grenade hooks are per-thrower (self-damage must hit the thrower, not
+  // just "nearest player" - matters once there's more than one player)
+  function makeGrenadeHooks(playerCtrl) {
+    return {
+      enemies: () => enemyMgr.aliveList(),
+      damageEnemy: (e, dmg, point) => enemyMgr.applyDamage(e, dmg, false, point, false),
+      damagePlayer: (amount, pos) => damagePlayer(amount, pos, 'grenade-self', playerCtrl),
+      onNoise: (mult) => {
+        for (let i = 0; i < mult; i++) director.onShot();
+      },
+      toast: (msg) => U.toast(msg),
+    };
+  }
+  const grenades = createGrenades(scene, camera, player, effects, makeGrenadeHooks(player));
+  grenadesList.push(grenades);
+
+  // Add another player to the sim: own camera, own weapons + grenades,
+  // sharing every world/enemy/director/pickup/extraction system. Used by
+  // the headless coop bot runner (scripts/playtest.mjs --coop).
+  function addPlayer(cam) {
+    const p = createPlayer(cam);
+    players.push(p);
+    playerCameras.push(cam);
+    const w = createWeapons(cam, p, weaponHooks);
+    weaponsList.push(w);
+    const g = createGrenades(scene, cam, p, effects, makeGrenadeHooks(p));
+    grenadesList.push(g);
+    return p;
+  }
 
   weaponHooks.rayEnemies = (origin, dir, maxDist) => enemyMgr.rayEnemies(origin, dir, maxDist);
   weaponHooks.enemiesNear = () => enemyMgr.aliveList();
@@ -426,9 +456,9 @@ export function createSim({ scene, camera, effects, ui = {} }) {
   // Reset every system for a fresh run. Presentation (menus, audio, moods)
   // wraps this from the outside.
   function resetRun() {
-    player.reset();
-    weapons.reset();
-    grenades.reset(difficulty.startGrenades);
+    for (const p of players) p.reset();
+    for (const w of weaponsList) w.reset();
+    for (const g of grenadesList) g.reset(difficulty.startGrenades);
     enemyMgr.reset();
     director.reset();
     pickups.reset();
@@ -474,14 +504,17 @@ export function createSim({ scene, camera, effects, ui = {} }) {
       players[i].update(pIntent, dt);
     }
 
-    // keep the camera's matrices honest even without a render pass
-    // (headless: nobody else calls updateMatrixWorld)
-    camera.updateMatrixWorld();
+    // keep every player camera's matrices honest even without a render
+    // pass (headless: nobody else calls updateMatrixWorld)
+    for (const cam of playerCameras) cam.updateMatrixWorld();
 
-    // Weapons and grenades are currently singular (only player[0])
-    // Full multi-player would require per-player weapon state
-    weapons.update(intents[0], dt, game.time);
-    grenades.update(intents[0], dt);
+    // Each player fires/throws independently with their own weapon +
+    // grenade state.
+    for (let i = 0; i < players.length; i++) {
+      const pIntent = intents[i] || {};
+      weaponsList[i].update(pIntent, dt, game.time);
+      grenadesList[i].update(pIntent, dt);
+    }
 
     // Shared systems: run once per frame, not per player
     enemyMgr.update(dt);
@@ -497,9 +530,9 @@ export function createSim({ scene, camera, effects, ui = {} }) {
   }
 
   return {
-    game, player, players, weapons, weaponHooks, grenades, enemyMgr, director,
-    pickups, traps, extraction, buff, weather, boss,
-    step, resetRun, setDifficulty, updateExtraction,
+    game, player, players, weapons, weaponsList, weaponHooks, grenades, grenadesList,
+    enemyMgr, director, pickups, traps, extraction, buff, weather, boss,
+    step, resetRun, setDifficulty, updateExtraction, addPlayer, damagePlayer,
     get difficulty() { return difficulty; },
   };
 }
