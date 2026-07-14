@@ -1,6 +1,8 @@
 // Terrain mesh built from the analytic heightmap, coloured per-vertex by
 // height / moisture / slope so the three routes read at a glance:
 // dark boggy swamp, olive riverbed, khaki-rock ridge, deep green jungle floor.
+// Textures are blended with vertex colours to preserve the vibrant palette.
+// Triplanar mapping prevents stretching on slopes.
 
 import * as THREE from 'three';
 import {
@@ -8,6 +10,7 @@ import {
 } from './heightmap.js';
 import { clamp, lerp, smoothstep } from '../core/noise.js';
 import { hash2 } from '../core/rng.js';
+import { loadTextureSet, applyTextures } from '../core/textures.js';
 
 // Fever-dream ground palette, round-3 saturation push (Far Cry New Dawn
 // vibrancy): electric greens, golden dry grass, warm violet-cast rock -

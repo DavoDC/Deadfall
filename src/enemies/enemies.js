@@ -361,20 +361,17 @@ export function createEnemyManager(scene, playerHelpers, effects, hooks) {
   // player separation (no more clipping through players), ground clamp.
   function resolveGround(e) {
     pushOut(e.pos, e.def.radius, e.pos.y);
-    // separate from all alive players
-    for (const p of players) {
-      if (!p.p.alive) continue;
-      const pp = p.p.pos;
-      const dx = e.pos.x - pp.x;
-      const dz = e.pos.z - pp.z;
-      const d2 = dx * dx + dz * dz;
-      const minD = e.def.radius + PLAYER_RADIUS + 0.22;
-      if (d2 < minD * minD && d2 > 1e-6) {
-        const d = Math.sqrt(d2);
-        const push = (minD - d) / d;
-        e.pos.x += dx * push;
-        e.pos.z += dz * push;
-      }
+    // separate from nearest alive player (in solo: the only player)
+    const pp = nearestPlayer(e.pos).pos;
+    const dx = e.pos.x - pp.x;
+    const dz = e.pos.z - pp.z;
+    const d2 = dx * dx + dz * dz;
+    const minD = e.def.radius + PLAYER_RADIUS + 0.22;
+    if (d2 < minD * minD && d2 > 1e-6) {
+      const d = Math.sqrt(d2);
+      const push = (minD - d) / d;
+      e.pos.x += dx * push;
+      e.pos.z += dz * push;
     }
     e.pos.y = terrainHeight(e.pos.x, e.pos.z);
   }
