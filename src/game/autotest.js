@@ -9,12 +9,10 @@
 // prioritises bloomcallers (the summoner dies first), and detours around
 // trunk walls when it stops making progress.
 
-import * as THREE from 'three';
 import {
   WORLD, riverX, gorgeZ, palisadeZ, fractureZ, razorfinHazard,
 } from '../world/heightmap.js';
 import { hasLOS } from '../world/colliders.js';
-import { createPlayer } from '../player/controller.js';
 
 // Waypoint lines south -> north for the three advertised routes. Round 3
 // made the world physically gated, so every route threads: a Palisade gate,
@@ -99,7 +97,7 @@ const BOSS_TARGETABLE = new Set(['coil', 'telegraph', 'strike', 'recover', 'veno
 export function createBot(ctx) {
   // ctx: { sim, startRun } - startRun must put sim into a fresh RUNNING state
   const { sim } = ctx;
-  const { player, weapons, enemyMgr, game } = sim;
+  const { enemyMgr, game } = sim;
 
   function makeIntent(o = {}) {
     return Object.assign({
@@ -111,10 +109,17 @@ export function createBot(ctx) {
     }, o);
   }
 
-  async function runBot(route = 'river', opts = {}) {
+  // route/opts drive one bot's play-through; playerIdx selects WHICH of
+  // sim.players it drives (0 = solo/first coop player, 1 = second coop
+  // player, ...). Solo play never touches player index 1+; coop runs two
+  // of these concurrently against the same sim (see opts.coopSync below).
+  async function runBot(route = 'river', opts = {}, playerIdx = 0) {
     const maxMinutes = opts.maxMinutes ?? 18;
     if (opts.difficulty) sim.setDifficulty(opts.difficulty);
-    ctx.startRun();
+    if (!opts.skipStartRun) ctx.startRun();
+    const player = sim.players[playerIdx];
+    const weapons = sim.weaponsList[playerIdx];
+    const grenades = sim.grenadesList[playerIdx];
     if (typeof document !== 'undefined') {
       if (document.exitPointerLock) document.exitPointerLock();
       const menu = document.getElementById('menu');
@@ -158,11 +163,32 @@ export function createBot(ctx) {
     for (let i = 0; i < maxFrames; i++) {
       const pp = player.p.pos;
 
+      // Test-only hook: lets the caller (playtest.mjs's coop revive gate)
+      // deterministically force this player into bleedout at a known frame,
+      // rather than waiting on unseeded-RNG combat to organically produce
+      // one. Never used outside tests (opts.debugHook is undefined normally).
+      if (opts.debugHook) opts.debugHook(i, player, playerIdx);
+
+      const intent = makeIntent();
+      let target = null; // referenced by the stuck-check below even when dead
+
+      // Coop: while this player is bleeding out or permanently dead,
+      // controller.update() ignores their intent entirely (movement is
+      // frozen) - so skip ALL decision-making below. This matters beyond
+      // just wasted work: the waypoint/unstick state machine (bestWpDist,
+      // slowT, unstickT, consecStuck, detour) is driven by "distance to
+      // waypoint hasn't improved," and a frozen player's distance never
+      // improves - left running, it would count seconds of forced
+      // immobility as being stuck, escalate through the unstick timers,
+      // and eventually commit to a bogus 16m detour before the player can
+      // even move again, corrupting navigation for the rest of the run
+      // (this caused real, reproducible STUCK failures in the coop
+      // down-and-revive gate until this guard was added).
+      if (player.p.alive) {
       // --- target selection with engagement TRIAGE: a runner does not
       // clear the jungle, they clear what is in the way. Fight only what
       // is close, actively attacking, or a bloomcaller (kill on sight -
       // it multiplies). Everything else: keep moving north. ---
-      let target = null;
       let tDist = Infinity;
       let sawBloom = false;
       let sawBoss = false;
@@ -203,7 +229,6 @@ export function createBot(ctx) {
         }
       }
 
-      const intent = makeIntent();
       const st = weapons.state;
       grenadeCd = Math.max(0, grenadeCd - dt);
 
@@ -220,7 +245,7 @@ export function createBot(ctx) {
         player.p.pitch += (wantPitch - player.p.pitch - player.p.kickPitch) * 0.4;
 
         // grenade a clump: 3+ hostiles within 7m of the target, mid-range
-        if (grenadeCd <= 0 && sim.grenades.state.count > 0
+        if (grenadeCd <= 0 && grenades.state.count > 0
           && tDist > 9 && tDist < 24) {
           let clump = 0;
           for (const e of enemyMgr.aliveList()) {
@@ -408,9 +433,47 @@ export function createBot(ctx) {
       } else {
         razorEscapeYaw = null;
       }
+      } // end: if (player.p.alive) - decision-making guard
+
+      // --- coop: a downed teammate outranks everything above. Path to
+      // them and hold interact within revive range (sim.js: updateRevive,
+      // 2m / 4s). Only relevant once there's more than one player. ---
+      if (sim.players.length > 1 && player.p.alive) {
+        let downed = null;
+        for (let oi = 0; oi < sim.players.length; oi++) {
+          if (oi === playerIdx) continue;
+          if (sim.players[oi].p.bleedoutT > 0) { downed = sim.players[oi]; break; }
+        }
+        if (downed) {
+          const rdx = downed.p.pos.x - pp.x;
+          const rdz = downed.p.pos.z - pp.z;
+          const rdist = Math.hypot(rdx, rdz);
+          const wantYaw = Math.atan2(-rdx, -rdz);
+          let dyaw = wantYaw - player.p.yaw;
+          while (dyaw > Math.PI) dyaw -= Math.PI * 2;
+          while (dyaw < -Math.PI) dyaw += Math.PI * 2;
+          player.p.yaw += Math.max(-0.12, Math.min(0.12, dyaw));
+          intent.moveX = 0;
+          intent.moveZ = rdist > 1.5 ? -1 : 0;
+          intent.sprint = rdist > 4 && player.p.stamina > 0.3;
+          intent.interact = rdist <= 2.0;
+          intent.firing = false;
+          intent.fireDown = false;
+          intent.grenadeThrow = false;
+          intent.melee = false;
+        }
+      }
 
       // --- tick the actual game ---
-      sim.step(intent, dt);
+      // Solo: this bot drives sim.step() itself, one call per frame.
+      // Coop: both bots submit their intent to the shared frame barrier;
+      // whichever arrives last performs the single sim.step([...], dt)
+      // call for that frame, and both resume together.
+      if (opts.coopSync) {
+        await opts.coopSync.submitAndWait(playerIdx, intent);
+      } else {
+        sim.step(intent, dt);
+      }
 
       // --- bookkeeping ---
       if (player.p.hp < lastHp) report.dmgTaken += lastHp - player.p.hp;
@@ -421,22 +484,37 @@ export function createBot(ctx) {
       }
       // stuck detection: <2.5m net movement in 10s while trying to move
       // (never fires at the final waypoint - holding the beacon is the goal)
+      // Skipped entirely while this player is bleeding out/dead: standing
+      // still then is CORRECT (controller.update freezes them), not stuck -
+      // and falsely breaking this loop would stop it calling
+      // coopSync.submitAndWait, deadlocking the other bot's coop frame.
       const atBeacon = wpIdx >= wps.length - 1
         && Math.hypot(pp.x - wps[wps.length - 1].x, pp.z - wps[wps.length - 1].z) < 10;
-      stuckRef.t += dt;
-      if (stuckRef.t > 14) {
-        if (!target && !atBeacon
-          && Math.hypot(pp.x - stuckRef.x, pp.z - stuckRef.z) < 2.2) {
-          report.stuck = true;
-          report.stuckAt = { x: Math.round(pp.x), z: Math.round(pp.z), wp: wpIdx };
-          break;
+      if (player.p.alive) {
+        stuckRef.t += dt;
+        if (stuckRef.t > 14) {
+          if (!target && !atBeacon
+            && Math.hypot(pp.x - stuckRef.x, pp.z - stuckRef.z) < 2.2) {
+            report.stuck = true;
+            report.stuckAt = { x: Math.round(pp.x), z: Math.round(pp.z), wp: wpIdx };
+            break;
+          }
+          stuckRef = { x: pp.x, z: pp.z, t: 0 };
         }
+      } else {
         stuckRef = { x: pp.x, z: pp.z, t: 0 };
       }
 
       if (game.state !== 'RUNNING') break;
       if (i % 1200 === 1199) await new Promise((r) => setTimeout(r, 0)); // yield
     }
+
+    // Coop: this bot's loop just ended (WIN/DEAD/STUCK/TIMEOUT - STUCK and
+    // TIMEOUT are per-bot local conditions, not shared game.state, so the
+    // OTHER bot may still be mid-run). Tell the barrier this player is no
+    // longer submitting intents, or the other bot's next submitAndWait()
+    // would wait forever for an intent that will never arrive.
+    if (opts.coopSync) opts.coopSync.leave(playerIdx);
 
     report.result = report.stuck ? 'STUCK'
       : game.state === 'RUNNING' ? 'TIMEOUT' : game.state;
@@ -456,129 +534,61 @@ export function createBot(ctx) {
     return report;
   }
 
-  async function runDualBots(route1 = 'river', route2 = 'ridge', opts = {}) {
-    // Run two bots concurrently on different routes in the SAME sim
-    const difficulty = opts.difficulty || 'easy';
-    if (difficulty) sim.setDifficulty(difficulty);
-    ctx.startRun();
+  return { runBot };
+}
 
-    // Ensure we have 2 players in the sim
-    // (create a second player if needed for headless co-op tests)
-    if (sim.players.length < 2) {
-      const dummyCamera = new THREE.Camera();
-      const player2 = createPlayer(dummyCamera);
-      sim.players.push(player2);
-    }
+// Coop frame barrier: N concurrent runBot() calls share ONE sim, and the
+// whole point of coop is that they share ONE frame loop too - both
+// intents collected, then exactly one sim.step([intent0, intent1, ...], dt)
+// call per frame, not two independent (and therefore double-speed,
+// out-of-sync) steps. Whichever bot's intent arrives LAST each frame is
+// the one that actually calls sim.step(); everyone then proceeds together.
+// Replaces the old runDualBots, which drove its own separate dumb AI
+// instead of reusing runBot.
+// `active` tracks which player indices are still submitting intents each
+// frame. A bot leaves (via leave()) the moment its own runBot loop ends -
+// WIN/DEAD are shared game.state and end every bot's loop on the same
+// frame, but STUCK/TIMEOUT are per-bot local conditions, so one bot can
+// keep running solo after the other drops out. Without leave(), the
+// remaining bot's next submitAndWait() would wait forever for an intent
+// index that will never be submitted again.
+export function createCoopSync(sim, numPlayers, dt) {
+  let intents = new Array(numPlayers).fill(null);
+  const active = new Set();
+  for (let i = 0; i < numPlayers; i++) active.add(i);
+  let arrived = new Set();
+  let waiters = [];
 
-    const wps1 = routeWaypoints(route1);
-    const wps2 = routeWaypoints(route2);
-    const dt = 1 / 60;
-
-    const maxFrames = (opts.maxMinutes || 18) * 60 * 60;
-    const players = sim.players;
-
-    // Track state for each bot
-    const bots = [
-      { player: players[0], wps: wps1, wpIdx: 0, report: { route: route1, alive: 0, extracted: false } },
-      { player: players[1], wps: wps2, wpIdx: 0, report: { route: route2, alive: 0, extracted: false } }
-    ];
-
-    let frameCt = 0;
-    for (let frame = 0; frame < maxFrames; frame++) {
-      // Generate intents for each bot
-      const intents = [];
-      for (let botIdx = 0; botIdx < 2; botIdx++) {
-        const bot = bots[botIdx];
-        const pp = bot.player.p.pos;
-        const wps = bot.wps;
-
-        // Simple waypoint following: move toward current waypoint
-        if (bot.wpIdx < wps.length) {
-          const wp = wps[bot.wpIdx];
-          const dx = wp.x - pp.x;
-          const dz = wp.z - pp.z;
-          const dist = Math.hypot(dx, dz);
-
-          if (dist < 3) {
-            bot.wpIdx++;
-          }
-        }
-
-        const intent = {
-          moveX: 0, moveZ: 0, lookDX: 0, lookDY: 0, sprint: true, jump: false,
-          reload: false, weapon1: false, weapon2: false, weapon3: false,
-          swap: false, interact: false, melee: false,
-          grenadeHold: false, grenadeThrow: false, aim: false,
-          firing: false, fireDown: false,
-        };
-
-        // Move toward next waypoint
-        if (bot.wpIdx < wps.length) {
-          const wp = wps[bot.wpIdx];
-          const dx = wp.x - pp.x;
-          const dz = wp.z - pp.z;
-          const angle = Math.atan2(dx, dz);
-          intent.moveX = Math.sin(angle) * 0.8;
-          intent.moveZ = Math.cos(angle) * 0.8;
-        }
-
-        intents.push(intent);
-      }
-
-      // Step BOTH players in the same frame with a single sim.step() call
-      // sim.step() now accepts intents array [intent0, intent1, ...] for all players
-      sim.step(intents, dt);
-      frameCt++;
-
-      // Update bot alive status AFTER step (so we know if they died this frame)
-      for (let i = 0; i < 2; i++) {
-        bots[i].report.alive = bots[i].player.p.alive ? 1 : 0;
-      }
-
-      // Check extraction for each player
-      const ex = WORLD.extraction;
-      for (let i = 0; i < 2; i++) {
-        const p = bots[i];
-        const pos = p.player.p.pos;
-        const dx = pos.x - ex.x;
-        const dz = pos.z - ex.z;
-        if (dx * dx + dz * dz < ex.radius * ex.radius && p.player.p.alive) {
-          p.report.extracted = true;
-        }
-      }
-
-      // Both alive, both extracted = success
-      if (bots[0].report.extracted && bots[1].report.extracted &&
-          bots[0].player.p.alive && bots[1].player.p.alive) {
-        return {
-          route1, route2, difficulty,
-          result: 'BOTH_EXTRACTED',
-          frameCt,
-          bot1: bots[0].report,
-          bot2: bots[1].report
-        };
-      }
-
-      // If game ended (any player died and is alone), fail
-      if (sim.game.state === 'DEAD' || sim.game.state === 'WIN') {
-        return {
-          route1, route2, difficulty,
-          result: 'FAILED',
-          reason: `game state ${sim.game.state}`,
-          frameCt,
-          bot1: bots[0].report,
-          bot2: bots[1].report
-        };
-      }
-    }
-
-    return {
-      route1, route2, difficulty,
-      result: 'FAILED',
-      bot1: bots[0].report,
-      bot2: bots[1].report
-    };
+  function allActiveArrived() {
+    for (const idx of active) if (!arrived.has(idx)) return false;
+    return true;
   }
 
-  return { runBot, runDualBots };
+  function stepAndRelease() {
+    const arr = [];
+    for (let i = 0; i < numPlayers; i++) arr[i] = intents[i] || {};
+    sim.step(arr, dt);
+    arrived = new Set();
+    intents = new Array(numPlayers).fill(null);
+    const toWake = waiters;
+    waiters = [];
+    for (const resolve of toWake) resolve();
+  }
+
+  return {
+    async submitAndWait(playerIdx, intent) {
+      intents[playerIdx] = intent;
+      arrived.add(playerIdx);
+      if (allActiveArrived()) {
+        stepAndRelease();
+        return;
+      }
+      await new Promise((resolve) => waiters.push(resolve));
+    },
+    leave(playerIdx) {
+      active.delete(playerIdx);
+      arrived.delete(playerIdx);
+      if (active.size > 0 && allActiveArrived()) stepAndRelease();
+    },
+  };
 }
