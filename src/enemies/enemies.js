@@ -157,10 +157,12 @@ export const ENEMY_DEFS = {
 const GLOB_POOL = 14;
 const PLAYER_RADIUS = 0.42;
 
-export function createEnemyManager(scene, playerRef, effects, hooks) {
+export function createEnemyManager(scene, playerHelpers, effects, hooks) {
+  // playerHelpers: { nearestPlayer(pos), players[] }
   // hooks: { damagePlayer(amount, srcPos), onKill(type, pos),
   //          onSummon(pos, threat) -> spawned count (director assist) }
   const enemies = [];
+  const { nearestPlayer, players } = playerHelpers;
   // hpMult set per-run from difficulty; fixNoiseMult written by the sim
   // each step from weather (fog makes hunters track you far worse);
   // bossHp/bossDmg scale only the Miremother
@@ -206,14 +208,15 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
       g.mesh.position.addScaledVector(g.vel, dt);
       const p = g.mesh.position;
       const hitGround = p.y < terrainHeight(p.x, p.z) + 0.1;
-      const toPlayer = _v.subVectors(playerRef.p.pos, p).length();
+      const nearPlayer = nearestPlayer(p);
+      const toPlayer = _v.subVectors(nearPlayer.pos, p).length();
       const directHit = toPlayer < 1.1;
       if (hitGround || directHit || g.age > 6) {
         if (hitGround || directHit) {
           effects.burst(p, 'acid', 10, 4);
           sfxAcidSplat(p);
           const def = ENEMY_DEFS.spitter;
-          const splash = _v.subVectors(playerRef.p.pos, p).length();
+          const splash = _v.subVectors(nearPlayer.pos, p).length();
           if (splash < def.splashRadius) {
             const frac = directHit ? 1 : 1 - splash / def.splashRadius * 0.6;
             hooks.damagePlayer(def.spitDamage * frac, p, 'acid');
@@ -251,7 +254,7 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
     e.losTimer = Math.random() * 0.35;
     e.hasLOS = false;
     e.fix = e.fix || new THREE.Vector3();
-    e.fix.copy(playerRef.p.pos);
+    e.fix.copy(nearestPlayer(e.pos).pos);
     e.fixTimer = 0;
     e.callTimer = 1 + Math.random() * 3;
     e.zigPhase = Math.random() * 10;
@@ -332,8 +335,8 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
     e.hp -= dmg;
     e.flash = 1;
     effects.burst(point, crit ? 'crit' : 'flesh', crit ? 14 : headshot ? 10 : 6, crit ? 4 : 2.6);
-    // getting shot reveals the player exactly
-    e.fix.copy(playerRef.p.pos);
+    // getting shot reveals the nearest player exactly
+    e.fix.copy(nearestPlayer(e.pos).pos);
     // viperblossom wakes on damage
     if (e.type === 'viperblossom' && e.state === 'dormant') {
       e.damageTaken = true;
@@ -355,19 +358,23 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
   }
 
   // Post-move resolution shared by every grounded mover: props push-out,
-  // player separation (no more clipping through the player), ground clamp.
+  // player separation (no more clipping through players), ground clamp.
   function resolveGround(e) {
     pushOut(e.pos, e.def.radius, e.pos.y);
-    const pp = playerRef.p.pos;
-    const dx = e.pos.x - pp.x;
-    const dz = e.pos.z - pp.z;
-    const d2 = dx * dx + dz * dz;
-    const minD = e.def.radius + PLAYER_RADIUS + 0.22;
-    if (d2 < minD * minD && d2 > 1e-6) {
-      const d = Math.sqrt(d2);
-      const push = (minD - d) / d;
-      e.pos.x += dx * push;
-      e.pos.z += dz * push;
+    // separate from all alive players
+    for (const p of players) {
+      if (!p.p.alive) continue;
+      const pp = p.p.pos;
+      const dx = e.pos.x - pp.x;
+      const dz = e.pos.z - pp.z;
+      const d2 = dx * dx + dz * dz;
+      const minD = e.def.radius + PLAYER_RADIUS + 0.22;
+      if (d2 < minD * minD && d2 > 1e-6) {
+        const d = Math.sqrt(d2);
+        const push = (minD - d) / d;
+        e.pos.x += dx * push;
+        e.pos.z += dz * push;
+      }
     }
     e.pos.y = terrainHeight(e.pos.x, e.pos.z);
   }
@@ -437,22 +444,24 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
     if (e.losTimer <= 0) {
       e.losTimer = 0.28 + Math.random() * 0.12;
       const eye = _v.set(e.pos.x, e.pos.y + e.def.eyeH, e.pos.z);
-      const pp = playerRef.p.pos;
+      const nearPlayer = nearestPlayer(e.pos);
+      const pp = nearPlayer.pos;
       e.hasLOS = hasLOS(eye.x, eye.y, eye.z, pp.x, pp.y, pp.z);
     }
     e.fixTimer -= dt;
     if (e.hasLOS) {
-      e.fix.copy(playerRef.p.pos);
+      e.fix.copy(nearestPlayer(e.pos).pos);
       e.fixTimer = 0.5;
     } else if (e.fixTimer <= 0) {
       // hunters re-acquire a noisy fix periodically - they track, not
       // teleport; fog widens the error dramatically (sneaking weather)
       e.fixTimer = 2.4 + Math.random() * 1.2;
       const err = 9 * tuning.fixNoiseMult;
+      const np = nearestPlayer(e.pos);
       e.fix.set(
-        playerRef.p.pos.x + (Math.random() - 0.5) * err,
-        playerRef.p.pos.y,
-        playerRef.p.pos.z + (Math.random() - 0.5) * err
+        np.pos.x + (Math.random() - 0.5) * err,
+        np.pos.y,
+        np.pos.z + (Math.random() - 0.5) * err
       );
     }
   }
@@ -468,7 +477,8 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
   }
 
   function updateProwler(e, dt) {
-    const pp = playerRef.p.pos;
+    const nearPlayer = nearestPlayer(e.pos);
+    const pp = nearPlayer.pos;
     const dist = _v.subVectors(pp, e.pos).length();
     creatureCall(e, dt, dist);
     e.attackCd = Math.max(0, e.attackCd - dt);
@@ -526,7 +536,7 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
   }
 
   function updateSpitter(e, dt) {
-    const pp = playerRef.p.pos;
+    const pp = nearestPlayer(e.pos).pos;
     const dist = _v.subVectors(pp, e.pos).length();
     creatureCall(e, dt, dist);
     e.attackCd = Math.max(0, e.attackCd - dt);
@@ -558,7 +568,7 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
       if (e.stateT >= windup) {
         for (const sac of e.model.refs.sacs) sac.material.emissiveIntensity = 1.6 + e.rage * 0.7;
         _v2.set(e.pos.x, e.pos.y + 1.35, e.pos.z);
-        throwGlob(_v2, playerRef.p.pos);
+        throwGlob(_v2, nearestPlayer(e.pos).pos);
         e.state = 'hunt';
         e.attackCd = spitterCooldown(e);
       }
@@ -566,7 +576,7 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
   }
 
   function updateJuggernaut(e, dt) {
-    const pp = playerRef.p.pos;
+    const pp = nearestPlayer(e.pos).pos;
     const dist = _v.subVectors(pp, e.pos).length();
     creatureCall(e, dt, dist);
     e.attackCd = Math.max(0, e.attackCd - dt);
@@ -590,8 +600,8 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
           hooks.damagePlayer(e.def.strikeDamage, e.pos, 'juggernaut');
           // knockback
           _v2.subVectors(pp, e.pos).setY(0).normalize();
-          playerRef.p.vel.addScaledVector(_v2, 9);
-          playerRef.p.vel.y = 3.5;
+          nearestPlayer(e.pos).vel.addScaledVector(_v2, 9);
+          nearestPlayer(e.pos).vel.y = 3.5;
         }
         e.state = 'hunt';
         e.attackCd = e.def.strikeCooldown;
@@ -620,8 +630,8 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
       if (d2 < 2.6) {
         hooks.damagePlayer(e.def.chargeDamage, e.pos, 'jugg-charge');
         _v2.subVectors(pp, e.pos).setY(0).normalize();
-        playerRef.p.vel.addScaledVector(_v2, 13);
-        playerRef.p.vel.y = 4.5;
+        nearestPlayer(e.pos).vel.addScaledVector(_v2, 13);
+        nearestPlayer(e.pos).vel.y = 4.5;
         e.state = 'hunt';
         e.chargeCd = e.def.chargeCooldown;
         e.attackCd = 1;
@@ -630,7 +640,7 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
         // slammed into a tree - stunned, your window (shoot the boil)
         e.state = 'stunned';
         e.stateT = 0;
-        playerRef.p.camShake = Math.min(1, playerRef.p.camShake + 0.4);
+        nearestPlayer(e.pos).camShake = Math.min(1, nearestPlayer(e.pos).camShake + 0.4);
         effects.burst(_v.set(e.pos.x, e.pos.y + 1.5, e.pos.z), 'wood', 12, 5);
         sfxCreature('juggernaut', e.pos, 1.2);
         e.chargeCd = e.def.chargeCooldown;
@@ -645,7 +655,7 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
   }
 
   function updateStingerwing(e, dt) {
-    const pp = playerRef.p.pos;
+    const pp = nearestPlayer(e.pos).pos;
     const dist = _v.subVectors(pp, e.pos).length();
     creatureCall(e, dt, dist);
     e.attackCd = Math.max(0, e.attackCd - dt);
@@ -701,7 +711,7 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
   }
 
   function updateShrike(e, dt) {
-    const pp = playerRef.p.pos;
+    const pp = nearestPlayer(e.pos).pos;
     const dist = _v.subVectors(pp, e.pos).length();
     creatureCall(e, dt, dist);
 
@@ -758,7 +768,7 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
           if (d2 < 2.1) {
             hooks.damagePlayer(e.def.pounceDamage, e.pos, 'shrike');
             _v2.subVectors(pp, e.pos).setY(0).normalize();
-            playerRef.p.vel.addScaledVector(_v2, 5);
+            nearestPlayer(e.pos).vel.addScaledVector(_v2, 5);
           }
           e.state = 'recover';
           e.stateT = 0;
@@ -786,7 +796,7 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
   }
 
   function updateBloomcaller(e, dt) {
-    const pp = playerRef.p.pos;
+    const pp = nearestPlayer(e.pos).pos;
     const dist = _v.subVectors(pp, e.pos).length();
     creatureCall(e, dt, dist);
     e.bloomCd = Math.max(0, e.bloomCd - dt);
@@ -827,7 +837,7 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
   // committed line, spits venom fans at range, and at 66%/33% hp dives -
   // a foam wake chases you, then she ERUPTS out of the water beneath it.
   function updateMiremother(e, dt) {
-    const pp = playerRef.p.pos;
+    const pp = nearestPlayer(e.pos).pos;
     const dx = pp.x - e.pos.x;
     const dz = pp.z - e.pos.z;
     const distP = Math.hypot(dx, dz);
@@ -933,8 +943,8 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
       if (d2 < 2.6) {
         hooks.damagePlayer(e.def.strikeDamage * tuning.bossDmg, e.pos, 'miremother');
         _v2.subVectors(pp, e.pos).setY(0).normalize();
-        playerRef.p.vel.addScaledVector(_v2, 11);
-        playerRef.p.vel.y = 4;
+        nearestPlayer(e.pos).vel.addScaledVector(_v2, 11);
+        nearestPlayer(e.pos).vel.y = 4;
         e.state = 'recover';
         e.stateT = 0;
       } else if (e.stateT > 0.55 || homeD2 > e.def.leash + 6) {
@@ -959,9 +969,9 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
         _v2.set(e.pos.x + e.facing.x * 1.5, e.pos.y + 0.4, e.pos.z + e.facing.z * 1.5);
         // fan: lead the player, then spread
         _flank.set(
-          pp.x + playerRef.p.vel.x * 0.4 + (e.venomShots - 2) * 2.2,
+          pp.x + nearestPlayer(e.pos).vel.x * 0.4 + (e.venomShots - 2) * 2.2,
           pp.y - 1,
-          pp.z + playerRef.p.vel.z * 0.4 + (e.venomShots - 2) * 1.4
+          pp.z + nearestPlayer(e.pos).vel.z * 0.4 + (e.venomShots - 2) * 1.4
         );
         throwGlob(_v2, _flank);
       }
@@ -1024,11 +1034,11 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
         e.pos.set(e.wakePos.x, waterY + 4.2, e.wakePos.z);
         if (effects) effects.burst(_v.set(e.wakePos.x, waterY + 0.6, e.wakePos.z), 'razor', 26, 9);
         sfxCreature('miremother', e.pos, 1.7);
-        playerRef.p.camShake = Math.min(1, playerRef.p.camShake + 0.6);
+        nearestPlayer(e.pos).camShake = Math.min(1, nearestPlayer(e.pos).camShake + 0.6);
         const pd = Math.hypot(pp.x - e.wakePos.x, pp.z - e.wakePos.z);
         if (pd < 4.4) {
           hooks.damagePlayer(e.def.eruptDamage * tuning.bossDmg, e.pos, 'miremother');
-          playerRef.p.vel.y = 7;
+          nearestPlayer(e.pos).vel.y = 7;
         }
       }
       if (e.stateT >= 1.1) {
@@ -1104,7 +1114,7 @@ export function createEnemyManager(scene, playerRef, effects, hooks) {
   }
 
   function updateViperblossom(e, dt) {
-    const pp = playerRef.p.pos;
+    const pp = nearestPlayer(e.pos).pos;
     const dist = _v.subVectors(pp, e.pos).length();
     e.attackCd = Math.max(0, e.attackCd - dt);
 

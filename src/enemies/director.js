@@ -52,7 +52,8 @@ const SQUADS = [
   { min: 0.88, recipe: [['juggernaut', 1], ['stingerwing', 4]] },
 ];
 
-export function createDirector(enemyMgr, playerRef, opts = {}) {
+export function createDirector(enemyMgr, playerHelpers, opts = {}) {
+  const { furthestNorthPlayer, nearestPlayer } = playerHelpers;
   const d = {
     time: 0,
     heat: 0,          // noise-driven, decays
@@ -75,7 +76,8 @@ export function createDirector(enemyMgr, playerRef, opts = {}) {
   function progressNorth() {
     const a = WORLD.insertion.z;
     const b = WORLD.extraction.z;
-    return clamp((a - playerRef.p.pos.z) / (a - b), 0, 1);
+    const pz = furthestNorthPlayer().pos.z;
+    return clamp((a - pz) / (a - b), 0, 1);
   }
 
   function threat() {
@@ -107,7 +109,7 @@ export function createDirector(enemyMgr, playerRef, opts = {}) {
   // any - the far side gets garrisoned. Gates, sills and fracture ways are
   // all tollgates now.
   function approachedCrossing() {
-    const pp = playerRef.p.pos;
+    const pp = furthestNorthPlayer().pos;
     let best = null;
     let bestD = 75;
     for (const c of CHOKEPOINTS) {
@@ -126,8 +128,9 @@ export function createDirector(enemyMgr, playerRef, opts = {}) {
   // no line of sight, on land, inside the playable area. When the player
   // approaches a gorge crossing, the far bank gets garrisoned.
   function findSpawnPos() {
-    const pp = playerRef.p.pos;
-    const yaw = playerRef.p.yaw;
+    const pdata = furthestNorthPlayer();
+    const pp = pdata.pos;
+    const yaw = pdata.yaw;
     const crossing = approachedCrossing();
     for (let i = 0; i < 16; i++) {
       let x;

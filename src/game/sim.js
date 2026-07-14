@@ -56,6 +56,42 @@ export function createSim({ scene, camera, effects, ui = {} }) {
 
   const player = createPlayer(camera);
 
+  // Multi-player support (H0 refactor): players array.
+  // Solo = players.length === 1. Enemies target nearest player.
+  // Director uses furthest-north player + summed noise.
+  const players = [player];
+
+  function nearestPlayer(pos) {
+    // Return the nearest alive player to pos
+    let nearest = player.p;
+    let minDist = Infinity;
+    for (const p of players) {
+      if (!p.p.alive) continue;
+      const dx = p.p.pos.x - pos.x;
+      const dz = p.p.pos.z - pos.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist < minDist) {
+        minDist = dist;
+        nearest = p.p;
+      }
+    }
+    return nearest;
+  }
+
+  function furthestNorthPlayer() {
+    // Return the alive player with lowest z (furthest north)
+    let furthest = player.p;
+    let minZ = furthest.pos.z;
+    for (const p of players) {
+      if (!p.p.alive) continue;
+      if (p.p.pos.z < minZ) {
+        minZ = p.p.pos.z;
+        furthest = p.p;
+      }
+    }
+    return furthest;
+  }
+
   // --- combat wiring ---
   const weaponHooks = {
     rayEnemies: null,   // installed below
@@ -84,7 +120,7 @@ export function createSim({ scene, camera, effects, ui = {} }) {
   let pickupsRef = null;
   let trapsRef = null;
   const boss = { ref: null, spawned: false, maxHp: 1, name: 'THE MIREMOTHER' };
-  const enemyMgr = createEnemyManager(scene, player, effects, {
+  const enemyMgr = createEnemyManager(scene, { nearestPlayer, players }, effects, {
     damagePlayer,
     onKill(type, pos) {
       game.kills += 1;
@@ -110,7 +146,7 @@ export function createSim({ scene, camera, effects, ui = {} }) {
       director.assistSpawn(pos, director.threat());
     },
   });
-  const director = createDirector(enemyMgr, player);
+  const director = createDirector(enemyMgr, { furthestNorthPlayer, nearestPlayer });
   const weather = createWeather(U);
   director.setWeather(weather);
 
