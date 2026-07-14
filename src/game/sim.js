@@ -62,7 +62,7 @@ export function createSim({ scene, camera, effects, ui = {} }) {
   const players = [player];
 
   function nearestPlayer(pos) {
-    // Return the nearest alive player to pos
+    // Return the nearest alive player state (p) to pos
     let nearest = player.p;
     let minDist = Infinity;
     for (const p of players) {
@@ -77,6 +77,7 @@ export function createSim({ scene, camera, effects, ui = {} }) {
     }
     return nearest;
   }
+
 
   function furthestNorthPlayer() {
     // Return the alive player with lowest z (furthest north)
@@ -107,8 +108,31 @@ export function createSim({ scene, camera, effects, ui = {} }) {
   // damagePlayer with multi-player bleedout logic
   function damagePlayer(amount, srcPos, source = 'unknown', targetPlayer = null) {
     if (game.state !== 'RUNNING') return;
-    // if targetPlayer is specified, damage that player; otherwise damage player 0 (main player)
-    const target = targetPlayer || player;
+
+    // Determine target: explicit target, or nearest alive player for multi-player
+    let target = targetPlayer;
+    if (!target) {
+      if (players.length > 1) {
+        // Multi-player: damage the nearest alive player
+        let nearest = null;
+        let minDist = Infinity;
+        for (const ctrl of players) {
+          if (!ctrl.p.alive) continue;
+          const dx = ctrl.p.pos.x - srcPos.x;
+          const dz = ctrl.p.pos.z - srcPos.z;
+          const dist = Math.hypot(dx, dz);
+          if (dist < minDist) {
+            minDist = dist;
+            nearest = ctrl;
+          }
+        }
+        target = nearest || player;  // fallback to player[0] if no alive players found
+      } else {
+        // Solo play: always damage the only player
+        target = player;
+      }
+    }
+
     if (target.p.alive === false || target.p.bleedoutT > 0) return; // can't damage dead/bleeding players
 
     const scaled = amount * difficulty.playerDamageTaken;
@@ -124,12 +148,12 @@ export function createSim({ scene, camera, effects, ui = {} }) {
         if (p.p.alive && p.p.bleedoutT === 0) aliveCount++;
       }
 
-      if (aliveCount <= 1) {
-        // Last player down = immediate game over
+      if (aliveCount === 0) {
+        // All players down = immediate game over (for solo: 1 player dies)
         game.state = 'DEAD';
         U.onDeath();
       } else {
-        // Enter bleedout state: 45 second crawl before permanent death
+        // Other players are still alive - enter bleedout state
         target.p.bleedoutT = 45;
         U.toast('PLAYER DOWN - 45s UNTIL PERMANENT DEATH', 3.0);
       }
@@ -318,16 +342,17 @@ export function createSim({ scene, camera, effects, ui = {} }) {
   }
 
   // --- revive mechanic: teammate holding E within 2m for 4s revives bleeding player ---
-  function updateRevive(intent, dt) {
-    // This only processes the main player's intent for now
-    // In full co-op, each player would have their own intent
-    for (const bPlayer of players) {
+  function updateRevive(intents, dt) {
+    // intents is now an array of intents (one per player)
+    for (let bIdx = 0; bIdx < players.length; bIdx++) {
+      const bPlayer = players[bIdx];
       if (bPlayer.p.bleedoutT <= 0) continue; // not bleeding out
 
       // Check if any alive teammate is close enough and holding interact
       let revivingTeammate = false;
-      for (const tPlayer of players) {
-        if (tPlayer === bPlayer) continue;
+      for (let tIdx = 0; tIdx < players.length; tIdx++) {
+        const tPlayer = players[tIdx];
+        if (tIdx === bIdx) continue;
         if (!tPlayer.p.alive) continue;
 
         // Check distance
@@ -335,7 +360,9 @@ export function createSim({ scene, camera, effects, ui = {} }) {
         const dz = tPlayer.p.pos.z - bPlayer.p.pos.z;
         const dist = Math.hypot(dx, dz);
 
-        if (dist <= 2.0 && intent.interact) {
+        // Check if this teammate's intent has interact flag
+        const tIntent = intents[tIdx] || {};
+        if (dist <= 2.0 && tIntent.interact) {
           revivingTeammate = true;
           break;
         }
@@ -427,17 +454,36 @@ export function createSim({ scene, camera, effects, ui = {} }) {
 
   // One fixed step of pure simulation. The browser calls this from its
   // render loop; the bot and the headless runner call it in a tight loop.
-  function step(intent, dt) {
+  // MULTI-PLAYER SUPPORT: intents is now an array (one intent per player).
+  // For backward compatibility, a single intent is wrapped in an array.
+  function step(intents, dt) {
     if (game.state !== 'RUNNING') return;
+
+    // Backward compatibility: wrap single intent in array
+    if (!Array.isArray(intents)) {
+      intents = [intents];
+    }
+
     game.time += dt;
     weather.update(dt);
     enemyMgr.tuning.fixNoiseMult = weather.mods().fixNoiseMult;
-    player.update(intent, dt);
+
+    // Update each player's position and collision
+    for (let i = 0; i < players.length; i++) {
+      const pIntent = intents[i] || {}; // use blank intent if not provided
+      players[i].update(pIntent, dt);
+    }
+
     // keep the camera's matrices honest even without a render pass
     // (headless: nobody else calls updateMatrixWorld)
     camera.updateMatrixWorld();
-    weapons.update(intent, dt, game.time);
-    grenades.update(intent, dt);
+
+    // Weapons and grenades are currently singular (only player[0])
+    // Full multi-player would require per-player weapon state
+    weapons.update(intents[0], dt, game.time);
+    grenades.update(intents[0], dt);
+
+    // Shared systems: run once per frame, not per player
     enemyMgr.update(dt);
     director.update(dt);
     pickups.update(dt);
@@ -446,7 +492,7 @@ export function createSim({ scene, camera, effects, ui = {} }) {
     updateBuff(dt);
     updateHazards(dt);
     updateBleedout(dt);
-    updateRevive(intent, dt);
+    updateRevive(intents, dt);  // now passes all intents
     if (game.state === 'RUNNING') updateExtraction(dt);
   }
 

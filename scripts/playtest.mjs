@@ -69,9 +69,13 @@ if (isCoopTest) {
     const rep = await bot.runDualBots(r1, r2, { difficulty: 'easy' });
     rep.wallMs = Date.now() - tRun;
     results.push(rep);
+    const reasonStr = rep.reason ? ` (${rep.reason})` : '';
+    const frameCt = rep.frameCt ? ` frames=${rep.frameCt}` : '';
+    const bot1alive = rep.bot1 ? `bot1.alive=${rep.bot1.alive}` : '';
+    const bot2alive = rep.bot2 ? `bot2.alive=${rep.bot2.alive}` : '';
     console.log(
       `[coop] routes ${r1.padEnd(6)} + ${r2.padEnd(6)} -> ${String(rep.result).padEnd(20)}`
-      + ` [${(rep.wallMs / 1000).toFixed(1)}s wall]`
+      + `${reasonStr}${frameCt} [${bot1alive} ${bot2alive}] [${(rep.wallMs / 1000).toFixed(1)}s wall]`
     );
   }
 } else {

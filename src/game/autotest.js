@@ -9,10 +9,12 @@
 // prioritises bloomcallers (the summoner dies first), and detours around
 // trunk walls when it stops making progress.
 
+import * as THREE from 'three';
 import {
   WORLD, riverX, gorgeZ, palisadeZ, fractureZ, razorfinHazard,
 } from '../world/heightmap.js';
 import { hasLOS } from '../world/colliders.js';
+import { createPlayer } from '../player/controller.js';
 
 // Waypoint lines south -> north for the three advertised routes. Round 3
 // made the world physically gated, so every route threads: a Palisade gate,
@@ -460,22 +462,20 @@ export function createBot(ctx) {
     if (difficulty) sim.setDifficulty(difficulty);
     ctx.startRun();
 
+    // Ensure we have 2 players in the sim
+    // (create a second player if needed for headless co-op tests)
+    if (sim.players.length < 2) {
+      const dummyCamera = new THREE.Camera();
+      const player2 = createPlayer(dummyCamera);
+      sim.players.push(player2);
+    }
+
     const wps1 = routeWaypoints(route1);
     const wps2 = routeWaypoints(route2);
-    let wpIdx1 = 0, wpIdx2 = 0;
     const dt = 1 / 60;
 
     const maxFrames = (opts.maxMinutes || 18) * 60 * 60;
-    const players = sim.players || [sim.player];
-
-    // Bail if we don't have 2 players
-    if (players.length < 2) {
-      return {
-        route1, route2, difficulty,
-        result: 'SKIP',
-        reason: 'Only 1 player in sim, need 2 for coop test'
-      };
-    }
+    const players = sim.players;
 
     // Track state for each bot
     const bots = [
@@ -483,6 +483,7 @@ export function createBot(ctx) {
       { player: players[1], wps: wps2, wpIdx: 0, report: { route: route2, alive: 0, extracted: false } }
     ];
 
+    let frameCt = 0;
     for (let frame = 0; frame < maxFrames; frame++) {
       // Generate intents for each bot
       const intents = [];
@@ -522,13 +523,17 @@ export function createBot(ctx) {
         }
 
         intents.push(intent);
-        bot.report.alive = bot.player.p.alive ? 1 : 0;
       }
 
-      // Step BOTH players in the same frame
-      // Note: sim.step() takes one intent, so we step for each player
-      sim.step(intents[0], dt);  // Player 0
-      sim.step(intents[1], dt);  // Player 1
+      // Step BOTH players in the same frame with a single sim.step() call
+      // sim.step() now accepts intents array [intent0, intent1, ...] for all players
+      sim.step(intents, dt);
+      frameCt++;
+
+      // Update bot alive status AFTER step (so we know if they died this frame)
+      for (let i = 0; i < 2; i++) {
+        bots[i].report.alive = bots[i].player.p.alive ? 1 : 0;
+      }
 
       // Check extraction for each player
       const ex = WORLD.extraction;
@@ -548,6 +553,7 @@ export function createBot(ctx) {
         return {
           route1, route2, difficulty,
           result: 'BOTH_EXTRACTED',
+          frameCt,
           bot1: bots[0].report,
           bot2: bots[1].report
         };
@@ -555,7 +561,14 @@ export function createBot(ctx) {
 
       // If game ended (any player died and is alone), fail
       if (sim.game.state === 'DEAD' || sim.game.state === 'WIN') {
-        break;
+        return {
+          route1, route2, difficulty,
+          result: 'FAILED',
+          reason: `game state ${sim.game.state}`,
+          frameCt,
+          bot1: bots[0].report,
+          bot2: bots[1].report
+        };
       }
     }
 
