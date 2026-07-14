@@ -1,8 +1,30 @@
-# Texture Credits
+# Texture Credits & License Information
 
-All textures are CC0 (public domain) and safe for commercial use, including Steam distribution.
+**All textures in this directory are CC0 Public Domain.** No attribution required. Safe for commercial use, including Steam.
 
-## Poly Haven (polyhaven.com)
+## Status
+
+**Current textures (as of 2026-07-14):** Placeholder test assets validating the loading pipeline.
+**Ready for:** Real CC0 asset substitution - just drop in replacements and game loads them.
+
+---
+
+## Recommended Sources (Both CC0, Both Tested)
+
+### PRIMARY: ambientCG.com (RECOMMENDED)
+- **License:** CC0 (no attribution required, commercial use allowed)
+- **Quality:** Professional grade
+- **Download speed:** Fast CDN
+- **1K Resolution:** ~6-10 MB per texture (well under 25 MB budget for 6 sets)
+- **Search:** https://ambientcg.com/list?q=bark (replace "bark" with material type)
+
+**Direct search URLs:**
+- Bark: https://ambientcg.com/list?q=bark
+- Rock/Stone: https://ambientcg.com/list?q=rock
+- Ground/Mud: https://ambientcg.com/list?q=ground
+- Weathered: https://ambientcg.com/list?q=weathered
+
+### SECONDARY: Poly Haven (polyhaven.com)
 
 Poly Haven offers high-quality, freely usable 3D assets under the CC0 license. Attribution is appreciated but not required.
 
