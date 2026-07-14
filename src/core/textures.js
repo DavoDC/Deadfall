@@ -35,7 +35,7 @@ export async function loadTextureSet(name, basePath) {
     try {
       const maps = await Promise.all([
         loadTexture(`${basePath}diffuse.jpg`),
-        loadTexture(`${basePath}normal.jpg`),
+        loadTexture(`${basePath}normal.png`),
         loadTexture(`${basePath}roughness.jpg`),
         loadTexture(`${basePath}ao.jpg`).catch(() => null), // AO is optional
       ]);
@@ -49,6 +49,17 @@ export async function loadTextureSet(name, basePath) {
       }
       if (maps[2]) maps[2].colorSpace = THREE.LinearSRGBColorSpace;
       if (maps[3]) maps[3].colorSpace = THREE.LinearSRGBColorSpace;
+
+      // World geometry drives UVs directly from world-space coordinates
+      // (see terrain.js "texture bombing" comment), so values routinely
+      // exceed the 0-1 range. Without repeat wrapping the sampler clamps
+      // at the edge and the texture reads as stretched/smeared instead of
+      // tiling. All four maps must agree or edges will visibly mismatch.
+      for (const map of maps) {
+        if (!map) continue;
+        map.wrapS = THREE.RepeatWrapping;
+        map.wrapT = THREE.RepeatWrapping;
+      }
 
       const result = {
         diffuse: maps[0],
@@ -81,17 +92,76 @@ function loadTexture(url) {
   });
 }
 
+// Real CC0 photo-scan diffuse maps read as muddy/desaturated compared to the
+// game's vibrant vertex-colour palette. `strength` below controls how much
+// of that real colour comes through: at 1 the map's own colour is used
+// as-is (multiplied with vertex colour); as it drops toward 0 the map is
+// desaturated toward its own luminance so the underlying vertex-colour hue
+// dominates while the photo's surface grain/detail (the whole point of
+// adding real textures) is preserved. Processed maps are cached per
+// (source texture, strength) so repeated applyTextures() calls don't
+// reprocess pixels.
+const desaturatedCache = new WeakMap();
+
+function desaturatedDiffuse(sourceTexture, strength) {
+  if (strength >= 1) return sourceTexture;
+
+  let byStrength = desaturatedCache.get(sourceTexture);
+  if (!byStrength) {
+    byStrength = new Map();
+    desaturatedCache.set(sourceTexture, byStrength);
+  }
+  const cached = byStrength.get(strength);
+  if (cached) return cached;
+
+  const image = sourceTexture.image;
+  if (!image || !image.width) return sourceTexture; // not decoded yet, fall back
+
+  const canvas = document.createElement('canvas');
+  canvas.width = image.width;
+  canvas.height = image.height;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(image, 0, 0);
+
+  const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const px = data.data;
+  for (let i = 0; i < px.length; i += 4) {
+    const r = px[i];
+    const g = px[i + 1];
+    const b = px[i + 2];
+    // Rec. 709 luma - keeps the photo's lightness variation (the surface
+    // detail) while discarding the hue/saturation that reads as "realistic".
+    const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    px[i] = luma + (r - luma) * strength;
+    px[i + 1] = luma + (g - luma) * strength;
+    px[i + 2] = luma + (b - luma) * strength;
+  }
+  ctx.putImageData(data, 0, 0);
+
+  const processed = new THREE.CanvasTexture(canvas);
+  processed.colorSpace = sourceTexture.colorSpace;
+  processed.wrapS = sourceTexture.wrapS;
+  processed.wrapT = sourceTexture.wrapT;
+  processed.needsUpdate = true;
+
+  byStrength.set(strength, processed);
+  return processed;
+}
+
 /**
  * Apply a loaded texture set to a material. Mutates the material.
  * Uses alpha blending to mix texture with vertex colours.
  * @param {THREE.MeshStandardMaterial} material
  * @param {Object} textures - From loadTextureSet()
- * @param {number} strength - Blend strength 0-1 (default 0.6)
+ * @param {number} strength - Blend strength 0-1 (default 0.6). Lower values
+ *   desaturate the diffuse map toward luminance-only, letting the vertex
+ *   colour palette dominate hue while keeping surface grain. Tune this per
+ *   material if a texture set drags the fantastical palette toward realism.
  */
 export function applyTextures(material, textures, strength = 0.6) {
   if (!textures || !textures.diffuse) return; // No textures loaded
 
-  material.map = textures.diffuse;
+  material.map = desaturatedDiffuse(textures.diffuse, strength);
   material.normalMap = textures.normal;
   material.roughnessMap = textures.roughness;
   if (textures.ao) material.aoMap = textures.ao;
