@@ -27,6 +27,7 @@ import { createRazorfins } from './world/razorfins.js';
 import { sfxCreature } from './audio/engine.js';
 import { createBot } from './game/autotest.js';
 import { createSnapshot } from './game/snapshot.js';
+import { createShotsAPI } from './game/shots.js';
 
 const app = document.getElementById('app');
 
@@ -464,8 +465,9 @@ requestAnimationFrame(tick);
 // --- debug / automated-playtest API (documented in README) ---
 const bot = createBot({ sim, startRun: () => sim.resetRun() });
 const { snapshot } = createSnapshot({ sim, seed: WORLD.seed });
+const shotsAPI = createShotsAPI({ renderer, camera, game, drizzle, effects, motes, applyMood, MOODS, scene });
 window.__deadfall = {
-  version: 3,
+  version: 4,
   sim,
   input, // playtest API: input.state.locked can be forced for headed verification
   game,
@@ -509,5 +511,27 @@ window.__deadfall = {
   },
   snapshot,
   runBot: bot.runBot,
+  shots: shotsAPI,
 };
 console.log('[deadfall] ready (round 2)');
+
+// --- URL param entry point for screenshot rig ---
+// ?shots=1  - boot the game, capture all vantages across all moods, download contact sheet
+const params = new URLSearchParams(window.location.search);
+if (params.has('shots')) {
+  // Start the game silently and trigger capture after a brief delay to let the
+  // world finish rendering.
+  (async () => {
+    try {
+      console.log('[shots] URL param detected - starting automated capture...');
+      sim.resetRun();
+      // Small delay to let initial render settle
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const shots = await window.__deadfall.shots.captureShots();
+      await window.__deadfall.shots.downloadShots(shots);
+      console.log('[shots] capture complete - check your downloads');
+    } catch (err) {
+      console.error('[shots] capture failed:', err);
+    }
+  })();
+}
