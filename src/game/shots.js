@@ -67,7 +67,9 @@ const VANTAGES = [
 
 // Freeze non-deterministic behaviours during screenshot capture.
 // Returns cleanup function to restore original state.
-function freezeForCapture(game, drizzle, effects, motes, camera) {
+// Exported so other capture-based tooling (e.g. legibility.js) can reuse it
+// instead of re-implementing the freeze/restore dance.
+export function freezeForCapture(game, drizzle, effects, motes, camera) {
   const originals = {};
 
   // Freeze game time (no behaviour updates)
@@ -190,7 +192,8 @@ function freezeForCapture(game, drizzle, effects, motes, camera) {
 }
 
 // Place camera at vantage point with deterministic look-at direction.
-function placeCamera(camera, vantage) {
+// Exported for reuse by other capture-based tooling (see freezeForCapture).
+export function placeCamera(camera, vantage) {
   const groundHeight = terrainHeight(vantage.pos.x, vantage.pos.z, WORLD.seed);
   const eyeHeight = 1.66; // player eye height
   camera.position.set(vantage.pos.x, groundHeight + eyeHeight, vantage.pos.z);

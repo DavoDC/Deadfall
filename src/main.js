@@ -28,6 +28,7 @@ import { sfxCreature } from './audio/engine.js';
 import { createBot } from './game/autotest.js';
 import { createSnapshot } from './game/snapshot.js';
 import { createShotsAPI } from './game/shots.js';
+import { checkLegibility } from './game/legibility.js';
 
 const app = document.getElementById('app');
 
@@ -512,6 +513,9 @@ window.__deadfall = {
   snapshot,
   runBot: bot.runBot,
   shots: shotsAPI,
+  // enemy-legibility metric: is a threat readable against dark/dappled
+  // foliage? See game/legibility.js for the difference-imaging method.
+  checkLegibility: (opts = {}) => checkLegibility({ renderer, camera, scene, game, enemyMgr, drizzle, effects, motes, ...opts }),
 };
 console.log('[deadfall] ready (round 2)');
 
