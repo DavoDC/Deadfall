@@ -367,10 +367,130 @@ export async function downloadShots(shots) {
   console.log('[shots] downloads complete');
 }
 
+// Pure pixel-math helper - no canvas/Image dependency, so it is unit-testable
+// under vitest's node environment. Takes a flat RGBA Uint8 array (as returned
+// by CanvasRenderingContext2D.getImageData().data) and its width/height, and
+// returns the objective colour-grading metrics for that image.
+export function computeStats(rgbaUint8, width, height) {
+  const pixelCount = width * height;
+  let sumR = 0, sumG = 0, sumB = 0;
+  let sumSat = 0, sumVal = 0;
+  let muddyCount = 0, vividCount = 0, skyCount = 0, darkCount = 0;
+
+  for (let i = 0; i < pixelCount; i++) {
+    const o = i * 4;
+    const r = rgbaUint8[o];
+    const g = rgbaUint8[o + 1];
+    const b = rgbaUint8[o + 2];
+
+    sumR += r;
+    sumG += g;
+    sumB += b;
+
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const sat = max === 0 ? 0 : (max - min) / max;
+    const val = max / 255;
+
+    sumSat += sat;
+    sumVal += val;
+
+    const isSky = b > 140 && b >= r && b >= g && val > 0.55;
+    if (isSky) skyCount++;
+    if (sat < 0.28 && val > 0.2 && val < 0.75 && !isSky) muddyCount++;
+    if (sat > 0.45) vividCount++;
+    if (val < 0.2) darkCount++;
+  }
+
+  return {
+    meanR: Math.round(sumR / pixelCount),
+    meanG: Math.round(sumG / pixelCount),
+    meanB: Math.round(sumB / pixelCount),
+    meanSat: Number((sumSat / pixelCount).toFixed(3)),
+    meanVal: Number((sumVal / pixelCount).toFixed(3)),
+    pctMuddy: Number(((muddyCount / pixelCount) * 100).toFixed(1)),
+    pctVivid: Number(((vividCount / pixelCount) * 100).toFixed(1)),
+    pctSky: Number(((skyCount / pixelCount) * 100).toFixed(1)),
+    pctDark: Number(((darkCount / pixelCount) * 100).toFixed(1)),
+  };
+}
+
+// Average a list of per-shot stat objects into one aggregate object (used to
+// roll individual shots up into a per-mood summary).
+function averageStats(statsList) {
+  if (!statsList || statsList.length === 0) return null;
+  const keys = Object.keys(statsList[0]);
+  const out = {};
+  for (const key of keys) {
+    const sum = statsList.reduce((acc, s) => acc + s[key], 0);
+    out[key] = Number((sum / statsList.length).toFixed(3));
+  }
+  return out;
+}
+
+// Draw a shot's dataURL to an offscreen canvas (downscaled for speed) and
+// compute its objective colour-grading metrics via computeStats.
+function analyzeOneShot(shot, targetWidth = 240) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = targetWidth / img.width;
+      const w = targetWidth;
+      const h = Math.max(1, Math.round(img.height * scale));
+
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+
+      const { data } = ctx.getImageData(0, 0, w, h);
+      const stats = computeStats(data, w, h);
+      resolve({ mood: shot.mood, name: shot.name, ...stats });
+    };
+    img.onerror = reject;
+    img.src = shot.dataURL;
+  });
+}
+
+// Compute objective colour-grading metrics for a set of captured shots.
+// Returns per-shot stats plus per-mood aggregates (mean of that mood's shots).
+export async function analyzeShots(shots) {
+  if (!shots || shots.length === 0) {
+    console.warn('[shots] no shots to analyze');
+    return { perShot: [], perMood: {} };
+  }
+
+  console.log(`[shots] analyzing ${shots.length} frames...`);
+  const perShot = await Promise.all(shots.map((shot) => analyzeOneShot(shot)));
+
+  const perMood = {};
+  const shotsByMood = {};
+  for (const s of perShot) {
+    if (!shotsByMood[s.mood]) shotsByMood[s.mood] = [];
+    shotsByMood[s.mood].push(s);
+  }
+  for (const [moodKey, moodShots] of Object.entries(shotsByMood)) {
+    perMood[moodKey] = averageStats(moodShots);
+  }
+
+  console.log(`[shots] analysis complete for ${perShot.length} frames`);
+  return { perShot, perMood };
+}
+
+// Convenience: capture then immediately analyze in one call.
+export async function captureAndAnalyze(options = {}) {
+  const shots = await captureShots(options);
+  const analysis = await analyzeShots(shots);
+  return { shots, analysis };
+}
+
 // Wired onto window.__deadfall.shots - the debug API surface
 export function createShotsAPI(options) {
   return {
     captureShots: (opts = {}) => captureShots({ ...options, ...opts }),
     downloadShots,
+    analyzeShots,
+    captureAndAnalyze: (opts = {}) => captureAndAnalyze({ ...options, ...opts }),
   };
 }
