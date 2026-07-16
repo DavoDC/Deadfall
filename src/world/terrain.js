@@ -81,8 +81,11 @@ export function buildTerrain(scene) {
     const z = pos.getZ(i);
     // Combine multiple scales: 0.5 and 2.0 sampling
     const v = hash2(Math.round(x * 0.5), Math.round(z * 0.5), 137);
-    uvs[i * 2] = x * 0.04 + v * 0.5;
-    uvs[i * 2 + 1] = z * 0.04 + (1 - v) * 0.5;
+    // 0.04 -> 0.06: one mud tile per ~17m instead of 25m - at 0.04 the
+    // grain vanished on open ground (mesa top, river banks read as flat
+    // colour fields at gameplay distance)
+    uvs[i * 2] = x * 0.06 + v * 0.5;
+    uvs[i * 2 + 1] = z * 0.06 + (1 - v) * 0.5;
   }
   geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
 
@@ -103,7 +106,7 @@ export function buildTerrain(scene) {
   // Load and apply textures asynchronously (non-blocking)
   loadTextureSet('mud', '/textures/mud/')
     .then((textures) => {
-      applyTextures(mat, textures, 0.6);
+      applyTextures(mat, textures, 0.68);
     })
     .catch(() => {
       // Silently fail - material renders with vertex colour fallback
