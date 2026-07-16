@@ -20,6 +20,7 @@
 //   headMultScale?, crits?: [{ off, r, mult, when? }] }.
 
 import * as THREE from 'three';
+import { dapplify } from '../world/dapple.js';
 
 const geoCache = {};
 function G(key, make) {
@@ -77,6 +78,13 @@ const MAT = {
     color: 0xffe258, emissive: 0xffb818, emissiveIntensity: 2.8, roughness: 0.3,
   }),
 };
+
+// Creatures pass through the canopy light-shafts and light up in them, the
+// same as the world does. This is both correct-looking and load-bearing for
+// legibility: when a shaft brightens the foliage BEHIND an enemy, the enemy
+// brightens with it, so the contrast between them survives the dappling.
+// (Emissive tells - eyes, sacs, boils - are unaffected by lighting.)
+for (const m of Object.values(MAT)) dapplify(m);
 
 function mesh(geo, mat, x, y, z) {
   const m = new THREE.Mesh(geo, mat);

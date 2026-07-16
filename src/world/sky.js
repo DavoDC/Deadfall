@@ -5,6 +5,7 @@
 // round-1 "too dark to see enemies" fix lives here).
 
 import * as THREE from 'three';
+import { updateDappleSun } from './dapple.js';
 
 // Per-run atmosphere moods - same jungle, different fever. Picked at run
 // start; the violet mood also brings glittering drizzle.
@@ -107,6 +108,8 @@ export function buildSky(scene, renderer) {
   sky.name = 'sky';
   scene.add(sky);
 
+  updateDappleSun(ATMOS.sunPos, sun.color, ATMOS.sunIntensity);
+
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -124,6 +127,9 @@ export function buildSky(scene, renderer) {
     sun.intensity = mood.sunIntensity;
     skyMat.uniforms.topColor.value.set(mood.skyTop);
     skyMat.uniforms.horizonColor.value.set(mood.fogColor);
+    // keep the canopy dapple in step with the mood's sun (must not depend
+    // on the rAF loop - the screenshot rig applies moods with rAF paused)
+    updateDappleSun(mood.sunPos, sun.color, mood.sunIntensity);
   }
 
   return { sun, hemi, sky, applyMood };

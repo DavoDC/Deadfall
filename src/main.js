@@ -6,7 +6,8 @@
 import * as THREE from 'three';
 import { WORLD, LANDMARKS, landmarkPos } from './world/heightmap.js';
 import { buildTerrain, buildWater } from './world/terrain.js';
-import { buildSky, trackShadow, MOODS } from './world/sky.js';
+import { buildSky, trackShadow, MOODS, ATMOS } from './world/sky.js';
+import { tickDapple, updateDappleSun, uniforms as dappleUniforms } from './world/dapple.js';
 import { buildVegetation, tickWind, setSwayMult } from './world/vegetation.js';
 import { buildProps } from './world/props.js';
 import { colliderCount } from './world/colliders.js';
@@ -452,6 +453,8 @@ function tick(now) {
 
   if (water.userData.tick) water.userData.tick(now / 1000);
   tickWind(now / 1000);
+  tickDapple(now / 1000);
+  updateDappleSun(ATMOS.sunPos, sun.color, sun.intensity);
   tickProps(dt);
   renderer.render(scene, camera);
 }
@@ -513,6 +516,7 @@ window.__deadfall = {
   snapshot,
   runBot: bot.runBot,
   shots: shotsAPI,
+  dappleUniforms, // live dapple tuning from the console (art grading)
   // enemy-legibility metric: is a threat readable against dark/dappled
   // foliage? See game/legibility.js for the difference-imaging method.
   checkLegibility: (opts = {}) => checkLegibility({ renderer, camera, scene, game, enemyMgr, drizzle, effects, motes, ...opts }),

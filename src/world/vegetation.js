@@ -14,6 +14,7 @@ import { addCylinder } from './colliders.js';
 import { makeRng } from '../core/rng.js';
 import { clamp } from '../core/noise.js';
 import { loadTextureSet, applyTextures } from '../core/textures.js';
+import { dapplify } from './dapple.js';
 
 const swayMats = [];
 let swayMult = 1; // ayahuasca cranks this - the whole jungle writhes
@@ -534,29 +535,31 @@ export function buildVegetation(scene, opts = {}) {
   }
 
   // ---------- materials + meshes ----------
-  const barkMat = new THREE.MeshStandardMaterial({ color: 0x4a3b28, roughness: 1 });
-  const barkMat2 = new THREE.MeshStandardMaterial({ color: 0x554736, roughness: 1 });
+  // Ground-level materials are dapplified: canopy-gap sun shafts play across
+  // terrain, trunks and understory together (see world/dapple.js).
+  const barkMat = dapplify(new THREE.MeshStandardMaterial({ color: 0x4a3b28, roughness: 1 }));
+  const barkMat2 = dapplify(new THREE.MeshStandardMaterial({ color: 0x554736, roughness: 1 }));
   const canopyMat = windify(new THREE.MeshStandardMaterial({
     color: 0xffffff, roughness: 1, flatShading: true,
   }), 0.14);
   const canopyMat2 = windify(new THREE.MeshStandardMaterial({
     color: 0xffffff, roughness: 1, flatShading: true,
   }), 0.2);
-  const snagMat = new THREE.MeshStandardMaterial({ color: 0x6e675c, roughness: 1 });
-  const fernMat = windify(new THREE.MeshStandardMaterial({
+  const snagMat = dapplify(new THREE.MeshStandardMaterial({ color: 0x6e675c, roughness: 1 }));
+  const fernMat = dapplify(windify(new THREE.MeshStandardMaterial({
     color: 0xffffff, roughness: 1, side: THREE.DoubleSide,
-  }), 0.5);
-  const leafMat = windify(new THREE.MeshStandardMaterial({
+  }), 0.5));
+  const leafMat = dapplify(windify(new THREE.MeshStandardMaterial({
     color: 0xffffff, roughness: 1, side: THREE.DoubleSide,
-  }), 0.4);
-  const grassMat = windify(new THREE.MeshStandardMaterial({
+  }), 0.4));
+  const grassMat = dapplify(windify(new THREE.MeshStandardMaterial({
     color: 0xffffff, roughness: 1, side: THREE.DoubleSide,
-  }), 0.6);
-  const rockMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, flatShading: true });
-  const lianaMat = new THREE.MeshStandardMaterial({ color: 0x3c4a26, roughness: 1 });
-  const thicketMat = windify(new THREE.MeshStandardMaterial({
+  }), 0.6));
+  const rockMat = dapplify(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, flatShading: true }));
+  const lianaMat = dapplify(new THREE.MeshStandardMaterial({ color: 0x3c4a26, roughness: 1 }));
+  const thicketMat = dapplify(windify(new THREE.MeshStandardMaterial({
     color: 0xffffff, roughness: 1, side: THREE.DoubleSide,
-  }), 0.22);
+  }), 0.22));
   const warnBloomMat = new THREE.MeshStandardMaterial({
     color: 0xff4fd0, emissive: 0xd0189a, emissiveIntensity: 1.8,
     roughness: 0.5, side: THREE.DoubleSide,

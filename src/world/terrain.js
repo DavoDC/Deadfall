@@ -11,6 +11,7 @@ import {
 import { clamp, lerp, smoothstep } from '../core/noise.js';
 import { hash2 } from '../core/rng.js';
 import { loadTextureSet, applyTextures } from '../core/textures.js';
+import { dapplify } from './dapple.js';
 
 // Fever-dream ground palette, round-3 saturation push (Far Cry New Dawn
 // vibrancy): electric greens, golden dry grass, warm violet-cast rock -
@@ -85,11 +86,11 @@ export function buildTerrain(scene) {
   }
   geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
 
-  const mat = new THREE.MeshStandardMaterial({
+  const mat = dapplify(new THREE.MeshStandardMaterial({
     vertexColors: true,
     roughness: 1,
     metalness: 0,
-  });
+  }));
 
   // Note: Textures will be applied by applyTextures() when they load.
   // Vertex colors are multiplied with the texture to preserve the vibrant palette.
