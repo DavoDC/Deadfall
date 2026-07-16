@@ -133,13 +133,24 @@ export function buildWater(scene) {
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i);
     const z = pos.getZ(i);
-    const depth = WORLD.waterLevel - terrainHeight(x, z);
+    const hC = terrainHeight(x, z);
+    const depth = WORLD.waterLevel - hC;
     if (depth < 0.22) {
-      // sink film just below ground: enough to hide it (terrain writes
-      // depth first), shallow enough that the plane's dive-underground
-      // slope at pool borders stays a thin band instead of a visible
-      // "dune" wall (the old -2.5 drop painted red slopes at the Maw)
-      pos.setY(i, terrainHeight(x, z) - WORLD.waterLevel - 0.45);
+      // Sink the dry film just below ground - deep enough that the linear
+      // plane between grid verts never pokes out of the hillside, shallow
+      // enough that pool borders stay a thin band instead of a visible
+      // "dune" wall (the old fixed -2.5 painted red slopes at the Maw;
+      // a fixed -0.45 poked a giant teal sheet through the mesa cliff).
+      // Slope-adaptive: flat shoreline sinks 0.45, steep ground sinks by
+      // its own per-cell height change plus margin.
+      const cell = WORLD.size / 128;
+      const slope = Math.max(
+        Math.abs(terrainHeight(x + cell, z) - hC),
+        Math.abs(terrainHeight(x - cell, z) - hC),
+        Math.abs(terrainHeight(x, z + cell) - hC),
+        Math.abs(terrainHeight(x, z - cell) - hC)
+      );
+      pos.setY(i, hC - WORLD.waterLevel - (0.45 + slope * 1.3));
       amp[i] = 0;
     } else {
       amp[i] = clamp(depth / 1.2, 0, 1);
