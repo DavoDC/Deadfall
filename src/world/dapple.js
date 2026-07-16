@@ -22,7 +22,13 @@ export const uniforms = {
   // sunbeam hits it (translucency) - pure albedo scaling cannot lift the
   // dark understory, which is exactly where the shafts must read
   uDappleLift: { value: 0.035 },
-  uDappleGain: { value: 1.0 },
+  // 3.0 chosen by measured gain sweep (0/1/2/3/4, 2026-07-17): raises
+  // juggernaut contrast 19.6->31.7 (violet) and 36.8->58.7 (bloom, g4),
+  // prowler/shrike flat within noise, pctDark FALLS in every mood
+  // (bloom 46->37, gold 47->35, violet 50->41), vivid palette held
+  // (violet pctVivid 45.9->42.8 was the worst erosion - acceptable).
+  // Gain 4 looked marginally hotter but ate more violet vividness.
+  uDappleGain: { value: 3.0 },
   uSunSlope: { value: new THREE.Vector2(0, 0) },
   uSunDir: { value: new THREE.Vector3(0, 1, 0) },
   uDappleColor: { value: new THREE.Color(1, 1, 1) },
