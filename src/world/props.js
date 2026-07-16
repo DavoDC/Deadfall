@@ -6,6 +6,8 @@ import * as THREE from 'three';
 import { WORLD, terrainHeight, gorgeZ, palisadeZ, fractureZ } from './heightmap.js';
 import { addCylinder } from './colliders.js';
 import { makeRng } from '../core/rng.js';
+import { loadTextureSet, applyTextures } from '../core/textures.js';
+import { dapplify } from './dapple.js';
 
 // Ruin sites: loot magnets shaping each route, plus staging grounds on the
 // gorge approaches and a final cache before the mesa climb.
@@ -86,8 +88,16 @@ export function buildProps(scene) {
 
   // ---------- ruins ----------
   const rng = makeRng(WORLD.seed + 555);
-  const stoneMat = new THREE.MeshStandardMaterial({ color: 0x62685a, roughness: 1 });
-  const mossMat = new THREE.MeshStandardMaterial({ color: 0x3f5230, roughness: 1 });
+  // Round 4: ruins were flat colour slabs (the pale column + grey boxes at
+  // Ridge Vista / the olive slabs at the rapids altar). Texture + dapple.
+  const stoneMat = dapplify(new THREE.MeshStandardMaterial({ color: 0x62685a, roughness: 1 }));
+  const mossMat = dapplify(new THREE.MeshStandardMaterial({ color: 0x3f5230, roughness: 1 }));
+  loadTextureSet('stone-ruin', '/textures/stone-ruin/')
+    .then((textures) => {
+      applyTextures(stoneMat, textures, 0.6);
+      applyTextures(mossMat, textures, 0.55);
+    })
+    .catch(() => {});
   const blockGeo = new THREE.BoxGeometry(1, 1, 1);
   const blocks = [];
   const mossBlocks = [];
@@ -129,13 +139,20 @@ export function buildProps(scene) {
 
   // ---------- gorge crossing landmarks ----------
   // Each sill gets a physical story so the crossings read from a distance.
-  const barkMat = new THREE.MeshStandardMaterial({ color: 0x5c4430, roughness: 1 });
+  const barkMat = dapplify(new THREE.MeshStandardMaterial({ color: 0x5c4430, roughness: 1 }));
+  loadTextureSet('bark-01', '/textures/bark-01/')
+    .then((textures) => applyTextures(barkMat, textures, 0.65))
+    .catch(() => {});
 
   // FALLEN GIANT (ridge): a colossal trunk lying along the crossing
   {
     const c = WORLD.crossings[2];
     const zg = gorgeZ(c.x);
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 3.4, 46, 12), barkMat);
+    const giantGeo = new THREE.CylinderGeometry(2.6, 3.4, 46, 12);
+    // tile bark along the 46m length so it reads as wood, not smear
+    const guv = giantGeo.attributes.uv;
+    for (let i = 0; i < guv.count; i++) guv.setXY(i, guv.getX(i) * 4, guv.getY(i) * 10);
+    const trunk = new THREE.Mesh(giantGeo, barkMat);
     const hDeck = terrainHeight(c.x, zg);
     trunk.rotation.x = Math.PI / 2; // lie along z (across the gorge)
     trunk.position.set(c.x, hDeck - 1.9, zg); // mostly buried: its back IS the deck
