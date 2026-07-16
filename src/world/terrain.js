@@ -126,6 +126,7 @@ export function buildWater(scene) {
   const pos = geo.attributes.position;
   const wCol = new Float32Array(pos.count * 3);
   const amp = new Float32Array(pos.count);
+  const depthAttr = new Float32Array(pos.count); // 0 shallow edge -> 1 deep
   const cSafe = new THREE.Color(0x25b89a);
   const cBlood = new THREE.Color(0xa01a2e);
   const cw = new THREE.Color();
@@ -134,11 +135,16 @@ export function buildWater(scene) {
     const z = pos.getZ(i);
     const depth = WORLD.waterLevel - terrainHeight(x, z);
     if (depth < 0.22) {
-      pos.setY(i, terrainHeight(x, z) - WORLD.waterLevel - 2.5); // sink film
+      // sink film just below ground: enough to hide it (terrain writes
+      // depth first), shallow enough that the plane's dive-underground
+      // slope at pool borders stays a thin band instead of a visible
+      // "dune" wall (the old -2.5 drop painted red slopes at the Maw)
+      pos.setY(i, terrainHeight(x, z) - WORLD.waterLevel - 0.45);
       amp[i] = 0;
     } else {
       amp[i] = clamp(depth / 1.2, 0, 1);
     }
+    depthAttr[i] = clamp(depth / 2.5, 0, 1);
     const dMaw = Math.hypot(x - WORLD.maw.x, z - WORLD.maw.z);
     const blood = Math.max(
       razorfinHazard(x, z),
@@ -150,20 +156,84 @@ export function buildWater(scene) {
     wCol[i * 3 + 2] = cw.b;
   }
   geo.setAttribute('color', new THREE.BufferAttribute(wCol, 3));
+  geo.setAttribute('aDepth', new THREE.BufferAttribute(depthAttr, 1));
 
   const mat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     vertexColors: true,
     transparent: true,
-    opacity: 0.78,
-    roughness: 0.3,
-    metalness: 0.1,
+    opacity: 1, // alpha is fully shader-driven (depth + fresnel), see below
+    roughness: 0.16,
+    metalness: 0.05,
     // DoubleSide + no depth-write: the surface stays visible from BELOW
     // (round-1 bug: wading the deep channel put the camera under the
     // single-sided plane and the water "vanished")
     side: THREE.DoubleSide,
     depthWrite: false,
   });
+
+  // Round 4 "kill the flat slab": animated procedural ripple normals (sun
+  // specular glints), depth-driven transparency/colour (shallow edges read
+  // thin and bright, the channel reads deep and dark) and a fresnel term
+  // (grazing angles go reflective-opaque - the classic water cue).
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uWTime = { value: 0 };
+    mat.userData.shader = shader;
+
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `#include <common>
+        attribute float aDepth;
+        varying float vWDepth;
+        varying vec3 vWaterWP;`)
+      .replace('#include <project_vertex>', `#include <project_vertex>
+        vWDepth = aDepth;
+        vWaterWP = (modelMatrix * vec4(transformed, 1.0)).xyz;`);
+
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>
+        uniform float uWTime;
+        varying float vWDepth;
+        varying vec3 vWaterWP;
+        float waterHash(vec2 p) {
+          return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+        }
+        float waterNoise(vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = fract(p);
+          vec2 u = f * f * (3.0 - 2.0 * f);
+          return mix(
+            mix(waterHash(i), waterHash(i + vec2(1.0, 0.0)), u.x),
+            mix(waterHash(i + vec2(0.0, 1.0)), waterHash(i + vec2(1.0, 1.0)), u.x),
+            u.y);
+        }
+        // two scrolling octaves - broad swell + fine chop
+        float rippleHeight(vec2 p) {
+          return waterNoise(p * 0.35 + uWTime * vec2(0.10, 0.04)) * 0.6
+               + waterNoise(p * 1.30 - uWTime * vec2(0.07, 0.12)) * 0.4;
+        }`)
+      .replace('#include <normal_fragment_begin>', `#include <normal_fragment_begin>
+        {
+          // finite-difference gradient of the ripple field -> world normal
+          vec2 wp = vWaterWP.xz;
+          float e = 0.35;
+          float h0 = rippleHeight(wp);
+          float hx = rippleHeight(wp + vec2(e, 0.0));
+          float hz = rippleHeight(wp + vec2(0.0, e));
+          // calm shallow edges, lively deep channel
+          float k = 2.0 * mix(0.35, 1.0, vWDepth);
+          vec3 nW = normalize(vec3(-(hx - h0) * k / e, 1.0, -(hz - h0) * k / e));
+          nW.y *= gl_FrontFacing ? 1.0 : -1.0; // seen from underwater
+          normal = normalize((viewMatrix * vec4(nW, 0.0)).xyz);
+          // depth-based colour + alpha: thin bright edges, deep dark water
+          // (lives here, not color_fragment, because 'normal' only exists
+          // from normal_fragment_begin onward - chunk order matters)
+          diffuseColor.rgb *= mix(0.95, 0.52, vWDepth);
+          float wAlpha = mix(0.38, 0.84, vWDepth);
+          vec3 wViewDir = normalize(vViewPosition);
+          float wFres = pow(1.0 - saturate(dot(wViewDir, normal)), 3.0);
+          diffuseColor.a = clamp(wAlpha + wFres * 0.28, 0.0, 0.9);
+        }`);
+  };
   const mesh = new THREE.Mesh(geo, mat);
   mesh.position.y = WORLD.waterLevel;
   mesh.name = 'water';
@@ -173,6 +243,7 @@ export function buildWater(scene) {
   // depth-scaled so puddle edges hold still instead of pulsing
   const base = geo.attributes.position.array.slice();
   mesh.userData.tick = (t) => {
+    if (mat.userData.shader) mat.userData.shader.uniforms.uWTime.value = t;
     const arr = geo.attributes.position.array;
     for (let i = 0, v = 0; i < arr.length; i += 3, v++) {
       if (amp[v] === 0) continue;
