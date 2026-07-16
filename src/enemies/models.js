@@ -65,9 +65,16 @@ const MAT = {
   }),
   // shrike: magenta wraith
   shrikeFur: new THREE.MeshStandardMaterial({ color: 0x571a4e, roughness: 0.85 }),
-  shrikeChest: new THREE.MeshStandardMaterial({ color: 0xd84a9a, roughness: 0.7 }),
+  // chest self-glow + hotter stripe (round 4): the dark wraith was the one
+  // archetype whose contrast DROPPED under dappled light in the violet
+  // mood (N=12 probe: 22.9 -> 13.9) - shafts brighten the foliage ring
+  // around it while the near-black fur stays dark. Emissive tells are
+  // lighting-independent, so they hold through the dapple.
+  shrikeChest: new THREE.MeshStandardMaterial({
+    color: 0xd84a9a, emissive: 0x8a1a5e, emissiveIntensity: 0.9, roughness: 0.7,
+  }),
   shrikeStripe: new THREE.MeshStandardMaterial({
-    color: 0x64f0c8, emissive: 0x2ac89a, emissiveIntensity: 2.4, roughness: 0.4,
+    color: 0x64f0c8, emissive: 0x2ac89a, emissiveIntensity: 3.4, roughness: 0.4,
   }),
   // bloomcaller: living orchid
   bloomStalk: new THREE.MeshStandardMaterial({ color: 0x2e6a34, roughness: 0.9 }),
