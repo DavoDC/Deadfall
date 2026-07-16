@@ -59,10 +59,22 @@ export function setSwayMult(m) {
 
 // ---------- geometry builders (shared by all instances of a species) ----------
 
+// Tile trunk UVs so bark detail reads at gameplay distance. Cylinder UVs
+// span 0-1 over the whole surface: on a 15m trunk that stretches the bark
+// texture 15m per tile - invisible mush at mid-distance (the round-4
+// baseline's "solid grey columns" complaint). RepeatWrapping is already on.
+function tileUV(g, uRep, vRep) {
+  const uv = g.attributes.uv;
+  for (let i = 0; i < uv.count; i++) {
+    uv.setXY(i, uv.getX(i) * uRep, uv.getY(i) * vRep);
+  }
+  return g;
+}
+
 function bigTreeTrunkGeo() {
   const g = new THREE.CylinderGeometry(0.42, 1.15, 15, 7);
   g.translate(0, 7.5, 0);
-  return g;
+  return tileUV(g, 2, 5);
 }
 
 function bigTreeCanopyGeo() {
@@ -83,7 +95,7 @@ function bigTreeCanopyGeo() {
 function midTreeTrunkGeo() {
   const g = new THREE.CylinderGeometry(0.2, 0.4, 8.5, 6);
   g.translate(0, 4.25, 0);
-  return g;
+  return tileUV(g, 1.5, 3.5);
 }
 
 function midTreeCanopyGeo() {
@@ -537,8 +549,10 @@ export function buildVegetation(scene, opts = {}) {
   // ---------- materials + meshes ----------
   // Ground-level materials are dapplified: canopy-gap sun shafts play across
   // terrain, trunks and understory together (see world/dapple.js).
-  const barkMat = dapplify(new THREE.MeshStandardMaterial({ color: 0x4a3b28, roughness: 1 }));
-  const barkMat2 = dapplify(new THREE.MeshStandardMaterial({ color: 0x554736, roughness: 1 }));
+  // warmed + saturated toward the palette: the old 0x4a3b28/0x554736 read
+  // as uniform GREY columns at mid-distance under the desaturated bark map
+  const barkMat = dapplify(new THREE.MeshStandardMaterial({ color: 0x6b4526, roughness: 1 }));
+  const barkMat2 = dapplify(new THREE.MeshStandardMaterial({ color: 0x715237, roughness: 1 }));
   const canopyMat = windify(new THREE.MeshStandardMaterial({
     color: 0xffffff, roughness: 1, flatShading: true,
   }), 0.14);
