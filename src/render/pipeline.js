@@ -20,6 +20,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 
 // Display-space grade. Replicates the retired CSS filter exactly
 // (saturate(1.3) contrast(1.04), CSS luminance weights, sRGB space) so the
@@ -92,13 +93,26 @@ export function createPipeline({ renderer, scene, camera }) {
   const outputPass = new OutputPass();
   const gradePass = new ShaderPass(GradeShader);
 
+  // Bloom - restrained, HDR-thresholded. Only pixels that survive the
+  // >1.0 luminance cut glow: emissive tells (enemy eyes, sunspires,
+  // medusae, the beacon, weapon cells), sun-struck water glints and the
+  // brightest sky. Foliage and ground never haze. Internally renders a
+  // 5-level half-res mip chain, so cost is fill-cheap.
+  const bloomPass = new UnrealBloomPass(
+    new THREE.Vector2(Math.round(size.x / 2), Math.round(size.y / 2)),
+    0.55,  // strength - a glow, not a fog
+    0.35,  // radius
+    1.0    // threshold (HDR: only >1.0 luminance blooms)
+  );
+
   composer.addPass(renderPass);
+  composer.addPass(bloomPass);
   composer.addPass(outputPass);
   composer.addPass(gradePass); // display-space: must run after OutputPass
 
   const pipeline = {
     composer,
-    passes: { render: renderPass, output: outputPass, grade: gradePass },
+    passes: { render: renderPass, bloom: bloomPass, output: outputPass, grade: gradePass },
     enabled: true,
 
     render() {
