@@ -35,6 +35,7 @@ const GradeShader = {
     uCon: { value: 1.04 },
     uVig: { value: 0.16 },      // vignette strength (0 disables)
     uVigStart: { value: 0.62 }, // distance from centre where falloff begins
+    uSplit: { value: 1.0 },     // split-tone strength (0 disables)
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -49,6 +50,7 @@ const GradeShader = {
     uniform float uCon;
     uniform float uVig;
     uniform float uVigStart;
+    uniform float uSplit;
     varying vec2 vUv;
 
     float gradeHash(vec2 p) {
@@ -63,6 +65,16 @@ const GradeShader = {
       c = mix(vec3(l), c, uSat);
       // contrast about mid-grey (CSS parity)
       c = (c - 0.5) * uCon + 0.5;
+      // split-tone: teal-leaning shadows, warm-leaning highlights - the
+      // final cinematic unifier. Deliberately tiny (+-0.02) so the three
+      // moods keep their identities; it reads as "graded", not "tinted".
+      float sl = dot(c, vec3(0.2126, 0.7152, 0.0722));
+      vec3 splitTint = mix(
+        vec3(-0.018, 0.006, 0.024),   // shadows: cool teal
+        vec3(0.022, 0.008, -0.018),   // highlights: warm gold
+        smoothstep(0.12, 0.85, sl)
+      );
+      c += splitTint * uSplit;
       // gentle cinematic vignette - never near the centre where enemies
       // (and the legibility probe) live
       float d = distance(vUv, vec2(0.5)) * 1.4142;
