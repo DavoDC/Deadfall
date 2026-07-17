@@ -25,7 +25,6 @@
 
 import * as THREE from 'three';
 import { terrainHeight, WORLD } from '../world/heightmap.js';
-import { ROOSTS } from '../world/roosts.js';
 
 // ---------------------------------------------------------------------------
 // Authoring helpers (module-load time, deterministic from the world seed)
@@ -40,19 +39,10 @@ function gy(x, z, dy = 0) {
 // water surface (base level - flood rise is applied live at seek time)
 const WATER_Y = WORLD.waterLevel;
 
-// The crown perch used for the flood-peak shot: the roost crown nearest
-// the gorge heart on the east bank. ROOSTS is computed deterministically
-// from the world seed, so this is stable run to run.
-function pickFloodPerch() {
-  let best = null;
-  let bestD = Infinity;
-  for (const r of ROOSTS) {
-    const d = Math.hypot(r.top.x - 40, r.top.z + 60);
-    if (d < bestD) { bestD = d; best = r; }
-  }
-  return best ? best.top : { x: 40, y: gy(40, -60, 8), z: -60 };
-}
-const PERCH = pickFloodPerch();
+// Round 5B storyboard pass: several shots below use plain world-space
+// numbers instead of gy() offsets. Those keys were graded on captured
+// stills (docs/trailer-storyboard-2026-07-18.jpg) and the buried-camera
+// unit test guards them against future heightmap tweaks.
 
 // ---------------------------------------------------------------------------
 // THE SHOT TABLE - the trailer. Every number here is a creative decision.
@@ -90,9 +80,12 @@ export const SHOTS = [
     mood: 'violet',
     fov: 66,
     cam: {
+      // Graded on stills: the first cut was buried inside a leaf mass.
+      // This vantage stands in the open glade and looks SW down an avenue
+      // of glowing spire-caps with medusae behind.
       keys: [
-        { u: 0, pos: [-126, gy(-126, 94, 1.3), 94], look: [-100, gy(-100, 62, 1.2), 62] },
-        { u: 1, pos: [-114, gy(-114, 82, 1.6), 82], look: [-96, gy(-96, 58, 1.5), 58] },
+        { u: 0, pos: [-104, 0.6, 84], look: [-118, -1.2, 66] },
+        { u: 1, pos: [-106, 0.9, 80], look: [-120, -1.0, 64] },
       ],
     },
   },
@@ -117,7 +110,9 @@ export const SHOTS = [
     dur: 5.5,
     mood: 'gold',
     fov: 52,
-    orbit: { cx: 30, cz: 120, r: 7.5, h: 1.0, a0: 2.4, a1: 3.6, lookY: 1.0 },
+    // r/h graded on stills: at r7.5/h1.0 the camera sat behind deadfall
+    // shards and the subject vanished; 9.5/3.4 clears the undergrowth.
+    orbit: { cx: 30, cz: 120, r: 9.5, h: 3.4, a0: 2.4, a1: 3.6, lookY: 1.0 },
     cast: [
       { type: 'prowler', x: 30, z: 120, heading: 2.8, speed: 0, walkRate: 7.5, scale: 1.05 },
     ],
@@ -130,16 +125,19 @@ export const SHOTS = [
     mood: 'gold',
     fov: 70,
     pov: true,
+    // Graded on stills: the original lane at x=0 was riverbed - the camera
+    // sat under the water plane. Moved to the dry meadow shelf at x=30;
+    // the pack now advances TOWARD the gun (heading 0 walks +z).
     cam: {
       keys: [
-        { u: 0, pos: [0, gy(0, 60, 1.66), 60], look: [0, gy(0, 38, 1.4), 38] },
-        { u: 1, pos: [0, gy(0, 53, 1.66), 53], look: [0, gy(0, 38, 1.4), 38] },
+        { u: 0, pos: [30, 2.4, 132], look: [30, 0.9, 112] },
+        { u: 1, pos: [30, 2.4, 126], look: [30, 0.9, 112] },
       ],
     },
     cast: [
-      { type: 'juggernaut', x: 0, z: 38, heading: Math.PI, speed: 1.6, walkRate: 6.0 },
-      { type: 'prowler', x: -7, z: 44, heading: Math.PI + 0.25, speed: 2.6, walkRate: 9.0 },
-      { type: 'prowler', x: 8, z: 46, heading: Math.PI - 0.22, speed: 2.4, walkRate: 9.0 },
+      { type: 'juggernaut', x: 30, z: 114, heading: 0, speed: 1.4, walkRate: 6.0 },
+      { type: 'prowler', x: 24, z: 118, heading: 0.25, speed: 2.6, walkRate: 9.0 },
+      { type: 'prowler', x: 37, z: 120, heading: -0.22, speed: 2.4, walkRate: 9.0 },
     ],
     cues: [
       { t: 1.3, castIdx: 0 },
@@ -156,10 +154,13 @@ export const SHOTS = [
     mood: 'gold',
     fov: 74,
     flood: { base: 2.0, rate: 1.8 },
+    // Graded on stills: the gorge-lip keys were riverbed (underwater).
+    // Now a low aerial skim ~6m over the channel, tracking west as the
+    // red telegraph sweeps down it. WATER_Y-relative, not terrain.
     cam: {
       keys: [
-        { u: 0, pos: [14, gy(14, -48, 2.2), -48], look: [14, gy(14, -180, -2), -180] },
-        { u: 1, pos: [14, gy(14, -58, 1.8), -58], look: [14, gy(14, -180, -4), -180] },
+        { u: 0, pos: [92, WATER_Y + 6.2, -40], look: [0, WATER_Y + 0.7, -82] },
+        { u: 1, pos: [72, WATER_Y + 7.7, -44], look: [-10, WATER_Y + 1.2, -84] },
       ],
     },
   },
@@ -188,10 +189,13 @@ export const SHOTS = [
     mood: 'gold',
     fov: 74,
     flood: { base: 40.0, rate: 1.0 },
+    // Graded on stills: the roost-perch start put the lens AT the flood
+    // surface behind a trunk. Now an aerial lift-off over the east bank -
+    // drowned canopy crowns breaking a sun-glinted blood sheet.
     cam: {
       keys: [
-        { u: 0, pos: [PERCH.x, PERCH.y + 1.6, PERCH.z], look: [-180, WATER_Y + 9, -80] },
-        { u: 1, pos: [PERCH.x + 4, PERCH.y + 7.0, PERCH.z + 4], look: [-200, WATER_Y + 9, -70] },
+        { u: 0, pos: [-16, 12, -70], look: [-176, WATER_Y + 9, -92] },
+        { u: 1, pos: [-10, 26, -63], look: [-196, WATER_Y + 9, -78] },
       ],
     },
   },
@@ -202,10 +206,13 @@ export const SHOTS = [
     dur: 4.5,
     mood: 'violet',
     fov: 62,
+    // Graded on stills: from the skirt the spire was out of frame. Pulled
+    // back SW so the whole spike silhouettes against the violet sky over
+    // dark rock outcrops.
     cam: {
       keys: [
-        { u: 0, pos: [168, gy(168, -118, 9), -118], look: [196, gy(196, -96, 30), -96] },
-        { u: 1, pos: [176, gy(176, -128, 12), -128], look: [196, gy(196, -96, 26), -96] },
+        { u: 0, pos: [164, 21, -128], look: [196, 46, -96] },
+        { u: 1, pos: [170, 24, -134], look: [196, 42, -96] },
       ],
     },
   },
@@ -215,10 +222,14 @@ export const SHOTS = [
     dur: 6.0,
     mood: 'violet',
     fov: 70,
+    // Graded on stills: every northern vantage is walled by thickets and
+    // the rim hill buried three attempts. The open corridor is the mesa
+    // stair on the SE - descend along it into the lair: monolith stones,
+    // tusk arcs, the Miremother at the waterline.
     cam: {
       keys: [
-        { u: 0, pos: [40, gy(40, -266, 9), -266], look: [60, WATER_Y + 1, -320] },
-        { u: 1, pos: [50, gy(50, -282, 4), -282], look: [62, WATER_Y + 1, -322] },
+        { u: 0, pos: [70, 26, -294], look: [40, -4, -264] },
+        { u: 1, pos: [64, 19, -288], look: [38, -3, -260] },
       ],
     },
   },
@@ -229,10 +240,13 @@ export const SHOTS = [
     dur: 5.0,
     mood: 'gold',
     fov: 74,
+    // Graded on stills: shooting from the mesa top was the flat frame the
+    // round brief warned about. Now from low canyon ground NW, rising -
+    // the mesa and its beacon column tower against the burnt sky.
     cam: {
       keys: [
-        { u: 0, pos: [86, gy(86, -290, 3), -290], look: [86, gy(86, -340, 14), -340] },
-        { u: 1, pos: [78, gy(78, -274, 20), -274], look: [86, gy(86, -340, 12), -340] },
+        { u: 0, pos: [30, 5, -270], look: [86, 30, -308] },
+        { u: 1, pos: [34, 8, -274], look: [86, 28, -308] },
       ],
     },
   },
