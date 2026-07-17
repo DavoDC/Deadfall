@@ -30,7 +30,7 @@ function G(key, make) {
 
 const MAT = {
   // prowler: deep iridescent indigo + coral stripes
-  prowlerHide: new THREE.MeshStandardMaterial({ color: 0x2a2557, roughness: 0.7, metalness: 0.15 }),
+  prowlerHide: new THREE.MeshStandardMaterial({ color: 0x37306e, roughness: 0.7, metalness: 0.15 }),
   prowlerStripe: new THREE.MeshStandardMaterial({
     color: 0xff6a5e, emissive: 0xd23a30, emissiveIntensity: 0.9, roughness: 0.6,
   }),
@@ -105,7 +105,7 @@ function mesh(geo, mat, x, y, z) {
 // ring is what makes it read at 25m through fog, the size sells character.
 const SOCKET_MAT = new THREE.MeshStandardMaterial({ color: 0x0e0b08, roughness: 1 });
 const PUPIL_MAT = new THREE.MeshStandardMaterial({ color: 0x14060a, roughness: 0.4 });
-function eye(r, irisMat, x, y, z, fwdZ = -1) {
+function eye(r, irisMat, x, y, z, fwdZ = -1, slit = false) {
   const g = new THREE.Group();
   const socket = new THREE.Mesh(G(`eyeSock${r}`, () => {
     const s = new THREE.SphereGeometry(r * 1.35, 8, 6);
@@ -120,6 +120,7 @@ function eye(r, irisMat, x, y, z, fwdZ = -1) {
   const pupil = new THREE.Mesh(G(`eyePup${r}`, () => new THREE.SphereGeometry(r * 0.4, 6, 5)), PUPIL_MAT);
   pupil.position.z = fwdZ * r * 1.15;
   pupil.castShadow = false;
+  if (slit) pupil.scale.set(0.45, 2.1, 1); // vertical cat-slit - menace, not googly
   g.add(pupil);
   g.position.set(x, y, z);
   return g;
@@ -167,26 +168,100 @@ export function buildProwler() {
     g.add(stripe);
   }
 
-  const head = mesh(G('prHead', () => new THREE.BoxGeometry(0.3, 0.26, 0.38)), MAT.prowlerHide, 0, 0.74, -0.62);
+  // neck wedge: the head no longer floats off the pill - it grows out of it
+  const neck = mesh(G('prNeck', () => {
+    const n = new THREE.CylinderGeometry(0.14, 0.2, 0.3, 7);
+    n.rotateX(Math.PI / 2 - 0.5);
+    return n;
+  }), MAT.prowlerHide, 0, 0.7, -0.48);
+  g.add(neck);
+  const head = mesh(G('prHead', () => {
+    const h = new THREE.BoxGeometry(0.3, 0.26, 0.38);
+    // taper the muzzle end so the skull reads feline, not brick
+    const pos = h.getAttribute('position');
+    for (let i = 0; i < pos.count; i++) {
+      if (pos.getZ(i) < -0.1) {
+        pos.setX(i, pos.getX(i) * 0.72);
+        pos.setY(i, pos.getY(i) * 0.8 + 0.01);
+      }
+    }
+    h.computeVertexNormals();
+    return h;
+  }), MAT.prowlerHide, 0, 0.74, -0.62);
   g.add(head);
   // jaw sits flush under the muzzle now (was floating), coral for contrast
-  const jaw = mesh(G('prJaw', () => new THREE.BoxGeometry(0.24, 0.08, 0.28)), MAT.prowlerStripe, 0, 0.645, -0.63);
+  const jaw = mesh(G('prJaw', () => new THREE.BoxGeometry(0.2, 0.08, 0.28)), MAT.prowlerStripe, 0, 0.645, -0.63);
   g.add(jaw);
-  // big ember cat-eyes in dark sockets + ear cones: the face READS now
-  const eyeL = eye(0.075, MAT.emberEye, -0.095, 0.79, -0.79);
-  const eyeR = eye(0.075, MAT.emberEye, 0.095, 0.79, -0.79);
+  // coral throat blaze: bright emissive counter-shade under the chin. It is
+  // load-bearing for legibility - the slit-eye face pass shrank the bright
+  // pixel area and the contrast probe dipped below band without it.
+  const blaze = mesh(G('prBlaze', () => {
+    const b = new THREE.SphereGeometry(0.14, 7, 6);
+    b.scale(1, 0.8, 1.4);
+    return b;
+  }), MAT.prowlerStripe, 0, 0.56, -0.5);
+  blaze.castShadow = false;
+  g.add(blaze);
+  // bared fangs at the jaw's leading edge - predator, not pet
+  const fangGeo = G('prFang', () => new THREE.ConeGeometry(0.022, 0.09, 5));
+  for (const ex of [-0.07, 0.07]) {
+    const fang = mesh(fangGeo, MAT.juggPlate, ex, 0.63, -0.76);
+    fang.rotation.x = Math.PI; // point down
+    g.add(fang);
+  }
+  // ember cat-eyes with SLIT pupils, tucked under a coral brow ridge that
+  // reads against the dark head - glare, not googly (round-5 face pass)
+  const eyeL = eye(0.062, MAT.emberEye, -0.082, 0.775, -0.775, -1, true);
+  const eyeR = eye(0.062, MAT.emberEye, 0.082, 0.775, -0.775, -1, true);
+  eyeL.rotation.z = -0.22; // slant outer corners down: angry, feline
+  eyeR.rotation.z = 0.22;
   g.add(eyeL, eyeR);
+  const browGeo = G('prBrow', () => new THREE.BoxGeometry(0.13, 0.045, 0.14));
+  for (const ex of [-0.08, 0.08]) {
+    const brow = mesh(browGeo, MAT.prowlerStripe, ex, 0.845, -0.76);
+    brow.rotation.z = ex > 0 ? -0.3 : 0.3; // V-angle over the eyes
+    brow.rotation.x = -0.2;
+    brow.castShadow = false;
+    g.add(brow);
+  }
   const earGeo = G('prEar', () => new THREE.ConeGeometry(0.06, 0.14, 5));
-  for (const ex of [-0.1, 0.1]) {
-    const ear = mesh(earGeo, MAT.prowlerHide, ex, 0.9, -0.52);
-    ear.rotation.x = -0.25;
+  for (const ex of [-0.11, 0.11]) {
+    const ear = mesh(earGeo, MAT.prowlerHide, ex, 0.9, -0.5);
+    ear.rotation.x = -0.35;
+    ear.rotation.z = ex > 0 ? -0.2 : 0.2;
     g.add(ear);
+  }
+
+  // shoulder + haunch muscle masses - breaks the pill silhouette
+  const shoulderGeo = G('prShoulder', () => {
+    const s = new THREE.SphereGeometry(0.2, 7, 6);
+    s.scale(1, 1.15, 1.2);
+    return s;
+  });
+  for (const [x, z] of [[-0.14, -0.34], [0.14, -0.34]]) {
+    g.add(mesh(shoulderGeo, MAT.prowlerHide, x, 0.66, z));
+  }
+  const haunchGeo = G('prHaunch', () => {
+    const s = new THREE.SphereGeometry(0.24, 7, 6);
+    s.scale(0.85, 1.2, 1.3);
+    return s;
+  });
+  for (const [x, z] of [[-0.15, 0.36], [0.15, 0.36]]) {
+    g.add(mesh(haunchGeo, MAT.prowlerHide, x, 0.64, z));
+  }
+  // coral spine ridge - fantastical crest, glows like the stripes
+  const spikeGeo = G('prSpike', () => new THREE.ConeGeometry(0.035, 0.14, 5));
+  for (let i = 0; i < 4; i++) {
+    const spike = mesh(spikeGeo, MAT.prowlerStripe, 0, 0.92 - i * 0.008, -0.28 + i * 0.2);
+    spike.rotation.x = 0.25 + i * 0.12; // rake back toward the tail
+    spike.castShadow = false;
+    g.add(spike);
   }
 
   const legs = [];
   const knees = [];
   for (const [x, z] of [[-0.18, -0.38], [0.18, -0.38], [-0.18, 0.38], [0.18, 0.38]]) {
-    const { hip, knee } = twoSegLeg(MAT.prowlerHide, MAT.prowlerHide, 0.34, 0.32, 0.055);
+    const { hip, knee } = twoSegLeg(MAT.prowlerHide, MAT.prowlerHide, 0.34, 0.32, 0.065);
     hip.position.set(x, 0.62, z);
     knee.rotation.x = 0.35;
     // paw at the shin's end - feet ground the silhouette
