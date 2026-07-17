@@ -260,7 +260,9 @@ export function buildProps(scene) {
       const ring = new THREE.Mesh(
         new THREE.TorusGeometry(0.9, 0.12, 6, 16),
         new THREE.MeshStandardMaterial({
-          color: 0x7ae8d0, emissive: 0x2ab89a, emissiveIntensity: 1.6, roughness: 0.4,
+          // round-6: x3.5 into HDR so the gate rings bloom (teal beacons
+          // framing the west pass)
+          color: 0x7ae8d0, emissive: 0x2ab89a, emissiveIntensity: 5.6, roughness: 0.4,
         })
       );
       ring.position.set(g0.x + ox, mh + 9.5, gz + (ox < 0 ? 1 : -1) * 0.95);
@@ -344,7 +346,9 @@ export function buildProps(scene) {
     const px = -uz;
     const pz = ux;
     const torchMat = new THREE.MeshStandardMaterial({
-      color: 0xffc857, emissive: 0xff9018, emissiveIntensity: 2.4, roughness: 0.4,
+      // round-6: x3.5 into HDR - the stair torches become true glowing
+      // orbs lighting the climb to extraction
+      color: 0xffc857, emissive: 0xff9018, emissiveIntensity: 8.4, roughness: 0.4,
     });
     const poleMat = new THREE.MeshStandardMaterial({ color: 0x3a4438, roughness: 0.9 });
     for (let d = 20; d <= 52; d += 8) {
@@ -379,12 +383,16 @@ export function buildProps(scene) {
   function tickProps(dt) {
     t += dt;
     const pulse = 0.6 + 0.4 * Math.sin(t * 2.4);
-    beaconLamp.material.emissiveIntensity = 1.6 + pulse * 2.6;
+    // round-6: HDR pulse range - the lamp crosses the bloom threshold on
+    // the upstroke, so the beacon literally breathes light
+    beaconLamp.material.emissiveIntensity = 2.4 + pulse * 5;
     beaconLight.intensity = 16 + pulse * 26;
     beam.material.opacity = 0.13 + pulse * 0.11;
     // the Fang's ember breathes slowly - alive, watching
     const emberPulse = 0.5 + 0.5 * Math.sin(t * 0.9 + 1.4);
-    ember.material.emissiveIntensity = 1.8 + emberPulse * 2.2;
+    // round-6: HDR pulse range - the ember blooms at the peak of each
+    // slow breath (0xff4a08 crushes to ~0.26 linear lum per unit)
+    ember.material.emissiveIntensity = 3 + emberPulse * 6;
     emberLight.intensity = 16 + emberPulse * 22;
     ember.rotation.y = t * 0.25;
   }

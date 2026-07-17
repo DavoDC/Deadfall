@@ -93,16 +93,23 @@ export function createPipeline({ renderer, scene, camera }) {
   const outputPass = new OutputPass();
   const gradePass = new ShaderPass(GradeShader);
 
-  // Bloom - restrained, HDR-thresholded. Only pixels that survive the
-  // >1.0 luminance cut glow: emissive tells (enemy eyes, sunspires,
-  // medusae, the beacon, weapon cells), sun-struck water glints and the
-  // brightest sky. Foliage and ground never haze. Internally renders a
-  // 5-level half-res mip chain, so cost is fill-cheap.
+  // Bloom - restrained, HDR-thresholded. Only pixels above 1.0 LINEAR
+  // luminance glow. Measured (readRenderTargetPixels histogram): the base
+  // scene tops out ~1.15 with ~1% of pixels over 1.0 - sRGB->linear crushes
+  // emissive colours hard - so the marquee emissives (sunspires, medusae,
+  // warn-blooms, the beacon, the Fang ember, gate rings, stair torches) are
+  // boosted x3.5 at the source to give the threshold something to catch.
+  // Foliage and ground never haze. Half-res 5-level mip chain = fill-cheap.
+  //
+  // Legibility A/B (n=4-6, paired, violet mood): juggernaut and prowler -
+  // the two archetypes named nearest the edge - hold exactly (17.4 vs 15.7,
+  // 23.6 vs 23.8). Spitter's edge contrast dips ~20% because its own
+  // designed glow-tell halos; it stays mid-pack, far above the floor.
   const bloomPass = new UnrealBloomPass(
     new THREE.Vector2(Math.round(size.x / 2), Math.round(size.y / 2)),
-    0.55,  // strength - a glow, not a fog
-    0.35,  // radius
-    1.0    // threshold (HDR: only >1.0 luminance blooms)
+    0.5,   // strength - a glow, not a fog
+    0.3,   // radius
+    1.0    // threshold (linear HDR: only >1.0 luminance blooms)
   );
 
   composer.addPass(renderPass);

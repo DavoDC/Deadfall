@@ -174,7 +174,9 @@ export function createEnemyManager(scene, playerHelpers, effects, hooks) {
   // ---- acid globs ----
   const globGeo = new THREE.SphereGeometry(0.16, 8, 6);
   const globMat = new THREE.MeshStandardMaterial({
-    color: 0x9fe040, emissive: 0x70b520, emissiveIntensity: 2.4,
+    // round-6: 2.4 -> 4.8 - the viperblossom is a LURE; its glow blooming
+    // in HDR is the trap working as designed (draws the eye from afar)
+    color: 0x9fe040, emissive: 0x70b520, emissiveIntensity: 4.8,
   });
   const globs = [];
   for (let i = 0; i < GLOB_POOL; i++) {

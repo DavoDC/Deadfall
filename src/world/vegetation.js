@@ -676,17 +676,24 @@ export function buildVegetation(scene, opts = {}) {
     color: 0xffffff, roughness: 1, side: THREE.DoubleSide,
   }), 0.22));
   const warnBloomMat = new THREE.MeshStandardMaterial({
-    color: 0xff4fd0, emissive: 0xd0189a, emissiveIntensity: 1.8,
+    // round-6: x3.5 into true HDR so the bloom threshold (1.0 linear
+    // luminance) catches the warning tell - sRGB->linear crushes 0xd0189a
+    // to ~0.28 luminance per unit intensity
+    color: 0xff4fd0, emissive: 0xd0189a, emissiveIntensity: 6.3,
     roughness: 0.5, side: THREE.DoubleSide,
   });
   const sunspireStalkMat = dapplify(new THREE.MeshStandardMaterial({
     color: 0xd8cfa8, roughness: 0.9,
   }));
   const sunspireCapMat = new THREE.MeshStandardMaterial({
-    color: 0xffb63a, emissive: 0xff8210, emissiveIntensity: 2.8, roughness: 0.4,
+    // round-6: x3.5 - the sunspire caps are the jungle's lanterns; in HDR
+    // they bloom softly through the canopy murk
+    color: 0xffb63a, emissive: 0xff8210, emissiveIntensity: 9.8, roughness: 0.4,
   });
   const medusaMat = windify(new THREE.MeshStandardMaterial({
-    color: 0xffffff, emissive: 0x4fd8f0, emissiveIntensity: 0.6,
+    // round-6: 0.6 -> 2.4 - the drifting medusae become soft cyan lanterns
+    // (linear lum ~1.4: just over the bloom threshold, a whisper of glow)
+    color: 0xffffff, emissive: 0x4fd8f0, emissiveIntensity: 2.4,
     roughness: 0.3, transparent: true, opacity: 0.82, side: THREE.DoubleSide,
     depthWrite: false,
   }), 0.5);
