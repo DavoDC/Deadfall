@@ -129,8 +129,8 @@ export function contrastScore(enemyMeanRGB, bgMeanRGB) {
 // Render the scene and downscale the canvas into an offscreen 2D canvas so
 // we can read pixel data back out (mirrors shots.js's analyzeOneShot, which
 // does the same downscale-then-getImageData dance from a dataURL instead).
-function captureFramePixels(renderer, scene, camera, targetWidth = CAPTURE_WIDTH) {
-  renderer.render(scene, camera);
+function captureFramePixels(renderer, scene, camera, renderFrame, targetWidth = CAPTURE_WIDTH) {
+  renderFrame();
   const srcCanvas = renderer.domElement;
   const scale = targetWidth / srcCanvas.width;
   const width = targetWidth;
@@ -156,6 +156,9 @@ export async function checkLegibility(options = {}) {
     vantage = LEGIBILITY_VANTAGE,
     archetypes = ARCHETYPES,
   } = options;
+  // round-6: probe through the post pipeline when provided - legibility is
+  // measured on the pixels the player actually sees (grade, AO, bloom, rays)
+  const renderFrame = options.renderFrame || (() => renderer.render(scene, camera));
   const enemyMgr = options.enemyMgr || (options.sim && options.sim.enemyMgr);
 
   if (!renderer || !camera || !scene || !game || !enemyMgr) {
@@ -168,7 +171,7 @@ export async function checkLegibility(options = {}) {
 
   try {
     placeCamera(camera, vantage);
-    const bgFrame = captureFramePixels(renderer, scene, camera);
+    const bgFrame = captureFramePixels(renderer, scene, camera, renderFrame);
 
     for (const type of archetypes) {
       if (!ENEMY_DEFS[type]) {
@@ -178,7 +181,7 @@ export async function checkLegibility(options = {}) {
 
       console.log(`[legibility] probing ${type}...`);
       const e = enemyMgr.spawn(type, vantage.lookAt.x, vantage.lookAt.z);
-      const enemyFrame = captureFramePixels(renderer, scene, camera);
+      const enemyFrame = captureFramePixels(renderer, scene, camera, renderFrame);
 
       const mask = maskFromDiff(bgFrame.data, enemyFrame.data, bgFrame.width, bgFrame.height);
       const ring = dilateRing(mask, bgFrame.width, bgFrame.height);

@@ -33,16 +33,18 @@ import { createShotsAPI } from './game/shots.js';
 import { checkLegibility } from './game/legibility.js';
 import { createRecorderAPI } from './capture/recorder.js';
 import { createCinematic } from './game/cinematic.js';
+import { createPipeline } from './render/pipeline.js';
 
 const app = document.getElementById('app');
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
-// round-3 saturation push: Far Cry New Dawn vibrancy baseline; the
-// ayahuasca trip appends its own distortion filters on top of this
-const BASE_FILTER = 'saturate(1.3) contrast(1.04)';
-renderer.domElement.style.filter = BASE_FILTER;
+// round-6: the round-3 saturation push (saturate(1.3) contrast(1.04)) moved
+// from a CSS canvas filter into the pipeline's grade pass - screenshots and
+// the trailer now capture the graded look. The CSS filter slot remains for
+// the ayahuasca trip's hue-rotate + displacement, which stay DOM-side.
+const BASE_FILTER = '';
 app.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -53,12 +55,17 @@ window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  pipeline.setSize(window.innerWidth, window.innerHeight);
 });
 
 // --- world ---
 console.log('[deadfall] building world, seed', WORLD.seed);
 const t0 = performance.now();
 const { sun, hemi, applyMood } = buildSky(scene, renderer);
+// round-6 rendering pipeline - every render (game loop, shots rig,
+// legibility probe, cinematic) goes through this
+const pipeline = createPipeline({ renderer, scene, camera });
+const renderFrame = () => pipeline.render();
 buildTerrain(scene);
 const water = buildWater(scene);
 buildVegetation(scene);
@@ -484,7 +491,7 @@ function tick(now) {
   tickDapple(now / 1000);
   updateDappleSun(ATMOS.sunPos, sun.color, sun.intensity);
   tickProps(dt);
-  renderer.render(scene, camera);
+  pipeline.render();
 }
 
 const _listenerFwd = new THREE.Vector3();
@@ -497,13 +504,13 @@ requestAnimationFrame(tick);
 // --- debug / automated-playtest API (documented in README) ---
 const bot = createBot({ sim, startRun: () => sim.resetRun() });
 const { snapshot } = createSnapshot({ sim, seed: WORLD.seed });
-const shotsAPI = createShotsAPI({ renderer, camera, game, drizzle, effects, motes, applyMood, MOODS, scene });
+const shotsAPI = createShotsAPI({ renderer, camera, game, drizzle, effects, motes, applyMood, MOODS, scene, renderFrame });
 const recorderAPI = createRecorderAPI({ getCanvas: () => renderer.domElement });
 // THE TRAILER (round 5B): a replayable ~60s cinematic. The mood setter must
 // go through currentMood or the per-frame weather easing (above) would drag
 // the atmosphere back to the pre-cinematic mood within a second.
 const cinematic = createCinematic({
-  camera, renderer, scene,
+  camera, renderer, scene, renderFrame,
   setMood: (key) => {
     currentMood = MOODS[key] || currentMood;
     applyMood(currentMood);
@@ -581,7 +588,9 @@ window.__deadfall = {
   dappleUniforms, // live dapple tuning from the console (art grading)
   // enemy-legibility metric: is a threat readable against dark/dappled
   // foliage? See game/legibility.js for the difference-imaging method.
-  checkLegibility: (opts = {}) => checkLegibility({ renderer, camera, scene, game, enemyMgr, drizzle, effects, motes, ...opts }),
+  checkLegibility: (opts = {}) => checkLegibility({ renderer, camera, scene, game, enemyMgr, drizzle, effects, motes, renderFrame, ...opts }),
+  // round-6 rendering pipeline - pass toggles + uniforms for live A/B
+  post: pipeline,
 };
 console.log('[deadfall] ready (round 2)');
 

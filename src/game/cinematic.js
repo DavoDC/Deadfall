@@ -367,6 +367,9 @@ export function createCinematic(deps) {
     camera, renderer, scene, setMood, flood, water, enemyMgr,
     viewmodel, effects, recorder, tickWind, tickDapple, trackShadow, sun,
   } = deps;
+  // round-6: seek() renders through the post pipeline so scrubbed frames and
+  // the storyboard match real-time playback (which the main loop renders)
+  const renderFrame = deps.renderFrame || (() => renderer.render(scene, camera));
 
   let active = false;
   let playing = false;
@@ -600,7 +603,7 @@ export function createCinematic(deps) {
     if (shot.pov) viewmodel.update(IDLE_INTENT, 1 / 60);
 
     updateOverlay(shot, local);
-    if (render) renderer.render(scene, camera);
+    if (render) renderFrame();
     return { index, name: shot.name, local };
   }
 

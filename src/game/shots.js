@@ -8,7 +8,6 @@
 //   window.__deadfall.shots.captureShots()                    # all 3 moods
 //   window.__deadfall.shots.downloadShots(shots)              # save to disk + contact sheet
 
-import * as THREE from 'three';
 import { LANDMARKS, terrainHeight, WORLD } from '../world/heightmap.js';
 
 // Canonical vantage points - chosen to cover the visual range of the game.
@@ -201,15 +200,6 @@ export function placeCamera(camera, vantage) {
   camera.updateProjectionMatrix();
 }
 
-// Capture a single frame from the canvas as PNG dataURL.
-function captureFrame(renderer) {
-  // Force a render
-  renderer.render(renderer._scene || new THREE.Scene(), renderer._camera || new THREE.Camera());
-
-  // Grab the canvas and convert to PNG dataURL
-  return renderer.domElement.toDataURL('image/png');
-}
-
 // Create a contact sheet - all vantages tiled with labels burned in.
 function createContactSheet(shots, gridCols = 2) {
   if (!shots || shots.length === 0) {
@@ -270,6 +260,9 @@ function createContactSheet(shots, gridCols = 2) {
 // and captures them in the given mood(s).
 export async function captureShots(options = {}) {
   const { mood = null, renderer, camera, game, drizzle, effects, motes, applyMood, MOODS, scene } = options;
+  // round-6: render through the post pipeline when provided, so screenshots
+  // grade exactly what the player sees (falls back to a bare render)
+  const renderFrame = options.renderFrame || (() => renderer.render(scene, camera));
 
   if (!renderer || !camera || !game || !applyMood || !MOODS || !scene) {
     console.error('[shots] captureShots requires: renderer, camera, game, drizzle, effects, motes, applyMood, MOODS, scene');
@@ -301,12 +294,12 @@ export async function captureShots(options = {}) {
       applyMood(moodConfig);
 
       // Force a render to apply mood lighting
-      renderer.render(scene, camera);
+      renderFrame();
 
       for (const vantage of VANTAGES) {
         console.log(`[shots] capturing ${vantage.name}...`);
         placeCamera(camera, vantage);
-        renderer.render(scene, camera);
+        renderFrame();
         const dataURL = renderer.domElement.toDataURL('image/png');
         allShots.push({
           mood: moodKey,
