@@ -10,6 +10,7 @@ import { buildSky, trackShadow, MOODS, ATMOS } from './world/sky.js';
 import { tickDapple, updateDappleSun, uniforms as dappleUniforms } from './world/dapple.js';
 import { buildVegetation, tickWind, setSwayMult } from './world/vegetation.js';
 import { buildProps } from './world/props.js';
+import { buildRoosts } from './world/roosts.js';
 import { colliderCount } from './world/colliders.js';
 import { createInput } from './player/input.js';
 import { createViewmodel } from './weapons/viewmodel.js';
@@ -60,6 +61,7 @@ buildTerrain(scene);
 const water = buildWater(scene);
 buildVegetation(scene);
 const { tickProps } = buildProps(scene);
+buildRoosts(scene); // the flood's vertical retreat (round 5)
 const motes = createMotes(scene);
 const drizzle = createDrizzle(scene);
 let razorfins = null; // needs effects; created after the sim below

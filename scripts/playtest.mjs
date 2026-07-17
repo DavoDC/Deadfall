@@ -18,6 +18,7 @@ import * as THREE from 'three';
 import { WORLD } from '../src/world/heightmap.js';
 import { buildVegetation } from '../src/world/vegetation.js';
 import { buildProps } from '../src/world/props.js';
+import { buildRoosts } from '../src/world/roosts.js';
 import { colliderCount } from '../src/world/colliders.js';
 import { createSim } from '../src/game/sim.js';
 import { createBot, createCoopSync } from '../src/game/autotest.js';
@@ -46,6 +47,7 @@ const t0 = Date.now();
 const scene = new THREE.Scene();
 const veg = buildVegetation(scene, { collidersOnly: true });
 buildProps(scene); // beacon/ruin colliders + landmark colliders
+buildRoosts(scene, { collidersOnly: true }); // flood-retreat platforms (round 5)
 console.log(`[world] seed ${WORLD.seed}, ${colliderCount()} colliders, veg scatter ${veg.ms}ms`);
 
 // ---- assemble the real sim ----

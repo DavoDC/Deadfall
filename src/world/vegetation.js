@@ -11,6 +11,7 @@ import {
   thicketAt,
 } from './heightmap.js';
 import { addCylinder } from './colliders.js';
+import { ROOSTS } from './roosts.js';
 import { makeRng } from '../core/rng.js';
 import { clamp } from '../core/noise.js';
 import { loadTextureSet, applyTextures } from '../core/textures.js';
@@ -353,6 +354,13 @@ export function buildVegetation(scene, opts = {}) {
       && Math.abs(z - fractureZ(WORLD.scree.x)) < 42) return false;
     if (!clearOf(x, z, WORLD.maw.x, WORLD.maw.z, WORLD.maw.r + 4)) return false;
     if (nearStair(x, z)) return false;
+    // round 5: keep the gorge-roost ramps walkable - the flood retreat
+    // fails if a trunk wedges you off the treads mid-climb
+    for (const r of ROOSTS) {
+      if (Math.abs(z - r.base.z) < 4.5
+        && x > Math.min(r.base.x, r.top.x) - 3
+        && x < Math.max(r.base.x, r.top.x) + 6) return false;
+    }
     // thicket interior grows its own wall species, nothing else
     if (thicketAt(x, z) > 0.2) return false;
     return h > -60;

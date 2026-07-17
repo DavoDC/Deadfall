@@ -3,8 +3,11 @@
 // has weight; sprint drains stamina; swamp mud and water drag you down.
 
 import * as THREE from 'three';
-import { terrainHeight, moveSpeedFactor, blockedStep, WORLD } from '../world/heightmap.js';
+import {
+  terrainHeight, moveSpeedFactor, blockedStep, waterLevelAt, WORLD,
+} from '../world/heightmap.js';
 import { pushOut } from '../world/colliders.js';
+import { platformGroundAt } from '../world/platforms.js';
 import { clamp, lerp } from '../core/noise.js';
 
 const EYE_HEIGHT = 1.66;
@@ -138,8 +141,10 @@ export function createPlayer(camera) {
     // props push-out (feet circle)
     pushOut(p.pos, RADIUS, p.pos.y - EYE_HEIGHT);
 
-    // ground clamp
-    const ground = terrainHeight(p.pos.x, p.pos.z) + EYE_HEIGHT;
+    // ground clamp: terrain OR the highest standable platform (roost
+    // steps and perches - the flood's vertical retreat, round 5)
+    const platG = platformGroundAt(p.pos.x, p.pos.z, p.pos.y - EYE_HEIGHT);
+    const ground = Math.max(terrainHeight(p.pos.x, p.pos.z), platG) + EYE_HEIGHT;
     if (p.pos.y <= ground) {
       if (!p.grounded && p.vel.y < -7) {
         p.landImpact = Math.min(1, -p.vel.y / 16);
@@ -153,7 +158,8 @@ export function createPlayer(camera) {
     }
 
     const feetY = p.pos.y - EYE_HEIGHT;
-    p.inWater = feetY < WORLD.waterLevel - 0.25;
+    // effective level: floods raise the local waterline (round 5)
+    p.inWater = feetY < waterLevelAt(p.pos.x, p.pos.z) - 0.25;
 
     // --- head bob + footsteps ---
     if (p.grounded && p.speedNow > 0.5) {
