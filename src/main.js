@@ -471,6 +471,12 @@ function tick(now) {
     lightningEl.style.opacity = lightningFlash;
   }
 
+  // the flood re-poses the water surface + sweeps the red telegraph
+  // (early-outs to nothing when no event is running)
+  if (water.userData.setFlood) {
+    const fs = sim.flood.state;
+    water.userData.setFlood(fs.rise, fs.tintFront, fs.tintIntensity);
+  }
   if (water.userData.tick) water.userData.tick(now / 1000);
   tickWind(now / 1000);
   tickDapple(now / 1000);

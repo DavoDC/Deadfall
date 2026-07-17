@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import {
   WORLD, terrainHeight, moisture, terrainNormal, razorfinHazard,
+  floodMask, gorgeZ, FLOOD,
 } from './heightmap.js';
 import { clamp, lerp, smoothstep } from '../core/noise.js';
 import { hash2 } from '../core/rng.js';
@@ -133,10 +134,22 @@ export function buildWater(scene) {
   const cSafe = new THREE.Color(0x25b89a);
   const cBlood = new THREE.Color(0xa01a2e);
   const cw = new THREE.Color();
+  // per-vertex caches for the FLOOD (round 5): ground height, the dry-film
+  // sink, the flood-zone mask, the resting blood tint and the distance to
+  // the gorge line - everything setFlood needs to re-pose the SAME surface
+  // at any rise without re-sampling the heightfield
+  const hCache = new Float32Array(pos.count);
+  const sinkCache = new Float32Array(pos.count);
+  const maskCache = new Float32Array(pos.count);
+  const blood0 = new Float32Array(pos.count);
+  const dGorge = new Float32Array(pos.count);
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i);
     const z = pos.getZ(i);
     const hC = terrainHeight(x, z);
+    hCache[i] = hC;
+    maskCache[i] = floodMask(x, z);
+    dGorge[i] = Math.abs(z - gorgeZ(x));
     const depth = WORLD.waterLevel - hC;
     if (depth < 0.22) {
       // Sink the dry film just below ground - deep enough that the linear
@@ -153,9 +166,11 @@ export function buildWater(scene) {
         Math.abs(terrainHeight(x, z + cell) - hC),
         Math.abs(terrainHeight(x, z - cell) - hC)
       );
-      pos.setY(i, hC - WORLD.waterLevel - (0.45 + slope * 1.3));
+      sinkCache[i] = 0.45 + slope * 1.3;
+      pos.setY(i, hC - WORLD.waterLevel - sinkCache[i]);
       amp[i] = 0;
     } else {
+      sinkCache[i] = 0.45; // flat enough to be wet - sink is nominal
       amp[i] = clamp(depth / 1.2, 0, 1);
     }
     depthAttr[i] = clamp(depth / 2.5, 0, 1);
@@ -164,6 +179,7 @@ export function buildWater(scene) {
       razorfinHazard(x, z),
       smoothstep(WORLD.maw.r + 6, WORLD.maw.r - 12, dMaw) * 0.85
     );
+    blood0[i] = blood;
     cw.copy(cSafe).lerp(cBlood, blood);
     wCol[i * 3] = cw.r;
     wCol[i * 3 + 1] = cw.g;
@@ -256,6 +272,51 @@ export function buildWater(scene) {
   // gentle swell so the river reads as liquid even without textures;
   // depth-scaled so puddle edges hold still instead of pulsing
   const base = geo.attributes.position.array.slice();
+
+  // THE FLOOD (round 5): re-pose THIS surface - same mesh, same material,
+  // same ripple shader - at the current rise, and sweep the razorfin-red
+  // telegraph out from the gorge. Writes the RESTING positions (base) so
+  // the swell tick composes on top; cheap arithmetic over cached ground
+  // heights, no heightfield resampling.
+  let floodWas = false;
+  mesh.userData.setFlood = (rise, tintFront, tintIntensity) => {
+    const active = rise > 0.01 || tintIntensity > 0.01;
+    if (!active && !floodWas) return;
+    floodWas = active;
+    const arr = geo.attributes.position.array;
+    const front = tintFront * (FLOOD.HALF + FLOOD.FEATHER + 24);
+    for (let i = 0; i < hCache.length; i++) {
+      const m = maskCache[i];
+      const level = WORLD.waterLevel + (m > 0 ? rise * m : 0);
+      const depth = level - hCache[i];
+      let y;
+      if (depth < 0.22) {
+        y = hCache[i] - WORLD.waterLevel - sinkCache[i];
+        amp[i] = 0;
+      } else {
+        y = level - WORLD.waterLevel;
+        amp[i] = clamp(depth / 1.2, 0, 1);
+      }
+      base[i * 3 + 1] = y;
+      arr[i * 3 + 1] = y;
+      depthAttr[i] = clamp(depth / 2.5, 0, 1);
+      // the telegraph: blood sweeps outward from the rift, saturating
+      // with the event - the exact language the gorge already taught
+      let blood = blood0[i];
+      if (m > 0 && tintIntensity > 0) {
+        const sweep = smoothstep(front + 14, front - 6, dGorge[i]);
+        blood = Math.max(blood, tintIntensity * m * sweep);
+      }
+      cw.copy(cSafe).lerp(cBlood, blood);
+      wCol[i * 3] = cw.r;
+      wCol[i * 3 + 1] = cw.g;
+      wCol[i * 3 + 2] = cw.b;
+    }
+    geo.attributes.position.needsUpdate = true;
+    geo.attributes.color.needsUpdate = true;
+    geo.attributes.aDepth.needsUpdate = true;
+  };
+
   mesh.userData.tick = (t) => {
     if (mat.userData.shader) mat.userData.shader.uniforms.uWTime.value = t;
     const arr = geo.attributes.position.array;
