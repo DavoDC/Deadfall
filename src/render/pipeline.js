@@ -74,7 +74,72 @@ const GradeShader = {
   `,
 };
 
-export function createPipeline({ renderer, scene, camera }) {
+// Volumetric god-rays (screen-space crepuscular rays). Reuses the GTAO
+// pass's depth G-buffer: any pixel at the far plane is SKY = unoccluded
+// sunlight. March each pixel toward the sun's screen position accumulating
+// sky hits with exponential decay - canopy gaps become visible light
+// shafts, for the cost of one full-screen pass and zero extra scene
+// renders. Runs in linear HDR before bloom, so hot shaft cores glow.
+const GodRaysShader = {
+  name: 'DeadfallGodRaysShader',
+  uniforms: {
+    tDiffuse: { value: null },
+    tDepth: { value: null },
+    uSunScreen: { value: new THREE.Vector2(0.5, 0.5) },
+    uSunColor: { value: new THREE.Color(1, 0.9, 0.7) },
+    uIntensity: { value: 0.0 },  // driven per-frame: sun-behind-camera fade
+    uDecay: { value: 0.94 },
+    uWeight: { value: 0.045 },
+  },
+  vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    uniform sampler2D tDepth;
+    uniform vec2 uSunScreen;
+    uniform vec3 uSunColor;
+    uniform float uIntensity;
+    uniform float uDecay;
+    uniform float uWeight;
+    varying vec2 vUv;
+
+    const int TAPS = 36;
+
+    float raysHash(vec2 p) {
+      return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+    }
+
+    void main() {
+      vec4 base = texture2D(tDiffuse, vUv);
+      if (uIntensity <= 0.001) { gl_FragColor = base; return; }
+
+      vec2 delta = (uSunScreen - vUv) / float(TAPS);
+      // jitter the march start to hide banding between taps
+      vec2 pos = vUv + delta * raysHash(vUv * 911.0);
+      float illum = 1.0;
+      float sum = 0.0;
+      for (int i = 0; i < TAPS; i++) {
+        pos += delta;
+        // depth texture: 1.0 = far plane = open sky = unoccluded light
+        float d = texture2D(tDepth, clamp(pos, 0.0, 1.0)).x;
+        sum += step(0.9999, d) * illum;
+        illum *= uDecay;
+      }
+      // shafts fade with distance from the sun point so the far side of
+      // the screen never receives a full-strength wash
+      float distFade = 1.0 - smoothstep(0.0, 1.1, distance(vUv, uSunScreen));
+      vec3 rays = uSunColor * (sum * uWeight) * distFade * uIntensity;
+      gl_FragColor = vec4(base.rgb + rays, base.a);
+    }
+  `,
+};
+
+export function createPipeline({ renderer, scene, camera, sun }) {
   const pr = renderer.getPixelRatio();
   const size = renderer.getSize(new THREE.Vector2());
 
@@ -134,15 +199,50 @@ export function createPipeline({ renderer, scene, camera }) {
   gtaoPass.output = GTAOPass.OUTPUT.Default;
   gtaoPass.blendIntensity = 0.45;
 
+  const godRaysPass = new ShaderPass(GodRaysShader);
+  godRaysPass.uniforms.tDepth.value = gtaoPass.depthTexture;
+
+  // per-frame god-ray driving state (avoids allocation in render())
+  const _sunDir = new THREE.Vector3();
+  const _sunWorld = new THREE.Vector3();
+  const _camFwd = new THREE.Vector3();
+
+  function updateGodRays() {
+    if (!sun || !godRaysPass.enabled) return;
+    _sunDir.copy(sun.position).sub(sun.target.position).normalize();
+    // a point far along the sun direction, projected to screen space
+    _sunWorld.copy(camera.position).addScaledVector(_sunDir, 900);
+    _sunWorld.project(camera);
+    godRaysPass.uniforms.uSunScreen.value.set(
+      _sunWorld.x * 0.5 + 0.5, _sunWorld.y * 0.5 + 0.5
+    );
+    // fade when the sun is behind the camera (projection flips) or far
+    // off-screen; scale with the sun's current intensity so storms and
+    // moody fog naturally quiet the shafts
+    camera.getWorldDirection(_camFwd);
+    const facing = Math.max(0, _camFwd.dot(_sunDir));
+    const sx = godRaysPass.uniforms.uSunScreen.value.x;
+    const sy = godRaysPass.uniforms.uSunScreen.value.y;
+    const onScreen = Math.max(0, 1 - Math.max(
+      Math.max(-sx, sx - 1), Math.max(-sy, sy - 1)
+    ) * 1.6);
+    const behind = _sunWorld.z > 1 ? 0 : 1;
+    const sunStrength = Math.min(1, (sun.intensity || 0) / 2.5);
+    godRaysPass.uniforms.uIntensity.value =
+      0.5 * facing * onScreen * behind * sunStrength;
+    godRaysPass.uniforms.uSunColor.value.copy(sun.color);
+  }
+
   composer.addPass(renderPass);
   composer.addPass(gtaoPass);
+  composer.addPass(godRaysPass);
   composer.addPass(bloomPass);
   composer.addPass(outputPass);
   composer.addPass(gradePass); // display-space: must run after OutputPass
 
   const pipeline = {
     composer,
-    passes: { render: renderPass, gtao: gtaoPass, bloom: bloomPass, output: outputPass, grade: gradePass },
+    passes: { render: renderPass, gtao: gtaoPass, godRays: godRaysPass, bloom: bloomPass, output: outputPass, grade: gradePass },
     enabled: true,
 
     render() {
@@ -150,6 +250,7 @@ export function createPipeline({ renderer, scene, camera }) {
         renderer.render(scene, camera);
         return;
       }
+      updateGodRays();
       composer.render();
     },
 

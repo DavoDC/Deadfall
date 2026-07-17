@@ -64,7 +64,7 @@ const t0 = performance.now();
 const { sun, hemi, applyMood } = buildSky(scene, renderer);
 // round-6 rendering pipeline - every render (game loop, shots rig,
 // legibility probe, cinematic) goes through this
-const pipeline = createPipeline({ renderer, scene, camera });
+const pipeline = createPipeline({ renderer, scene, camera, sun });
 const renderFrame = () => pipeline.render();
 buildTerrain(scene);
 const water = buildWater(scene);
