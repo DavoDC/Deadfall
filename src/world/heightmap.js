@@ -67,6 +67,35 @@ export const WORLD = {
   fang: { x: 196, z: -96, h: 58, r: 26, name: 'CINDER FANG' },
 };
 
+// --- THE FLOOD (round 5, SPEC O) ---
+// A time-pressured environmental event: water RISES across the gorge band,
+// telegraphed by razorfin-red tint spreading from the rift, forcing a
+// vertical retreat. The MECHANIC lives in src/game/flood.js; this block is
+// the shared analytic geometry both sim and presentation read.
+// FLOOD.rise is the only mutable state - written by game/flood.js ONLY.
+export const FLOOD = {
+  rise: 0,               // metres of extra water over the flood zone core
+  RISE_MAX: 9,           // peak rise: drowns the banks, spares the hills
+  HALF: 64,              // full-rise half-width of the band around the gorge
+  FEATHER: 26,           // rise fades to 0 across this outer margin
+};
+
+// Flood zone mask in [0,1]: 1 near the gorge centre-line, feathering to 0
+// by HALF+FEATHER metres out. Pure geometry - ignores current rise.
+export function floodMask(x, z) {
+  const d = Math.abs(z - gorgeZ(x));
+  return smoothstep(FLOOD.HALF + FLOOD.FEATHER, FLOOD.HALF, d);
+}
+
+// THE water level law: effective water surface height at (x, z). Equals
+// WORLD.waterLevel everywhere until a flood is running, then rises over
+// the gorge band. Movement, wading, haul-out and underwater checks all
+// read this so the flood is a real physical fact, not an overlay.
+export function waterLevelAt(x, z) {
+  if (FLOOD.rise <= 0) return WORLD.waterLevel;
+  return WORLD.waterLevel + FLOOD.rise * floodMask(x, z);
+}
+
 // Steeper than this (rise per metre travelled) cannot be walked up.
 // Natural jungle noise tops out around grade ~1.3; every deliberate wall
 // (palisade, fracture step, mesa cliff, fang) is built at grade 2.5+ so
@@ -332,8 +361,9 @@ export function terrainNormal(x, z, out = { x: 0, y: 1, z: 0 }, seed = WORLD.see
 // water slow you down; that is the price of the covered route.
 export function moveSpeedFactor(x, z, seed = WORLD.seed) {
   const h = terrainHeight(x, z, seed);
-  if (h < WORLD.waterLevel - 0.9) return 0.52;      // wading deep
-  if (h < WORLD.waterLevel + 0.15) return 0.68;     // shallow water
+  const wl = waterLevelAt(x, z);                     // floods slow you too
+  if (h < wl - 0.9) return 0.52;                     // wading deep
+  if (h < wl + 0.15) return 0.68;                    // shallow water
   const swampT = smoothstep(-52, -118, x) * (1 - smoothstep(255, 320, Math.abs(z)));
   return 1 - 0.22 * swampT;                          // mud drag
 }
@@ -353,8 +383,11 @@ export function blockedStep(x, z, dirX, dirZ, feetY = null, seed = WORLD.seed) {
   const standing = feetY === null ? here : Math.max(here, feetY);
   const ahead = terrainHeight(nx, nz, seed);
   // wet-zone exemption: hauling out of water over roots is always allowed,
-  // but only onto the LOW bank - a pool at a cliff's base is not a ladder
-  if (standing < WORLD.waterLevel + 2.2 && ahead < WORLD.waterLevel + 2.6) return false;
+  // but only onto the LOW bank - a pool at a cliff's base is not a ladder.
+  // Uses the EFFECTIVE water level, so rising floodwater carries you up
+  // the banks it swallows instead of pinning you against them.
+  const wl = Math.max(waterLevelAt(x, z), waterLevelAt(nx, nz));
+  if (standing < wl + 2.2 && ahead < wl + 2.6) return false;
   return (ahead - standing) > LOOK * MAX_GRADE;
 }
 
@@ -371,7 +404,7 @@ export function razorfinHazard(x, z, seed = WORLD.seed) {
 }
 
 export function isUnderwater(x, z, y) {
-  return y < WORLD.waterLevel;
+  return y < waterLevelAt(x, z);
 }
 
 // Resolve a landmark's centre (gates/crossings/fracture entries sit on
