@@ -63,7 +63,10 @@ export function buildSky(scene, renderer) {
   const sun = new THREE.DirectionalLight(ATMOS.sunColor, ATMOS.sunIntensity);
   sun.position.set(...ATMOS.sunPos);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  // round-6: 2048 -> 4096 (~3.5cm/texel over the 140m follow-frustum).
+  // Measured free on the gl.finish() frame-cost probe - the shadow pass is
+  // draw-call-bound, not fill-bound, at this scene size.
+  sun.shadow.mapSize.set(4096, 4096);
   sun.shadow.camera.near = 40;
   sun.shadow.camera.far = 420;
   // shadow frustum follows the player (retargeted each frame from main.js)
