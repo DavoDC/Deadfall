@@ -32,6 +32,7 @@ import { createSnapshot } from './game/snapshot.js';
 import { createShotsAPI } from './game/shots.js';
 import { checkLegibility } from './game/legibility.js';
 import { createRecorderAPI } from './capture/recorder.js';
+import { createCinematic } from './game/cinematic.js';
 
 const app = document.getElementById('app');
 
@@ -498,6 +499,27 @@ const bot = createBot({ sim, startRun: () => sim.resetRun() });
 const { snapshot } = createSnapshot({ sim, seed: WORLD.seed });
 const shotsAPI = createShotsAPI({ renderer, camera, game, drizzle, effects, motes, applyMood, MOODS, scene });
 const recorderAPI = createRecorderAPI({ getCanvas: () => renderer.domElement });
+// THE TRAILER (round 5B): a replayable ~60s cinematic. The mood setter must
+// go through currentMood or the per-frame weather easing (above) would drag
+// the atmosphere back to the pre-cinematic mood within a second.
+const cinematic = createCinematic({
+  camera, renderer, scene,
+  setMood: (key) => {
+    currentMood = MOODS[key] || currentMood;
+    applyMood(currentMood);
+    drizzle.setLevel(currentMood.drizzle ? 0.45 : 0);
+  },
+  flood: sim.flood,
+  water,
+  enemyMgr,
+  viewmodel,
+  effects,
+  recorder: recorderAPI,
+  tickWind,
+  tickDapple,
+  trackShadow,
+  sun,
+});
 window.__deadfall = {
   version: 4,
   sim,
@@ -548,6 +570,10 @@ window.__deadfall = {
   // window.__deadfall.recorder.start() / .stop() records the render canvas
   // to a downloaded .webm; camera choreography is a later session's job.
   recorder: recorderAPI,
+  // THE TRAILER (round 5B): cinematic.seek(t) poses camera + world at time t
+  // deterministically; cinematic.play() runs it; cinematic.record() plays it
+  // into the recorder and downloads the .webm (foreground window required).
+  cinematic,
   // THE FLOOD (round 5): trigger/inspect the event for grading + filming.
   // flood.trigger() springs it now (once per run - startSimRun to re-arm);
   // flood.state exposes phase/rise/tint for capture scripts.
