@@ -10,9 +10,11 @@
 // trunk walls when it stops making progress.
 
 import {
-  WORLD, riverX, gorgeZ, palisadeZ, fractureZ, razorfinHazard,
+  WORLD, FLOOD, riverX, gorgeZ, palisadeZ, fractureZ, razorfinHazard,
+  floodMask, terrainHeight,
 } from '../world/heightmap.js';
 import { hasLOS } from '../world/colliders.js';
+import { ROOSTS } from '../world/roosts.js';
 
 // Waypoint lines south -> north for the three advertised routes. Round 3
 // made the world physically gated, so every route threads: a Palisade gate,
@@ -158,6 +160,18 @@ export function createBot(ctx) {
     let detour = null;
     let grenadeCd = 0;
     let razorEscapeYaw = null;
+    let razorLastZ = 0;
+    let razorStallT = 0;
+    let razorStrafeT = 0;
+    let razorSide = 1;
+    // flood retreat (round 5): when the gorge swells, stop routing and
+    // climb the nearest same-side roost; wait perched until it drains
+    let floodRetreat = null;   // { roost, stage: 'base'|'top' }
+    let floodBusy = false;     // retreating or holding - suppress stuck logic
+    let floodBestD = Infinity; // retreat progress tracker (trunk unstick)
+    let floodSlowT = 0;
+    let floodStrafeT = 0;
+    let floodSide = 1;
 
     const maxFrames = maxMinutes * 60 * 60;
     for (let i = 0; i < maxFrames; i++) {
@@ -317,7 +331,10 @@ export function createBot(ctx) {
         if (detour && dist < 4) {
           detour = null;
           bestWpDist = Infinity;
-        } else if (!detour && dist < 7 && wpIdx < wps.length - 1) {
+        } else if (!detour && !medTarget && dist < 7 && wpIdx < wps.length - 1) {
+          // (!medTarget: dist is to the MEDKIT during a health run - it
+          // once ratcheted wpIdx up every frame beside a kit, warping the
+          // route target to the beacon from mid-map)
           wpIdx++;
           bestWpDist = Infinity;
         }
@@ -414,6 +431,87 @@ export function createBot(ctx) {
         break;
       }
 
+      // THE FLOOD (round 5): the correct play is written on the tin -
+      // get high. Reading it here is what the telegraph window is FOR.
+      floodBusy = false;
+      let floodTarget = null;
+      const fl = sim.flood;
+      // terrain-aware threat: the flood only matters where the FULL rise
+      // would actually drown the ground - high terrain inside the band is
+      // already the retreat (a bot on a 19m ridge shoulder once waited
+      // out the whole event it was never in danger from)
+      // (mask gate 0.22 = at least ~2m of ADDED water projected - the
+      // band's outer feather adds centimetres, which is not a threat
+      // worth standing still in spitter range for)
+      const drowns = (x, z) => {
+        const m = floodMask(x, z);
+        return m > 0.22
+          && terrainHeight(x, z) < WORLD.waterLevel + FLOOD.RISE_MAX * m + 0.4;
+      };
+      if (fl && fl.dangerous()) {
+        if (!floodRetreat && drowns(pp.x, pp.z)) {
+          // nearest roost on THIS side of the rift - never swim the
+          // razorfin gorge to reach a perch
+          const mySide = Math.sign(pp.z - gorgeZ(pp.x)) || 1;
+          let best = null;
+          for (const r of ROOSTS) {
+            if (r.side !== mySide) continue;
+            const dd = Math.hypot(r.base.x - pp.x, r.base.z - pp.z);
+            if (!best || dd < best.dd) best = { r, dd };
+          }
+          if (best) {
+            floodRetreat = { roost: best.r, stage: 'base' };
+            floodBestD = Infinity;
+            floodSlowT = 0;
+          }
+        }
+        if (floodRetreat) {
+          const r = floodRetreat.roost;
+          if (floodRetreat.stage === 'base'
+            && Math.hypot(pp.x - r.base.x, pp.z - r.base.z) < 2.2) {
+            floodRetreat.stage = 'top'; // at the bole - walk the treads up
+            floodBestD = Infinity;
+            floodSlowT = 0;
+          }
+          const goal = floodRetreat.stage === 'base' ? r.base : r.top;
+          const gd = Math.hypot(pp.x - goal.x, pp.z - goal.z);
+          if (floodRetreat.stage === 'top' && gd < 2.4) {
+            floodBusy = true; // perched (or beside the crown): hold fast
+            floodRetreat.perched = true;
+          } else {
+            floodTarget = goal;
+          }
+        } else if (!floodRetreat) {
+          // safe ground: do not walk INTO drowning water - hold here
+          // until it drains (checks the waypoint AND the approach to it)
+          const wpNow = wps[Math.min(wpIdx, wps.length - 1)];
+          const midX = (pp.x + wpNow.x) / 2;
+          const midZ = (pp.z + wpNow.z) / 2;
+          if (drowns(wpNow.x, wpNow.z) || drowns(midX, midZ)) floodBusy = true;
+        }
+      } else if (floodRetreat) {
+        floodRetreat = null;      // drained - climb down, resume the run
+        // rejoin the route at the NEAREST waypoint: the retreat dragged
+        // us off the proven lane, and pressing blindly at the old target
+        // funnels through unproven jungle (a deterministic trunk pocket
+        // at 149,-112 ate three runs exactly this way)
+        let bi = wpIdx;
+        let bd = Infinity;
+        const lo = Math.max(0, wpIdx - 2);
+        const hi = Math.min(wps.length - 1, wpIdx + 1);
+        for (let wi = lo; wi <= hi; wi++) {
+          const dd = Math.hypot(wps[wi].x - pp.x, wps[wi].z - pp.z);
+          if (dd < bd) {
+            bd = dd;
+            bi = wi;
+          }
+        }
+        wpIdx = bi;
+        bestWpDist = Infinity;    // re-baseline nav after the detour
+        slowT = 0;
+        detour = null;
+      }
+
       // razorfin water is an emergency: swim for the nearest bank NOW.
       // Latch the chosen bank until clear - dithering at the centreline
       // while the swarm feeds is how one bot run bled out.
@@ -421,6 +519,9 @@ export function createBot(ctx) {
         if (razorEscapeYaw === null) {
           const north = pp.z < gorgeZ(pp.x); // past centre? push on north
           razorEscapeYaw = north ? 0 : Math.PI;
+          razorLastZ = pp.z;
+          razorStallT = 0;
+          razorStrafeT = 0;
         }
         let dyaw = razorEscapeYaw - player.p.yaw;
         while (dyaw > Math.PI) dyaw -= Math.PI * 2;
@@ -430,8 +531,75 @@ export function createBot(ctx) {
         intent.moveX = 0;
         intent.sprint = true;
         intent.aim = false;
+        // wedged against a bank trunk while the swarm feeds? strafe off
+        // it - the escape line had no unstick and bots drowned in place
+        if (Math.abs(pp.z - razorLastZ) > 0.5) {
+          razorLastZ = pp.z;
+          razorStallT = 0;
+        } else if (razorStrafeT <= 0) {
+          razorStallT += dt;
+        }
+        if (razorStrafeT <= 0 && razorStallT > 1.2) {
+          razorStrafeT = 0.9;
+          razorSide = -razorSide;
+          razorStallT = 0;
+        }
+        if (razorStrafeT > 0) {
+          razorStrafeT -= dt;
+          intent.moveX = razorSide;
+        }
       } else {
         razorEscapeYaw = null;
+      }
+
+      // flood movement override: outranks combat positioning and normal
+      // nav (you cannot win a fight underwater), but NOT the razorfin
+      // escape above - swim out of the swarm first, then climb
+      if (razorfinHazard(pp.x, pp.z) <= 0) {
+        if (floodTarget) {
+          const fdx = floodTarget.x - pp.x;
+          const fdz = floodTarget.z - pp.z;
+          const gd = Math.hypot(fdx, fdz);
+          const wantYaw = Math.atan2(-fdx, -fdz);
+          let dyaw = wantYaw - player.p.yaw;
+          while (dyaw > Math.PI) dyaw -= Math.PI * 2;
+          while (dyaw < -Math.PI) dyaw += Math.PI * 2;
+          player.p.yaw += Math.max(-0.12, Math.min(0.12, dyaw));
+          intent.moveX = 0;
+          intent.moveZ = -1;
+          intent.sprint = player.p.stamina > 0.2;
+          intent.aim = false;
+          // wedged on a trunk mid-retreat? strafe around it - drowning
+          // in place because a tree was in the way is not a strategy
+          if (gd < floodBestD - 0.6) {
+            floodBestD = gd;
+            floodSlowT = 0;
+          } else if (floodStrafeT <= 0) {
+            floodSlowT += dt;
+          }
+          if (floodStrafeT <= 0 && floodSlowT > 1.3) {
+            floodStrafeT = 1.0;
+            floodSide = -floodSide;
+            floodSlowT = 0;
+          }
+          if (floodStrafeT > 0) {
+            floodStrafeT -= dt;
+            intent.moveX = floodSide;
+            intent.moveZ = -0.4;
+          }
+          floodBusy = true;
+        } else if (floodBusy) {
+          // perched: stand fast whatever happens - the perch IS the play.
+          // edge-holding with a live attacker: keep the combat footwork
+          // (statues die to acid arcs), just do not resume the route.
+          const perched = floodRetreat && floodRetreat.perched;
+          if (perched || !target) {
+            intent.moveX = 0;
+            intent.moveZ = 0;
+            intent.sprint = false;
+          }
+          slowT = 0;
+        }
       }
       } // end: if (player.p.alive) - decision-making guard
 
@@ -490,13 +658,20 @@ export function createBot(ctx) {
       // coopSync.submitAndWait, deadlocking the other bot's coop frame.
       const atBeacon = wpIdx >= wps.length - 1
         && Math.hypot(pp.x - wps[wps.length - 1].x, pp.z - wps[wps.length - 1].z) < 10;
-      if (player.p.alive) {
+      if (player.p.alive && floodBusy) {
+        // holding out a flood is CORRECT stillness - keep the window
+        // fresh so release is never judged by a half-spent-standing one
+        stuckRef = { x: pp.x, z: pp.z, t: 0 };
+      } else if (player.p.alive) {
         stuckRef.t += dt;
         if (stuckRef.t > 14) {
           if (!target && !atBeacon
             && Math.hypot(pp.x - stuckRef.x, pp.z - stuckRef.z) < 2.2) {
             report.stuck = true;
-            report.stuckAt = { x: Math.round(pp.x), z: Math.round(pp.z), wp: wpIdx };
+            report.stuckAt = {
+              x: Math.round(pp.x), z: Math.round(pp.z), wp: wpIdx,
+              flood: sim.flood ? sim.flood.state.phase : 'none',
+            };
             break;
           }
           stuckRef = { x: pp.x, z: pp.z, t: 0 };
