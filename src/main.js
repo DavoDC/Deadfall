@@ -61,7 +61,15 @@ window.addEventListener('resize', () => {
 // --- world ---
 console.log('[deadfall] building world, seed', WORLD.seed);
 const t0 = performance.now();
-const { sun, hemi, applyMood } = buildSky(scene, renderer);
+const { sun, hemi, applyMood: applyMoodSky } = buildSky(scene, renderer);
+// round-6: every mood change also re-captures the water's environment
+// reflection (sky + fog + canopy silhouettes) - see buildWater
+function applyMood(mood) {
+  applyMoodSky(mood);
+  if (water && water.userData.updateEnvMap) {
+    water.userData.updateEnvMap(renderer, scene, camera.position);
+  }
+}
 // round-6 rendering pipeline - every render (game loop, shots rig,
 // legibility probe, cinematic) goes through this
 const pipeline = createPipeline({ renderer, scene, camera, sun });
@@ -76,6 +84,8 @@ const drizzle = createDrizzle(scene);
 let razorfins = null; // needs effects; created after the sim below
 console.log('[deadfall] world built in', Math.round(performance.now() - t0), 'ms,',
   colliderCount(), 'colliders');
+// round-6: first water reflection capture (moods re-capture via applyMood)
+water.userData.updateEnvMap(renderer, scene, camera.position);
 
 // --- presentation elements the sim reports into ---
 const vignetteEl = document.getElementById('vignette');

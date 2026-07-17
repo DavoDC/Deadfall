@@ -269,6 +269,36 @@ export function buildWater(scene) {
   mesh.name = 'water';
   scene.add(mesh);
 
+  // Round-6 water reflections: a small cube capture of the CURRENT sky,
+  // fog and canopy silhouettes feeds the standard material's environment
+  // reflection. At 128px the capture is naturally soft = a glossy river,
+  // and the round-4 fresnel already strengthens it exactly at grazing
+  // angles where real water mirrors. Cost: six 128px scene renders ONLY
+  // when the mood/weather changes (call sites in main.js), zero per frame.
+  {
+    const cubeRT = new THREE.WebGLCubeRenderTarget(128, {
+      type: THREE.HalfFloatType,
+      generateMipmaps: true,
+      minFilter: THREE.LinearMipmapLinearFilter,
+    });
+    const cubeCam = new THREE.CubeCamera(0.5, 1200, cubeRT);
+    mesh.userData.updateEnvMap = (renderer, sceneRef, nearPos) => {
+      // capture from just above the water surface near the viewer so the
+      // reflected canopy line sits where the eye expects it
+      cubeCam.position.set(
+        nearPos ? nearPos.x : 2, WORLD.waterLevel + 1.2, nearPos ? nearPos.z : -14
+      );
+      mesh.visible = false;
+      cubeCam.update(renderer, sceneRef);
+      mesh.visible = true;
+      if (!mat.envMap) {
+        mat.envMap = cubeRT.texture;
+        mat.envMapIntensity = 1.1;
+        mat.needsUpdate = true;
+      }
+    };
+  }
+
   // gentle swell so the river reads as liquid even without textures;
   // depth-scaled so puddle edges hold still instead of pulsing
   const base = geo.attributes.position.array.slice();

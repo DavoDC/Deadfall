@@ -691,9 +691,10 @@ export function buildVegetation(scene, opts = {}) {
     color: 0xffb63a, emissive: 0xff8210, emissiveIntensity: 9.8, roughness: 0.4,
   });
   const medusaMat = windify(new THREE.MeshStandardMaterial({
-    // round-6: 0.6 -> 2.4 - the drifting medusae become soft cyan lanterns
-    // (linear lum ~1.4: just over the bloom threshold, a whisper of glow)
-    color: 0xffffff, emissive: 0x4fd8f0, emissiveIntensity: 2.4,
+    // round-6: 0.6 -> 1.8 - the drifting medusae become soft cyan lanterns
+    // (just over the bloom threshold; 2.4 blew their white cores out in
+    // the bright moods)
+    color: 0xffffff, emissive: 0x4fd8f0, emissiveIntensity: 1.8,
     roughness: 0.3, transparent: true, opacity: 0.82, side: THREE.DoubleSide,
     depthWrite: false,
   }), 0.5);
