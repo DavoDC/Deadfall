@@ -311,7 +311,9 @@ export function createEnemyManager(scene, playerHelpers, effects, hooks) {
     e.model.group.visible = true;
     if (type !== 'miremother') {
       e.model.group.position.copy(e.pos);
-      e.model.group.rotation.set(0, e.heading, 0);
+      // models are authored face = -Z (player convention), but heading's
+      // sin/cos movement basis points +Z - add PI so the FACE leads the walk
+      e.model.group.rotation.set(0, e.heading + Math.PI, 0);
       e.model.group.scale.setScalar(e.baseScale);
     }
     return e;
@@ -1091,7 +1093,9 @@ export function createEnemyManager(scene, playerHelpers, effects, hooks) {
 
     // head pose
     refs.head.position.copy(chain[0]);
-    _v.copy(chain[0]).add(e.facing);
+    // lookAt points local +Z at the target but her snout is authored at -Z:
+    // look AWAY from facing so the face points along facing (at the player)
+    _v.copy(chain[0]).sub(e.facing);
     refs.head.lookAt(_v);
     // hood flare + jaw gape scale with hoodOpen
     refs.hoodL.rotation.z = 0.9 - e.hoodOpen * 0.8;
@@ -1198,7 +1202,9 @@ export function createEnemyManager(scene, playerHelpers, effects, hooks) {
       return;
     }
 
-    g.rotation.y = e.heading;
+    // +PI: models face -Z, heading moves along +Z (see spawn comment) -
+    // without it every creature walks backwards, eyes trailing
+    g.rotation.y = e.heading + Math.PI;
     g.rotation.z = 0;
 
     // hit flash: scale pulse (cheap, no shared-material writes)
@@ -1377,7 +1383,7 @@ export function createEnemyManager(scene, playerHelpers, effects, hooks) {
 
       const testSphere = (off, r, zone, mult) => {
         _sph.copy(off).multiplyScalar(s);
-        rotateY(_sph, e.heading);
+        rotateY(_sph, e.heading + Math.PI); // matches the render flip above
         _sph.add(e.pos);
         const t = raySphere(origin.x, origin.y, origin.z, dir.x, dir.y, dir.z,
           _sph.x, _sph.y, _sph.z, r * s);
