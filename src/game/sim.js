@@ -21,6 +21,7 @@ import { createDirector } from '../enemies/director.js';
 import { createPickups } from './pickups.js';
 import { createTraps } from './traps.js';
 import { createWeather } from './weather.js';
+import { createFlood } from './flood.js';
 import { getDifficulty, DEFAULT_DIFFICULTY } from './difficulty.js';
 
 const AYAHUASCA_DURATION = 25;
@@ -41,6 +42,7 @@ export function createSim({ scene, camera, effects, ui = {} }) {
     onBuff: ui.onBuff || noop,
     onWeather: ui.onWeather || noop,
     onBoss: ui.onBoss || noop,
+    onFlood: ui.onFlood || noop,
   };
 
   const game = {
@@ -202,6 +204,8 @@ export function createSim({ scene, camera, effects, ui = {} }) {
   const director = createDirector(enemyMgr, { furthestNorthPlayer, nearestPlayer });
   const weather = createWeather(U);
   director.setWeather(weather);
+  // THE FLOOD (round 5): the gorge's time-pressured second act
+  const flood = createFlood(U);
 
   // grenade hooks are per-thrower (self-damage must hit the thrower, not
   // just "nearest player" - matters once there's more than one player)
@@ -417,6 +421,7 @@ export function createSim({ scene, camera, effects, ui = {} }) {
 
   // --- environmental hazards ---
   let razorT = 0;
+  let floodT = 0;
   function updateHazards(dt) {
     const p = player.p;
     const hz = razorfinHazard(p.pos.x, p.pos.z);
@@ -430,6 +435,27 @@ export function createSim({ scene, camera, effects, ui = {} }) {
       }
     } else {
       razorT = 0;
+    }
+
+    // the flood's swarm: every player deep in risen water bleeds for it.
+    // Feet above the surface = safe: height IS the mechanic.
+    floodT -= dt;
+    if (floodT <= 0) {
+      floodT = 0.5;
+      let anyBitten = false;
+      for (const ctrl of players) {
+        const pp = ctrl.p;
+        if (!pp.alive) continue;
+        const fh = flood.hazardAt(pp.pos.x, pp.pos.z, pp.pos.y - ctrl.EYE_HEIGHT);
+        if (fh <= 0) continue;
+        damagePlayer(difficulty.razorfinDps * fh * 0.5, pp.pos, 'flood', ctrl);
+        anyBitten = true;
+        effects.burst(
+          new THREE.Vector3(pp.pos.x, pp.pos.y - ctrl.EYE_HEIGHT + 0.6, pp.pos.z),
+          'razor', 8, 3
+        );
+      }
+      if (anyBitten) U.onHazard('flood');
     }
   }
 
@@ -472,6 +498,7 @@ export function createSim({ scene, camera, effects, ui = {} }) {
     boss.ref = null;
     boss.spawned = false;
     weather.reset();
+    flood.reset();
     game.state = 'RUNNING';
     game.time = 0;
     game.kills = 0;
@@ -496,6 +523,7 @@ export function createSim({ scene, camera, effects, ui = {} }) {
 
     game.time += dt;
     weather.update(dt);
+    flood.update(dt, players, game.time);
     enemyMgr.tuning.fixNoiseMult = weather.mods().fixNoiseMult;
 
     // Update each player's position and collision
@@ -531,7 +559,7 @@ export function createSim({ scene, camera, effects, ui = {} }) {
 
   return {
     game, player, players, weapons, weaponsList, weaponHooks, grenades, grenadesList,
-    enemyMgr, director, pickups, traps, extraction, buff, weather, boss,
+    enemyMgr, director, pickups, traps, extraction, buff, weather, flood, boss,
     step, resetRun, setDifficulty, updateExtraction, addPlayer, damagePlayer,
     get difficulty() { return difficulty; },
   };

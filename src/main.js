@@ -4,7 +4,7 @@
 // State machine: MENU -> RUNNING (-> extraction channel) -> WIN | DEAD -> MENU.
 
 import * as THREE from 'three';
-import { WORLD, LANDMARKS, landmarkPos } from './world/heightmap.js';
+import { WORLD, LANDMARKS, landmarkPos, waterLevelAt } from './world/heightmap.js';
 import { buildTerrain, buildWater } from './world/terrain.js';
 import { buildSky, trackShadow, MOODS, ATMOS } from './world/sky.js';
 import { tickDapple, updateDappleSun, uniforms as dappleUniforms } from './world/dapple.js';
@@ -160,6 +160,9 @@ const ui = {
     if (kind === 'razorfin') {
       sfxRazorfin();
       hud && hud.toast('RAZORFINS - GET OUT OF THE WATER', 1.2);
+    } else if (kind === 'flood') {
+      sfxRazorfin();
+      hud && hud.toast('THE FLOOD FEEDS - GET ABOVE THE WATER', 1.2);
     }
   },
   onExtractTone: (progress) => sfxExtractTone(progress),
@@ -167,6 +170,19 @@ const ui = {
   onBuff: () => sfxAyahuasca(),
   onWeather: (w, initial) => applyWeatherFx(w, initial),
   onBoss: () => sfxCreature('miremother', { x: WORLD.maw.x, y: 0, z: WORLD.maw.z }, 1.8),
+  onFlood(phase) {
+    // the flood announces itself like weather does - but it is a threat
+    // with a clock, so every line names the correct response: UP
+    if (phase === 'telegraph') {
+      hud && hud.toast('THE GORGE IS SWELLING - GET TO HIGH GROUND', 4);
+      sfxThunder(0.85); // the flood-front rolls like distant thunder
+    } else if (phase === 'surge') {
+      hud && hud.toast('FLOODWATER - CLIMB. NOW.', 3);
+      sfxThunder(1);
+    } else if (phase === 'recede') {
+      hud && hud.toast('THE WATERS RECEDE', 2.5);
+    }
+  },
 };
 
 // --- the game itself ---
@@ -388,7 +404,9 @@ function tick(now) {
     vignetteEl.style.opacity = vignette * 0.9;
 
     // underwater tint: the round-1 "vanishing water" is now a real dive
-    const submerged = camera.position.y < WORLD.waterLevel + 0.12;
+    // (flood-aware: a risen surface can swallow the camera anywhere)
+    const submerged = camera.position.y
+      < waterLevelAt(camera.position.x, camera.position.z) + 0.12;
     underwaterEl.style.opacity = submerged ? 1 : 0;
 
     // ayahuasca: overlay fever + the full trip (x-ray, wavy world)
@@ -518,6 +536,10 @@ window.__deadfall = {
   snapshot,
   runBot: bot.runBot,
   shots: shotsAPI,
+  // THE FLOOD (round 5): trigger/inspect the event for grading + filming.
+  // flood.trigger() springs it now (once per run - startSimRun to re-arm);
+  // flood.state exposes phase/rise/tint for capture scripts.
+  flood: sim.flood,
   dappleUniforms, // live dapple tuning from the console (art grading)
   // enemy-legibility metric: is a threat readable against dark/dappled
   // foliage? See game/legibility.js for the difference-imaging method.
