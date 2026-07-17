@@ -73,6 +73,28 @@ export function buildProps(scene) {
   beaconLight.position.set(ext.x + 5.9, eh + 12.2, ext.z);
   group.add(beaconLight);
 
+  // ---------- EXTRACTION IGNITION (round 6 signature moment) ----------
+  // When the player commits to extraction the beacon ANSWERS: the pillar
+  // ignites, the lamp goes HDR-hot (heavy bloom), and a ring of light
+  // sweeps outward across the canopy. Driven from main.js via
+  // igniteBeacon(k) each frame; ringPulse() fires the shockwave on the
+  // commit edge and again on extraction.
+  const ignitionRing = new THREE.Mesh(
+    new THREE.CylinderGeometry(1, 1, 26, 48, 1, true),
+    new THREE.MeshBasicMaterial({
+      color: 0xffd070, transparent: true, opacity: 0,
+      blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+      depthWrite: false, fog: false,
+    })
+  );
+  ignitionRing.position.set(ext.x + 5.9, eh + 16, ext.z);
+  ignitionRing.visible = false;
+  group.add(ignitionRing);
+  let ringT = -1; // seconds since pulse start; -1 = idle
+  let igniteK = 0;
+  function igniteBeacon(k) { igniteK = Math.max(0, Math.min(1, k)); }
+  function ringPulse() { ringT = 0; }
+
   // ---------- insertion crate ----------
   const insH = terrainHeight(WORLD.insertion.x, WORLD.insertion.z);
   const crate = new THREE.Mesh(
@@ -382,12 +404,31 @@ export function buildProps(scene) {
   let t = 0;
   function tickProps(dt) {
     t += dt;
-    const pulse = 0.6 + 0.4 * Math.sin(t * 2.4);
+    // ignition quickens the beacon's heartbeat as well as brightening it
+    const pulse = 0.6 + 0.4 * Math.sin(t * (2.4 + igniteK * 4));
     // round-6: HDR pulse range - the lamp crosses the bloom threshold on
-    // the upstroke, so the beacon literally breathes light
-    beaconLamp.material.emissiveIntensity = 2.4 + pulse * 5;
-    beaconLight.intensity = 16 + pulse * 26;
-    beam.material.opacity = 0.13 + pulse * 0.11;
+    // the upstroke, so the beacon literally breathes light. Ignition sends
+    // it deep into HDR: the lamp becomes the brightest thing in the world.
+    beaconLamp.material.emissiveIntensity = 2.4 + pulse * 5 + igniteK * 10;
+    beaconLight.intensity = 16 + pulse * 26 + igniteK * 60;
+    beam.material.opacity = 0.13 + pulse * 0.11 + igniteK * 0.4;
+    const beamSwell = 1 + igniteK * 2.4;
+    beam.scale.set(beamSwell, 1, beamSwell);
+    // the ignition shockwave: a ring of light racing across the canopy
+    if (ringT >= 0) {
+      ringT += dt;
+      const RING_SECS = 2.6;
+      const p = ringT / RING_SECS;
+      if (p >= 1) {
+        ringT = -1;
+        ignitionRing.visible = false;
+      } else {
+        const r = 4 + p * p * 300; // accelerating sweep
+        ignitionRing.visible = true;
+        ignitionRing.scale.set(r, 1, r);
+        ignitionRing.material.opacity = 0.4 * (1 - p);
+      }
+    }
     // the Fang's ember breathes slowly - alive, watching
     const emberPulse = 0.5 + 0.5 * Math.sin(t * 0.9 + 1.4);
     // round-6: HDR pulse range - the ember blooms at the peak of each
@@ -397,5 +438,5 @@ export function buildProps(scene) {
     ember.rotation.y = t * 0.25;
   }
 
-  return { tickProps };
+  return { tickProps, igniteBeacon, ringPulse };
 }

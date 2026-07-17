@@ -77,7 +77,7 @@ const renderFrame = () => pipeline.render();
 buildTerrain(scene);
 const water = buildWater(scene);
 buildVegetation(scene);
-const { tickProps } = buildProps(scene);
+const { tickProps, igniteBeacon, ringPulse } = buildProps(scene);
 buildRoosts(scene); // the flood's vertical retreat (round 5)
 const motes = createMotes(scene);
 const drizzle = createDrizzle(scene);
@@ -496,6 +496,25 @@ function tick(now) {
     const fs = sim.flood.state;
     water.userData.setFlood(fs.rise, fs.tintFront, fs.tintIntensity);
   }
+  // EXTRACTION IGNITION (round 6 signature moment): committing to the
+  // channel makes the beacon ANSWER - pillar ignites, lamp goes HDR-hot,
+  // and a light ring races across the canopy on the commit edge and again
+  // the moment you make it out.
+  {
+    const committed = extraction.committed && game.state === 'RUNNING';
+    const targetK = committed ? 0.35 + extraction.progress * 0.65 : 0;
+    igniteK += (targetK - igniteK) * Math.min(1, dt * (committed ? 3 : 1.2));
+    igniteBeacon(igniteK);
+    if (committed && !ignitionWasCommitted) ringPulse();
+    ignitionWasCommitted = committed;
+    if (game.state === 'WIN' && !ignitionWinFired) {
+      ignitionWinFired = true;
+      ringPulse();
+    } else if (game.state === 'RUNNING') {
+      ignitionWinFired = false;
+    }
+  }
+
   if (water.userData.tick) water.userData.tick(now / 1000);
   tickWind(now / 1000);
   tickDapple(now / 1000);
@@ -508,6 +527,9 @@ const _listenerFwd = new THREE.Vector3();
 const _yawQuat = new THREE.Quaternion();
 const _yawEuler = new THREE.Euler();
 let heartbeatT = 0;
+let igniteK = 0;
+let ignitionWasCommitted = false;
+let ignitionWinFired = false;
 
 requestAnimationFrame(tick);
 
@@ -601,6 +623,9 @@ window.__deadfall = {
   checkLegibility: (opts = {}) => checkLegibility({ renderer, camera, scene, game, enemyMgr, drizzle, effects, motes, renderFrame, ...opts }),
   // round-6 rendering pipeline - pass toggles + uniforms for live A/B
   post: pipeline,
+  // round-6 signature moment, drivable headlessly (hidden tabs have no
+  // RAF, so capture rigs step tickProps themselves)
+  ignition: { igniteBeacon, ringPulse, tickProps },
 };
 console.log('[deadfall] ready (round 2)');
 
