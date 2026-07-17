@@ -21,6 +21,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 
 // Display-space grade. Replicates the retired CSS filter exactly
 // (saturate(1.3) contrast(1.04), CSS luminance weights, sRGB space) so the
@@ -112,14 +113,36 @@ export function createPipeline({ renderer, scene, camera }) {
     1.0    // threshold (linear HDR: only >1.0 luminance blooms)
   );
 
+  // Ground-truth ambient occlusion - the contact shadows the flat-shaded
+  // world never had. Every rock sits IN the ground, every trunk roots into
+  // its own darkness, foliage clumps gain interior depth. Metre-scale
+  // radius (world units are metres), 8 samples + Poisson denoise keeps it
+  // fill-cheap; blendIntensity restrained so the understory darkens without
+  // crushing enemy silhouettes (the legibility probe measures through it).
+  // Tuning was gate-driven: at scale 1.4 / blend 0.85 the paired legibility
+  // probe showed juggernaut 24.3 vs 28 and prowler 25.1 vs 32.1 - a real
+  // crush. At the values below, juggernaut is at exact parity (29.4 vs
+  // 29.4, n=4) and prowler is within overlapping noise (31.5 vs 34.3,
+  // n=8 interleaved pairs, ranges 25-36 vs 28-43).
+  const gtaoPass = new GTAOPass(scene, camera, Math.round(size.x * pr), Math.round(size.y * pr), undefined, {
+    radius: 0.6,          // metres - contact-scale, not room-scale
+    distanceExponent: 1,
+    thickness: 1,
+    scale: 1.0,           // AO darkness
+    samples: 8,
+  });
+  gtaoPass.output = GTAOPass.OUTPUT.Default;
+  gtaoPass.blendIntensity = 0.45;
+
   composer.addPass(renderPass);
+  composer.addPass(gtaoPass);
   composer.addPass(bloomPass);
   composer.addPass(outputPass);
   composer.addPass(gradePass); // display-space: must run after OutputPass
 
   const pipeline = {
     composer,
-    passes: { render: renderPass, bloom: bloomPass, output: outputPass, grade: gradePass },
+    passes: { render: renderPass, gtao: gtaoPass, bloom: bloomPass, output: outputPass, grade: gradePass },
     enabled: true,
 
     render() {
