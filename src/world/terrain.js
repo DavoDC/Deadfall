@@ -379,7 +379,28 @@ export function buildWater(scene) {
           vec3 wViewDir = normalize(vViewPosition);
           float wFres = pow(1.0 - saturate(dot(wViewDir, normal)), 3.0);
           diffuseColor.a = clamp(wAlpha + wFres * 0.28, 0.0, 0.9);
-        }`);
+        }`)
+      // FLOOD/RAZORFIN READABILITY FIX (playtest bug, 2026-07-18): the
+      // blood-red hazard telegraph is supposed to read "from a distance"
+      // (see buildWater's opening comment) but standard scene fog was
+      // washing it down to an indistinct pale grey-green past ~50-60m -
+      // confirmed by comparing close vs far in-engine captures. Self-
+      // contained replacement of the stock fog_fragment chunk (can't just
+      // prepend - fogFactor is declared INSIDE that chunk): cuts the fog
+      // mix locally wherever the water is actually running red, scaled by
+      // how red the vertex colour is; calm teal water keeps normal
+      // atmospheric fog untouched.
+      .replace('#include <fog_fragment>', `
+        #ifdef USE_FOG
+          #ifdef FOG_EXP2
+            float fogFactor = 1.0 - exp( - fogDensity * fogDensity * vFogDepth * vFogDepth );
+          #else
+            float fogFactor = smoothstep( fogNear, fogFar, vFogDepth );
+          #endif
+          float bloodAmt = clamp((vColor.r - vColor.g) * 2.2, 0.0, 1.0);
+          fogFactor *= mix(1.0, 0.12, bloodAmt);
+          gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, fogFactor );
+        #endif`);
   };
   const mesh = new THREE.Mesh(geo, mat);
   mesh.position.y = WORLD.waterLevel;
