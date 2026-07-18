@@ -350,10 +350,13 @@ export function buildWater(scene) {
             mix(waterHash(i + vec2(0.0, 1.0)), waterHash(i + vec2(1.0, 1.0)), u.x),
             u.y);
         }
-        // two scrolling octaves - broad swell + fine chop
+        // three scrolling octaves - broad swell + fine chop + a stretched
+        // CURRENT streak riding downstream (round 7: the river flows,
+        // it does not just wobble in place)
         float rippleHeight(vec2 p) {
-          return waterNoise(p * 0.35 + uWTime * vec2(0.10, 0.04)) * 0.6
-               + waterNoise(p * 1.30 - uWTime * vec2(0.07, 0.12)) * 0.4;
+          return waterNoise(p * 0.35 + uWTime * vec2(0.16, 0.06)) * 0.5
+               + waterNoise(p * 1.30 - uWTime * vec2(0.11, 0.18)) * 0.32
+               + waterNoise(vec2(p.x * 0.22 - uWTime * 0.55, p.y * 1.7)) * 0.18;
         }`)
       .replace('#include <normal_fragment_begin>', `#include <normal_fragment_begin>
         {

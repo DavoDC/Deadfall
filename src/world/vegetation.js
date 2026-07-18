@@ -664,10 +664,10 @@ export function buildVegetation(scene, opts = {}) {
   const barkMat2 = dapplify(new THREE.MeshStandardMaterial({ color: 0x715237, roughness: 1 }));
   const canopyMat = windify(new THREE.MeshStandardMaterial({
     color: 0xffffff, roughness: 1, flatShading: true,
-  }), 0.14);
+  }), 0.19);
   const canopyMat2 = windify(new THREE.MeshStandardMaterial({
     color: 0xffffff, roughness: 1, flatShading: true,
-  }), 0.2);
+  }), 0.26);
   const snagMat = dapplify(new THREE.MeshStandardMaterial({ color: 0x6e675c, roughness: 1 }));
   // round 7: understory species draw their ORGANIC silhouettes from the
   // procedural atlas (alpha-cutout, so depth writes, shadows and the

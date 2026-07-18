@@ -3,11 +3,11 @@
 
 import * as THREE from 'three';
 
-const COUNT = 170;
+const COUNT = 240;  // round 7: thicker airborne life
 const RANGE = 22;   // half-size of the wrap box around the player
 
 export function createMotes(scene) {
-  const geo = new THREE.PlaneGeometry(0.05, 0.05);
+  const geo = new THREE.PlaneGeometry(0.06, 0.06);
   const mat = new THREE.MeshBasicMaterial({
     color: 0xffffff, vertexColors: true, transparent: true, opacity: 0.5,
     blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
