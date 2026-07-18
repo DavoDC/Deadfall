@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { makeRng, hash2 } from '../src/core/rng.js';
-import { fbm, valueNoise } from '../src/core/noise.js';
+import { fbm, valueNoise, dampTowards } from '../src/core/noise.js';
 import {
   WORLD, terrainHeight, moisture, terrainNormal, moveSpeedFactor, riverX,
   gorgeZ, palisadeZ, fractureZ, razorfinHazard, blockedStep, isThicket,
-  LANDMARKS, landmarkPos,
+  LANDMARKS, landmarkPos, travelGrade, slopeSpeedFactor,
 } from '../src/world/heightmap.js';
 import { routeWaypoints } from '../src/game/autotest.js';
 import { RUIN_SITES } from '../src/world/props.js';
@@ -137,6 +137,84 @@ describe('terrain layout', () => {
     expect(open).toBeGreaterThan(0.9);
     expect(swamp).toBeLessThan(open);
     expect(water).toBeLessThan(0.8);
+  });
+});
+
+describe('dampTowards (round 8: smoothed ground follow)', () => {
+  it('reaches the target exactly at zero distance', () => {
+    expect(dampTowards(5, 5, 28, 0.016)).toBeCloseTo(5, 6);
+  });
+  it('moves toward, never past, the target in one step', () => {
+    const next = dampTowards(0, 10, 28, 0.016);
+    expect(next).toBeGreaterThan(0);
+    expect(next).toBeLessThan(10);
+  });
+  it('converges to the target over many small steps', () => {
+    let v = 0;
+    for (let i = 0; i < 300; i++) v = dampTowards(v, 10, 28, 1 / 60);
+    expect(v).toBeCloseTo(10, 2);
+  });
+  it('a higher rate closes more distance per step', () => {
+    const slow = dampTowards(0, 10, 10, 0.016);
+    const fast = dampTowards(0, 10, 40, 0.016);
+    expect(fast).toBeGreaterThan(slow);
+  });
+  it('is frame-rate independent: two half-steps ~= one full step', () => {
+    const oneStep = dampTowards(0, 10, 20, 1 / 30);
+    let twoSteps = dampTowards(0, 10, 20, 1 / 60);
+    twoSteps = dampTowards(twoSteps, 10, 20, 1 / 60);
+    expect(twoSteps).toBeCloseTo(oneStep, 5);
+  });
+});
+
+describe('slope-scaled movement (round 8: "no slowdown uphill")', () => {
+  it('slopeSpeedFactor is 1 on flat ground', () => {
+    expect(slopeSpeedFactor(0)).toBe(1);
+  });
+  it('slows down climbing steeper grades, floored well above zero', () => {
+    const gentle = slopeSpeedFactor(0.3);
+    const steep = slopeSpeedFactor(1.2);
+    const nearWall = slopeSpeedFactor(1.6); // MAX_GRADE
+    expect(gentle).toBeLessThan(1);
+    expect(steep).toBeLessThan(gentle);
+    expect(nearWall).toBeGreaterThanOrEqual(0.45);
+    expect(nearWall).toBeLessThan(steep);
+  });
+  it('never drops speed below the climb floor even on absurd grades', () => {
+    expect(slopeSpeedFactor(50)).toBeCloseTo(0.45, 5);
+  });
+  it('gives a small, capped boost on descents', () => {
+    const mild = slopeSpeedFactor(-0.5);
+    const steep = slopeSpeedFactor(-3);
+    expect(mild).toBeGreaterThan(1);
+    expect(mild).toBeLessThanOrEqual(1.18);
+    expect(steep).toBeCloseTo(1.18, 5);
+  });
+  it('travelGrade is positive walking toward higher ground, negative toward lower', () => {
+    // the eastern ridge climbs as x increases toward its crest
+    const up = travelGrade(90, 100, 1, 0);
+    const down = travelGrade(90, 100, -1, 0);
+    expect(up).toBeGreaterThan(0);
+    expect(down).toBeCloseTo(-up, 5);
+  });
+  it('travelGrade is zero for a zero-length direction (not moving)', () => {
+    expect(travelGrade(0, 0, 0, 0)).toBe(0);
+  });
+  it('travelGrade averaged over a path tracks the real net elevation change', () => {
+    // open ground away from every carved set-piece (palisade/fracture/
+    // gorge/ridge/swamp) - just the rolling floor noise. The per-step grade
+    // wiggles with the terrain's own bumps (expected - it's real geometry),
+    // but averaged over a path it should agree with the actual climb/descent.
+    const x = 50, z0 = 60, z1 = 10;
+    const netUp = terrainHeight(x, z1) > terrainHeight(x, z0);
+    let sum = 0, n = 0;
+    for (let z = z0; z > z1; z -= 0.6) {
+      sum += travelGrade(x, z, 0, -1);
+      n++;
+    }
+    const avg = sum / n;
+    if (netUp) expect(avg).toBeGreaterThan(0);
+    else expect(avg).toBeLessThan(0);
   });
 });
 

@@ -5,10 +5,12 @@
 import * as THREE from 'three';
 import {
   terrainHeight, moveSpeedFactor, blockedStep, waterLevelAt, WORLD,
+  travelGrade, slopeSpeedFactor,
 } from '../world/heightmap.js';
 import { pushOut } from '../world/colliders.js';
 import { platformGroundAt } from '../world/platforms.js';
-import { clamp, lerp } from '../core/noise.js';
+import { clamp, lerp, dampTowards } from '../core/noise.js';
+import { updateStamina } from './stamina.js';
 
 const EYE_HEIGHT = 1.66;
 const RADIUS = 0.42;
@@ -19,6 +21,7 @@ const SPRINT = 7.9;
 const ACCEL = 42;
 const FRICTION = 11;
 const AIR_CONTROL = 0.25;
+const GROUND_FOLLOW_RATE = 28; // 1/s, damps terrain-noise judder while walking (not landing)
 
 export function createPlayer(camera) {
   const p = {
@@ -28,6 +31,7 @@ export function createPlayer(camera) {
     pitch: 0,
     grounded: true,
     stamina: 1,
+    exhausted: false,  // forced-walk state after stamina fully drains
     hp: 100,
     maxHp: 100,
     alive: true,
@@ -76,16 +80,25 @@ export function createPlayer(camera) {
     if (wish.lengthSq() > 1) wish.normalize();
 
     const moving = wish.lengthSq() > 0.01;
-    // aiming cancels sprint; the vine (ayahuasca) makes sprint free
-    const wantSprint = intent.sprint && moving && intent.moveZ < 0
-      && p.stamina > 0.05 && !intent.aim;
-    p.sprinting = wantSprint;
-    if (wantSprint && p.buffT <= 0) p.stamina = Math.max(0, p.stamina - dt * 0.22);
-    else p.stamina = Math.min(1, p.stamina + dt * 0.14);
+    // aiming cancels sprint; the vine (ayahuasca) makes sprint free (skips
+    // the stamina resource entirely, so it can't get stuck exhausted)
+    const sprintRequested = intent.sprint && moving && intent.moveZ < 0 && !intent.aim;
+    // the buff makes sprint free - drain never applies, but the resource
+    // still regens toward full while it's active
+    const stam = updateStamina(
+      { stamina: p.stamina, exhausted: p.exhausted },
+      p.buffT > 0 ? false : sprintRequested,
+      dt
+    );
+    p.stamina = stam.stamina;
+    p.exhausted = stam.exhausted;
+    p.sprinting = p.buffT > 0 ? sprintRequested : stam.sprinting;
 
     const terrainFactor = moveSpeedFactor(p.pos.x, p.pos.z);
     const buffMult = p.buffT > 0 ? 1.22 : 1;
-    const targetSpeed = (wantSprint ? SPRINT : WALK) * terrainFactor * p.moveMult * buffMult;
+    const grade = moving ? travelGrade(p.pos.x, p.pos.z, wish.x, wish.z) : 0;
+    const slopeMult = slopeSpeedFactor(grade);
+    const targetSpeed = (p.sprinting ? SPRINT : WALK) * terrainFactor * slopeMult * p.moveMult * buffMult;
 
     // --- integrate horizontal velocity ---
     const control = p.grounded ? 1 : AIR_CONTROL;
@@ -146,11 +159,18 @@ export function createPlayer(camera) {
     const platG = platformGroundAt(p.pos.x, p.pos.z, p.pos.y - EYE_HEIGHT);
     const ground = Math.max(terrainHeight(p.pos.x, p.pos.z), platG) + EYE_HEIGHT;
     if (p.pos.y <= ground) {
-      if (!p.grounded && p.vel.y < -7) {
+      const wasAirborne = !p.grounded;
+      if (wasAirborne && p.vel.y < -7) {
         p.landImpact = Math.min(1, -p.vel.y / 16);
         if (p.onLand) p.onLand(p.landImpact);
       }
-      p.pos.y = ground;
+      // landing from a fall/jump snaps instantly; walking on the ground
+      // follows the (noisy) heightfield through a damped filter instead of
+      // hard-snapping every frame - that instant per-frame snap is what
+      // read as juddery on sloped ground (round-8 playtest: "jumpy walking
+      // uphill on a slope"). The filter converges in ~2 frames so it never
+      // reads as lag, just removes the sub-frame stair-stepping.
+      p.pos.y = wasAirborne ? ground : dampTowards(p.pos.y, ground, GROUND_FOLLOW_RATE, dt);
       p.vel.y = 0;
       p.grounded = true;
     } else if (p.pos.y > ground + 0.05) {
@@ -211,6 +231,7 @@ export function createPlayer(camera) {
     p.hp = p.maxHp;
     p.alive = true;
     p.stamina = 1;
+    p.exhausted = false;
     p.kickPitch = 0;
     p.kickYaw = 0;
     p.camShake = 0;

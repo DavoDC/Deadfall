@@ -357,6 +357,35 @@ export function terrainNormal(x, z, out = { x: 0, y: 1, z: 0 }, seed = WORLD.see
   return out;
 }
 
+// Slope grade sampling baseline (metres). Straddling this distance around
+// the sample point averages out terrain-noise wavelengths well under it, so
+// the grade read for movement speed is smooth even where the raw heightfield
+// has small bumps - the same noise that makes blockedStep's single-point
+// lookahead flicker on a slope (round-8 playtest: "jumpy walking uphill").
+const GRADE_BASELINE = 1.4;
+
+// Grade (rise per metre, positive = uphill) along unit direction (dirX,
+// dirZ) at (x, z). Pure geometry sample - used to scale move speed and has
+// nothing to do with blockedStep's hard cliff/thicket wall check.
+export function travelGrade(x, z, dirX, dirZ, seed = WORLD.seed) {
+  const len = Math.hypot(dirX, dirZ);
+  if (len < 1e-4) return 0;
+  const ux = dirX / len;
+  const uz = dirZ / len;
+  const hAhead = terrainHeight(x + ux * GRADE_BASELINE, z + uz * GRADE_BASELINE, seed);
+  const hBehind = terrainHeight(x - ux * GRADE_BASELINE, z - uz * GRADE_BASELINE, seed);
+  return (hAhead - hBehind) / (2 * GRADE_BASELINE);
+}
+
+// Pure curve: grade -> move speed multiplier. Climbing a steep grade is
+// meaningfully slower (floored at 45% near MAX_GRADE - by then it is nearly
+// a wall anyway); a gentle descent gives a small, capped speed boost so
+// downhill never feels like falling. Flat ground (grade 0) is always 1.
+export function slopeSpeedFactor(grade) {
+  if (grade >= 0) return clamp(1 - grade * 0.4, 0.45, 1);
+  return clamp(1 - grade * 0.12, 1, 1.18);
+}
+
 // Movement cost multiplier at a point (1 = normal). Swamp mud and deep
 // water slow you down; that is the price of the covered route.
 export function moveSpeedFactor(x, z, seed = WORLD.seed) {

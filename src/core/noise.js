@@ -49,3 +49,13 @@ export function smoothstep(edge0, edge1, x) {
 export function lerp(a, b, t) {
   return a + (b - a) * t;
 }
+
+// Frame-rate independent exponential smoothing: moves `current` toward
+// `target` at `rate` (1/s, higher = snappier) over `dt` seconds. Used to
+// damp high-frequency noise (e.g. terrain micro-bumps) out of a value that
+// should otherwise track its target closely - unlike a fixed-fraction lerp,
+// this converges at the same relative rate regardless of frame time.
+export function dampTowards(current, target, rate, dt) {
+  const t = 1 - Math.exp(-rate * dt);
+  return current + (target - current) * t;
+}
