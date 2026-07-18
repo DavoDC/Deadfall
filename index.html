@@ -134,6 +134,9 @@
 
     #run-info { position: absolute; top: 16px; left: 24px; font-size: 13px; letter-spacing: 0.18em; color: var(--hud-dim); line-height: 1.9; }
     #run-info b { color: var(--hud); font-weight: 600; }
+    /* telemetry v2 channel 4: world coordinate readout, so a playtester can
+       call out a location and Claude can find that moment in the session log */
+    #coords { position: absolute; top: 96px; left: 24px; font-size: 11px; letter-spacing: 0.14em; color: rgba(214, 228, 208, 0.35); }
     #threat-wrap { position: absolute; top: 16px; right: 24px; text-align: right; }
     #threat-label { font-size: 11px; letter-spacing: 0.3em; color: var(--hud-dim); margin-bottom: 5px; }
     #threat-pips { display: flex; gap: 5px; justify-content: flex-end; }
@@ -238,6 +241,7 @@
     <div id="compass"><div id="compass-strip"></div><div id="compass-tick"></div></div>
     <div id="objective">REACH THE EXTRACTION BEACON</div>
     <div id="run-info"></div>
+    <div id="coords"></div>
     <div id="threat-wrap">
       <div id="threat-label">THREAT</div>
       <div id="threat-pips"></div>

@@ -4,7 +4,7 @@
 // State machine: MENU -> RUNNING (-> extraction channel) -> WIN | DEAD -> MENU.
 
 import * as THREE from 'three';
-import { WORLD, LANDMARKS, landmarkPos, waterLevelAt } from './world/heightmap.js';
+import { WORLD, LANDMARKS, landmarkPos, waterLevelAt, terrainNormal } from './world/heightmap.js';
 import { buildTerrain, buildWater } from './world/terrain.js';
 import { buildSky, trackShadow, MOODS, ATMOS } from './world/sky.js';
 import { tickDapple, updateDappleSun, uniforms as dappleUniforms } from './world/dapple.js';
@@ -35,7 +35,7 @@ import { checkLegibility } from './game/legibility.js';
 import { createRecorderAPI } from './capture/recorder.js';
 import { createCinematic } from './game/cinematic.js';
 import { createPipeline } from './render/pipeline.js';
-import { createTelemetry } from './game/telemetry.js';
+import { createTelemetry, DAMAGE_SPIKE_THRESHOLD } from './game/telemetry.js';
 
 const app = document.getElementById('app');
 
@@ -175,6 +175,69 @@ const telemetry = createTelemetry();
 const TELEMETRY_LANDMARKS = LANDMARKS.map((l) => ({ name: l.name, r: l.r, ...landmarkPos(l) }));
 let lastHurt = null; // {amount, srcPos, source} - reused as the death cause
 
+// --- TELEMETRY V2 TRANSPORT (docs/telemetry-v2-spec.md) ---
+// David plays -> the disk endpoint (vite.config.js -> src/server/
+// telemetryStore.js) is where it actually lands. Everything here is
+// fire-and-forget: never await, never block the render loop, swallow every
+// failure. Posted on a ~1s interval AND after every notable event AND at
+// run end, so a died/refreshed/crashed tab loses at most ~1s of data
+// instead of the whole run (the bug both 2026-07-18 playtests hit).
+function postTelemetrySession() {
+  const body = telemetry.toJSON();
+  if (!body) return;
+  fetch('/telemetry', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true,
+  }).catch(() => {});
+}
+
+// Downscaled (~640px wide) JPEG of the current frame, via an offscreen
+// canvas so the full-res render target is never touched. Returns null
+// (never throws) if the canvas is not ready - callers just skip that beat.
+let _frameCanvas = null;
+function captureFrame() {
+  try {
+    const src = renderer.domElement;
+    if (!src.width || !src.height) return null;
+    const w = 640;
+    const h = Math.max(1, Math.round(src.height * (w / src.width)));
+    if (!_frameCanvas) _frameCanvas = document.createElement('canvas');
+    _frameCanvas.width = w;
+    _frameCanvas.height = h;
+    _frameCanvas.getContext('2d').drawImage(src, 0, 0, w, h);
+    return _frameCanvas.toDataURL('image/jpeg', 0.6);
+  } catch {
+    return null;
+  }
+}
+
+function postFrame() {
+  if (!telemetry.recording || !telemetry.log) return;
+  const dataURL = captureFrame();
+  if (!dataURL) return;
+  const startedAt = telemetry.log.startedAt;
+  const t = Math.round(game.time * 100) / 100;
+  fetch('/telemetry/frame', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ startedAt, t, dataURL }), keepalive: true,
+  }).catch(() => {});
+}
+
+// last-gasp flush on tab close/refresh - sendBeacon survives page unload
+// where a plain fetch can get cancelled mid-flight
+window.addEventListener('pagehide', () => {
+  if (!telemetry.log || !navigator.sendBeacon) return;
+  const body = telemetry.toJSON();
+  if (!body) return;
+  try {
+    navigator.sendBeacon('/telemetry', new Blob([body], { type: 'application/json' }));
+  } catch { /* best-effort only */ }
+});
+
+// periodic drip - covers everything that is not an explicit event (path,
+// state samples, input aggregates accumulating during ordinary play)
+setInterval(() => { if (telemetry.recording) postTelemetrySession(); }, 1000);
+setInterval(() => { if (telemetry.recording) postFrame(); }, 10000);
+
 const ui = {
   toast: (msg, secs) => hud && hud.toast(msg, secs),
   setObjective: (text) => hud && hud.setObjective(text),
@@ -192,6 +255,8 @@ const ui = {
       time: game.time, amount, source,
       pos: srcPos ? { x: srcPos.x, y: srcPos.y, z: srcPos.z } : null,
     });
+    postTelemetrySession();
+    if (amount >= DAMAGE_SPIKE_THRESHOLD) postFrame();
   },
   onDeath() {
     sfxStinger('death');
@@ -219,15 +284,24 @@ const ui = {
     }
   },
   onExtractTone: (progress) => sfxExtractTone(progress),
-  onSurge: () => telemetry.recordEvent('extraction', 'committed'),
+  onSurge: () => {
+    telemetry.recordEvent('extraction', 'committed');
+    postTelemetrySession();
+    postFrame();
+  },
   onBuff: () => sfxAyahuasca(),
   onWeather: (w, initial) => {
     applyWeatherFx(w, initial);
-    if (!initial) telemetry.recordEvent('weather', w.key);
+    if (!initial) {
+      telemetry.recordEvent('weather', w.key);
+      postTelemetrySession();
+    }
   },
   onBoss: () => {
     sfxCreature('miremother', { x: WORLD.maw.x, y: 0, z: WORLD.maw.z }, 1.8);
     telemetry.recordEvent('boss', 'spawned');
+    postTelemetrySession();
+    postFrame();
   },
   onFlood(phase) {
     // the flood announces itself like weather does - but it is a threat
@@ -242,6 +316,8 @@ const ui = {
       hud && hud.toast('THE WATERS RECEDE', 2.5);
     }
     telemetry.recordEvent('flood', phase);
+    postTelemetrySession();
+    if (phase === 'surge') postFrame();
   },
 };
 
@@ -333,6 +409,10 @@ function endRun(extracted) {
     telemetry.stop();
     console.log(telemetry.summaryLine());
   }
+  // guardrail: a died/extracted run always leaves its FINAL state (endedAt,
+  // outcome, every channel) on disk before anything else happens
+  postTelemetrySession();
+  postFrame();
   const isRecord = saveBest(extracted);
   const title = document.getElementById('end-title');
   title.textContent = extracted ? 'EXTRACTED' : 'K.I.A.';
@@ -440,9 +520,24 @@ function tick(now) {
     setListener(player.p.pos, camera.getWorldDirection(_listenerFwd));
     hud.update(dt);
     updateLandmarkCallout();
+    // telemetry v2 game-state ctx: everything main.js can see that the
+    // spec's diagnosis fields need (stamina, uphill speed vs slope, jump
+    // arcs, nearby-threat pressure) - see docs/telemetry-v2-spec.md
+    terrainNormal(player.p.pos.x, player.p.pos.z, _slopeNormal);
+    const slopeDeg = Math.acos(Math.min(1, Math.max(-1, _slopeNormal.y))) * RAD2DEG;
+    const wst = weapons.state;
     telemetry.tick(dt, {
       time: game.time, pos: player.p.pos, fps, frameMs: dt * 1000,
       landmarks: TELEMETRY_LANDMARKS,
+      yaw: player.p.yaw, hp: player.p.hp, stamina: player.p.stamina,
+      ammo: { mag: wst.mag[wst.current], reserve: wst.reserve[wst.current] },
+      weapon: wst.current, speedMps: player.p.speedNow,
+      slopeDeg, verticalVel: player.p.vel.y, grounded: player.p.grounded,
+      enemiesNear: computeEnemiesNear(player.p.pos), threat: director.threat(),
+    });
+    telemetry.recordInput(intent, dt, {
+      time: game.time, pos: player.p.pos,
+      lookDeltaDeg: Math.hypot(intent.lookDX, intent.lookDY) * player.p.sensitivity * RAD2DEG,
     });
     razorfins.update(dt, now / 1000, player.p.pos, player.p.inWater);
 
@@ -613,6 +708,27 @@ let heartbeatT = 0;
 let igniteK = 0;
 let ignitionWasCommitted = false;
 let ignitionWinFired = false;
+
+// telemetry v2 game-state enrichment: a reusable slope-normal target (no
+// per-frame allocation) and a cheap radius scan of the enemy manager - both
+// live here in main.js, not telemetry.js, so telemetry stays headless-safe
+// (no three.js/enemyMgr coupling, see the file's own doc comment).
+const _slopeNormal = { x: 0, y: 1, z: 0 };
+const RAD2DEG = 180 / Math.PI;
+const ENEMIES_NEAR_RADIUS = 60;
+function computeEnemiesNear(pos) {
+  const types = {};
+  let count = 0;
+  for (const e of enemyMgr.aliveList()) {
+    const dx = e.pos.x - pos.x;
+    const dz = e.pos.z - pos.z;
+    if (dx * dx + dz * dz <= ENEMIES_NEAR_RADIUS * ENEMIES_NEAR_RADIUS) {
+      count++;
+      types[e.type] = (types[e.type] || 0) + 1;
+    }
+  }
+  return { count, types };
+}
 
 requestAnimationFrame(tick);
 

@@ -2,7 +2,7 @@
 // health, hitmarker, toasts, extraction channel bar. All DOM - crisp at any
 // resolution, zero WebGL cost.
 
-import { WORLD } from '../world/heightmap.js';
+import { WORLD, LANDMARKS, landmarkPos } from '../world/heightmap.js';
 
 const PX_PER_RAD = 420 / (Math.PI * 0.9); // compass strip scale
 
@@ -33,7 +33,15 @@ export function createHud(playerRef, weapons, game, director, grenades, sim) {
     bossWrap: document.getElementById('boss-wrap'),
     bossName: document.getElementById('boss-name'),
     bossBar: document.getElementById('boss-bar'),
+    coords: document.getElementById('coords'),
   };
+
+  // world-coordinate readout (telemetry v2 channel 4, docs/telemetry-v2-
+  // spec.md): so David can call out "it happened at 120,-40" and Claude can
+  // find that exact moment in the session log. Landmark positions resolved
+  // once - landmarkPos() is deterministic, no need to recompute every frame
+  // (same pattern main.js uses for TELEMETRY_LANDMARKS).
+  const COORD_LANDMARKS = LANDMARKS.map((l) => ({ name: l.name, ...landmarkPos(l) }));
 
   // build compass marks once: cardinals + ticks every 45deg + extraction marker
   const marks = [];
@@ -94,6 +102,22 @@ export function createHud(playerRef, weapons, game, director, grenades, sim) {
     const distExt = Math.round(Math.hypot(ex, ez));
     const diffLabel = sim ? sim.difficulty.label : '';
     els.runInfo.innerHTML = `<b>${mm}:${ss}</b> ${diffLabel}<br/>BEACON <b>${distExt}m</b><br/>KILLS <b>${game.kills}</b>`;
+
+    // coordinate readout: world x,z + nearest named place, cheap enough to
+    // recompute every frame (a handful of landmarks)
+    if (els.coords) {
+      let nearestName = '';
+      let nearestD = Infinity;
+      for (const l of COORD_LANDMARKS) {
+        const d = Math.hypot(p.pos.x - l.x, p.pos.z - l.z);
+        if (d < nearestD) {
+          nearestD = d;
+          nearestName = l.name;
+        }
+      }
+      els.coords.textContent = `${Math.round(p.pos.x)}, ${Math.round(p.pos.z)}`
+        + (nearestName ? ` · ${nearestName}` : '');
+    }
 
     // threat pips
     const threat = director.threat();
