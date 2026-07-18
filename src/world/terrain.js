@@ -188,7 +188,7 @@ export function buildTerrain(scene) {
           // grass layer: clumpy, saturated where clumps peak, root-shadow
           // dark in the gaps - reads as growth, not paint
           vec3 grassCol = diffuseColor.rgb
-            * mix(vec3(0.52, 0.62, 0.42), vec3(1.22, 1.3, 0.95), clump)
+            * mix(vec3(0.64, 0.72, 0.5), vec3(1.2, 1.26, 0.94), clump)
             * (0.9 + micro * 0.2);
           // soil layer: crumbly granules, warmer and browner than grass
           vec3 soilCol = diffuseColor.rgb * vec3(1.1, 0.88, 0.66)

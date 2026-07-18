@@ -12,16 +12,20 @@ import {
 } from './heightmap.js';
 import { addCylinder } from './colliders.js';
 import { ROOSTS } from './roosts.js';
-import { makeRng } from '../core/rng.js';
+import { makeRng, hash2 } from '../core/rng.js';
 import { clamp } from '../core/noise.js';
 import { loadTextureSet, applyTextures } from '../core/textures.js';
 import { dapplify } from './dapple.js';
+import { makeFoliageAtlas, uvToTile, TILES } from './foliagetex.js';
 
 const swayMats = [];
 let swayMult = 1; // ayahuasca cranks this - the whole jungle writhes
 
-// Inject a cheap wind sway into any material: bends vertices by their local
-// height, phase-offset by instance world position.
+// Round 7 wind: not a rigid per-instance wobble but a living gust field.
+// A travelling gust front sweeps the map (plants downwind of each other
+// move in sequence, the classic "wave through the field" read), layered
+// with a per-instance breeze and a high-frequency tip flutter that only
+// wakes when a gust passes. All in the vertex shader - zero CPU.
 function windify(mat, strength = 1) {
   mat.userData.swayStrength = strength;
   mat.onBeforeCompile = (shader) => {
@@ -34,10 +38,25 @@ function windify(mat, strength = 1) {
         uniform float uSwayMult;`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
         {
-          float phase = instanceMatrix[3].x * 0.31 + instanceMatrix[3].z * 0.47;
+          vec2 iwp = instanceMatrix[3].xz;
+          float phase = iwp.x * 0.31 + iwp.y * 0.47;
           float amt = ${strength.toFixed(3)} * max(0.0, position.y) * uSwayMult;
-          transformed.x += sin(uTime * 1.35 + phase) * 0.045 * amt;
-          transformed.z += cos(uTime * 1.02 + phase * 1.3) * 0.036 * amt;
+          vec2 wdir = vec2(0.819, 0.574);        // prevailing wind
+          float travel = dot(iwp, wdir);
+          // gust front: two travelling waves moving downwind
+          float gust = 0.5 + 0.5 * sin(uTime * 0.7 - travel * 0.07)
+                     + 0.35 * sin(uTime * 1.83 - travel * 0.16 + phase);
+          // per-plant breeze (always on, keeps calm frames alive)
+          float breeze = sin(uTime * 1.35 + phase) * 0.6
+                       + sin(uTime * 2.41 + phase * 1.7) * 0.4;
+          // tip flutter, only when a gust is passing
+          float flutter = sin(uTime * 6.8 + phase * 5.3 + position.y * 3.7)
+                        * max(0.0, gust - 0.55) * 0.5;
+          vec2 sway = wdir * (gust * 0.075 + breeze * 0.038)
+                    + vec2(-wdir.y, wdir.x) * (breeze * 0.03 + flutter * 0.05);
+          transformed.xz += sway * amt;
+          // conservation bow: a bent blade's tip drops slightly
+          transformed.y -= dot(sway, sway) * amt * 0.4;
         }`);
   };
   swayMats.push(mat);
@@ -78,18 +97,38 @@ function bigTreeTrunkGeo() {
   return tileUV(g, 2, 5);
 }
 
+// Noise-displace a canopy blob's vertices so the silhouette reads as
+// leaf-mass lumps instead of a perfect geodesic polyhedron (round 7:
+// "no polygons"). Flat shading is kept - the style survives, the
+// geometric regularity does not.
+function roughen(geo, amp, seed) {
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    // hash on the vertex position so merged coincident verts stay merged
+    const n = hash2(Math.round(x * 37 + z * 17), Math.round(y * 29 + z * 41), seed);
+    const k = 1 + (n - 0.5) * amp;
+    pos.setXYZ(i, x * k, y * k, z * k);
+  }
+  geo.computeVertexNormals();
+  return geo;
+}
+
 function bigTreeCanopyGeo() {
   const parts = [];
-  const blob = (x, y, z, r, squash) => {
+  const blob = (x, y, z, r, squash, seed) => {
     const s = new THREE.IcosahedronGeometry(r, 1);
+    roughen(s, 0.42, seed);
     s.scale(1, squash, 1);
     s.translate(x, y, z);
     parts.push(s);
   };
-  blob(0, 15.2, 0, 5.2, 0.62);
-  blob(3.1, 13.9, 1.8, 3.6, 0.58);
-  blob(-3.0, 13.5, -1.2, 3.9, 0.6);
-  blob(0.8, 12.8, -2.8, 3.1, 0.55);
+  blob(0, 15.2, 0, 5.2, 0.62, 5);
+  blob(3.1, 13.9, 1.8, 3.6, 0.58, 11);
+  blob(-3.0, 13.5, -1.2, 3.9, 0.6, 17);
+  blob(0.8, 12.8, -2.8, 3.1, 0.55, 23);
   return BufferGeometryUtils.mergeGeometries(parts);
 }
 
@@ -102,10 +141,12 @@ function midTreeTrunkGeo() {
 function midTreeCanopyGeo() {
   const parts = [];
   const a = new THREE.IcosahedronGeometry(2.7, 1);
+  roughen(a, 0.4, 29);
   a.scale(1, 0.72, 1);
   a.translate(0, 8.6, 0);
   parts.push(a);
   const b = new THREE.IcosahedronGeometry(1.9, 1);
+  roughen(b, 0.44, 31);
   b.scale(1, 0.6, 1);
   b.translate(1.1, 7.2, 0.7);
   parts.push(b);
@@ -130,12 +171,23 @@ function snagGeo() {
 }
 
 function fernGeo() {
+  // pinnate frond CARDS from the atlas - the silhouette is the leaf's,
+  // not the quad's. Slight forward curl per card via segment bend.
   const parts = [];
-  const frond = new THREE.PlaneGeometry(0.32, 1.5, 1, 3);
-  frond.translate(0, 0.75, 0);
+  const frond = new THREE.PlaneGeometry(0.62, 1.55, 1, 3);
+  {
+    const pos = frond.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const y = pos.getY(i);
+      const t = (y + 0.775) / 1.55;
+      pos.setZ(i, t * t * 0.34); // tip curls forward
+    }
+  }
+  uvToTile(frond, TILES.fern);
+  frond.translate(0, 0.7, 0);
   for (let i = 0; i < 7; i++) {
     const f = frond.clone();
-    const bend = 0.55 + (i % 3) * 0.14;
+    const bend = 0.5 + (i % 3) * 0.16;
     f.rotateX(-bend);
     f.rotateY((i / 7) * Math.PI * 2);
     parts.push(f);
@@ -146,13 +198,14 @@ function fernGeo() {
 
 function broadleafGeo() {
   const parts = [];
-  const leaf = new THREE.PlaneGeometry(0.85, 2.1, 1, 3);
+  const leaf = new THREE.PlaneGeometry(0.95, 2.1, 1, 3);
   // curl the paddle leaf
   const pos = leaf.attributes.position;
   for (let i = 0; i < pos.count; i++) {
     const y = pos.getY(i);
     pos.setZ(i, Math.sin((y + 1.05) / 2.1 * Math.PI) * 0.35);
   }
+  uvToTile(leaf, TILES.broadleaf);
   leaf.translate(0, 1.05, 0);
   for (let i = 0; i < 5; i++) {
     const f = leaf.clone();
@@ -164,18 +217,20 @@ function broadleafGeo() {
 }
 
 function grassGeo() {
-  // three crossed tapered blades, not billboards - reads as a tuft
+  // three crossed tuft CARDS - each shows ~16 curved blades + seed heads
+  // from the atlas, so one instance reads as a whole wild clump with an
+  // organic silhouette instead of three bare triangles
   const parts = [];
   for (let i = 0; i < 3; i++) {
-    const p = new THREE.PlaneGeometry(0.42, 0.55, 1, 2);
+    const p = new THREE.PlaneGeometry(0.95, 0.8, 1, 2);
     const pos = p.attributes.position;
     for (let v = 0; v < pos.count; v++) {
       const y = pos.getY(v);
-      const t = (y + 0.275) / 0.55;         // 0 at base, 1 at tip
-      pos.setX(v, pos.getX(v) * (1 - t * 0.85)); // taper to a point
-      pos.setZ(v, t * t * 0.18);                  // slight droop
+      const t = (y + 0.4) / 0.8;            // 0 at base, 1 at top
+      pos.setZ(v, t * t * 0.16);            // gentle lean
     }
-    p.translate(0, 0.24, 0);
+    uvToTile(p, TILES.grass);
+    p.translate(0, 0.37, 0);
     p.rotateY((i / 3) * Math.PI);
     parts.push(p);
   }
@@ -222,6 +277,7 @@ function thicketGeo() {
       const y = pos.getY(i);
       pos.setZ(i, Math.sin((y + 0.95) / 1.9 * Math.PI) * 0.4);
     }
+    uvToTile(leaf, TILES.thicket);
   }
   for (let i = 0; i < 7; i++) {
     const f = leaf.clone();
@@ -532,8 +588,8 @@ export function buildVegetation(scene, opts = {}) {
     leafColors.push(cTmp.clone());
   });
 
-  // --- grass tufts ---
-  scatter(2.1, 67, (x, z, rng) => {
+  // --- grass tufts (round 7: denser - the meadow must read as GROWTH) ---
+  scatter(1.6, 67, (x, z, rng) => {
     const h = terrainHeight(x, z);
     if (!keepSpot(x, z, h)) return;
     if (h < WORLD.waterLevel + 0.1) return;
@@ -661,19 +717,27 @@ export function buildVegetation(scene, opts = {}) {
     color: 0xffffff, roughness: 1, flatShading: true,
   }), 0.2);
   const snagMat = dapplify(new THREE.MeshStandardMaterial({ color: 0x6e675c, roughness: 1 }));
+  // round 7: understory species draw their ORGANIC silhouettes from the
+  // procedural atlas (alpha-cutout, so depth writes, shadows and the
+  // legibility probe all keep working - no transparency sorting)
+  const atlas = makeFoliageAtlas();
   const fernMat = dapplify(windify(new THREE.MeshStandardMaterial({
     color: 0xffffff, roughness: 1, side: THREE.DoubleSide,
+    map: atlas, alphaTest: 0.45,
   }), 0.5));
   const leafMat = dapplify(windify(new THREE.MeshStandardMaterial({
     color: 0xffffff, roughness: 1, side: THREE.DoubleSide,
+    map: atlas, alphaTest: 0.45,
   }), 0.4));
   const grassMat = dapplify(windify(new THREE.MeshStandardMaterial({
     color: 0xffffff, roughness: 1, side: THREE.DoubleSide,
+    map: atlas, alphaTest: 0.45,
   }), 0.6));
   const rockMat = dapplify(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, flatShading: true }));
   const lianaMat = dapplify(new THREE.MeshStandardMaterial({ color: 0x3c4a26, roughness: 1 }));
   const thicketMat = dapplify(windify(new THREE.MeshStandardMaterial({
     color: 0xffffff, roughness: 1, side: THREE.DoubleSide,
+    map: atlas, alphaTest: 0.45,
   }), 0.22));
   const warnBloomMat = new THREE.MeshStandardMaterial({
     // round-6: x3.5 into true HDR so the bloom threshold (1.0 linear
@@ -719,13 +783,8 @@ export function buildVegetation(scene, opts = {}) {
       applyTextures(canopyMat2, textures, 0.5);
     })
     .catch(() => {});
-  loadTextureSet('foliage', '/textures/foliage/')
-    .then((textures) => {
-      applyTextures(fernMat, textures, 0.55);
-      applyTextures(leafMat, textures, 0.55);
-      applyTextures(thicketMat, textures, 0.55);
-    })
-    .catch(() => {});
+  // (fern/leaf/thicket/grass now use the procedural silhouette atlas -
+  // the old tiled foliage texture no longer applies to them)
   loadTextureSet('rock', '/textures/rock/')
     .then((textures) => {
       applyTextures(rockMat, textures, 0.6);
