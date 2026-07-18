@@ -4,7 +4,7 @@
 // to a session file, Claude ingests it to find issues.
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { createTelemetry } from '../src/game/telemetry.js';
+import { createTelemetry, DAMAGE_SPIKE_THRESHOLD } from '../src/game/telemetry.js';
 
 describe('telemetry: recording lifecycle', () => {
   it('starts idle (not recording, no log)', () => {
@@ -219,5 +219,217 @@ describe('telemetry: summaryLine', () => {
   it('summaryLine on an idle (never-started) telemetry does not throw', () => {
     const t = createTelemetry();
     expect(() => t.summaryLine()).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------
+// v2: HUMAN INPUT (docs/telemetry-v2-spec.md channel 1)
+// ---------------------------------------------------------------------
+describe('telemetry v2: recordInput edges', () => {
+  it('pulse actions (jump/reload/weapon swap/grenade throw) log one edge per true frame', () => {
+    const t = createTelemetry();
+    t.start({});
+    t.recordInput({ moveX: 0, moveZ: 0, lookDX: 0, lookDY: 0, jump: true, reload: false }, 0.016, { time: 1 });
+    t.recordInput({ moveX: 0, moveZ: 0, lookDX: 0, lookDY: 0, jump: false, reload: true }, 0.016, { time: 1.016 });
+    expect(t.log.inputEdges).toEqual([
+      { t: 1, action: 'jump', on: true },
+      { t: 1.02, action: 'reload', on: true },
+    ]);
+  });
+
+  it('sustained actions (firing, aim) log a down edge and an up edge, not one per frame held', () => {
+    const t = createTelemetry();
+    t.start({});
+    const base = { moveX: 0, moveZ: 0, lookDX: 0, lookDY: 0, firing: true };
+    t.recordInput(base, 0.016, { time: 0 });
+    t.recordInput(base, 0.016, { time: 0.016 }); // held - no new edge
+    t.recordInput(base, 0.016, { time: 0.032 }); // held - no new edge
+    t.recordInput({ ...base, firing: false }, 0.016, { time: 0.048 }); // released
+    const fireEdges = t.log.inputEdges.filter((e) => e.action === 'firing');
+    expect(fireEdges).toEqual([
+      { t: 0, action: 'firing', on: true },
+      { t: 0.05, action: 'firing', on: false },
+    ]);
+  });
+
+  it('recordInput before start() / after stop() is a safe no-op', () => {
+    const t = createTelemetry();
+    expect(() => t.recordInput({ jump: true }, 0.016, { time: 0 })).not.toThrow();
+    t.start({});
+    t.stop();
+    const before = JSON.stringify(t.log);
+    t.recordInput({ jump: true }, 0.016, { time: 0 });
+    expect(JSON.stringify(t.log)).toBe(before);
+  });
+});
+
+describe('telemetry v2: input aggregates (1s window)', () => {
+  it('flushes distance/sprint/aim/look/shots into one aggregate per second, not per frame', () => {
+    const t = createTelemetry();
+    t.start({});
+    // 60 frames of ~16.6ms sprinting forward, one shot fired mid-window
+    for (let i = 0; i < 60; i++) {
+      const time = i * (1 / 60);
+      if (i === 30) t.recordShotFired();
+      t.recordInput(
+        { moveX: 0, moveZ: -1, sprint: true, aim: false, lookDX: 10, lookDY: 0 },
+        1 / 60,
+        { time, pos: { x: i * 0.1, y: 0, z: 0 }, lookDeltaDeg: 2 }
+      );
+    }
+    // window has not yet reached the full 1s mark - nothing flushed until
+    // stop() (or a later frame past the boundary) closes it out
+    expect(t.log.inputAggregates.length).toBe(0);
+    t.stop();
+    expect(t.log.inputAggregates.length).toBe(1);
+    const agg = t.log.inputAggregates[0];
+    expect(agg.pctSprint).toBeCloseTo(100, 0);
+    expect(agg.shots).toBe(1);
+    expect(agg.distance).toBeGreaterThan(0);
+    expect(agg.lookSpeedMeanDegPerSec).toBeGreaterThan(0);
+    expect(agg.lookSpeedPeakDegPerSec).toBeGreaterThan(0);
+  });
+
+  it('time aiming is reported in seconds, not a percentage', () => {
+    const t = createTelemetry();
+    t.start({});
+    for (let i = 0; i < 60; i++) {
+      t.recordInput(
+        { moveX: 0, moveZ: 0, aim: true, lookDX: 0, lookDY: 0 },
+        1 / 60,
+        { time: i * (1 / 60) }
+      );
+    }
+    t.stop();
+    const agg = t.log.inputAggregates[0];
+    expect(agg.aimSeconds).toBeCloseTo(1, 1);
+  });
+
+  it('stop() flushes a trailing partial aggregate window instead of discarding it', () => {
+    const t = createTelemetry();
+    t.start({});
+    t.recordInput({ moveX: 1, moveZ: 0, sprint: false, lookDX: 0, lookDY: 0 }, 0.1, { time: 0 });
+    t.recordInput({ moveX: 1, moveZ: 0, sprint: false, lookDX: 0, lookDY: 0 }, 0.1, { time: 0.1 });
+    t.stop();
+    expect(t.log.inputAggregates.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+// ---------------------------------------------------------------------
+// v2: GAME STATE (docs/telemetry-v2-spec.md channel 2)
+// ---------------------------------------------------------------------
+describe('telemetry v2: state samples (1s baseline)', () => {
+  const fullCtx = (time, overrides = {}) => ({
+    time,
+    pos: { x: 1, y: 2, z: 3 },
+    fps: 60,
+    frameMs: 16.6,
+    yaw: 0.5,
+    hp: 80,
+    stamina: 0.7,
+    ammo: { mag: 20, reserve: 60 },
+    weapon: 'carbine',
+    speedMps: 5.1,
+    slopeDeg: 12,
+    verticalVel: -2,
+    grounded: true,
+    enemiesNear: { count: 2, types: { prowler: 2 } },
+    threat: 0.4,
+    ...overrides,
+  });
+
+  it('samples game state at most once per second', () => {
+    const t = createTelemetry();
+    t.start({});
+    for (let i = 0; i < 20; i++) t.tick(0.01, fullCtx(i * 0.01));
+    expect(t.log.state.length).toBeLessThanOrEqual(1);
+  });
+
+  it('carries every documented field through to the sample', () => {
+    const t = createTelemetry();
+    t.start({});
+    t.tick(0.016, fullCtx(0));
+    const s = t.log.state[0];
+    expect(s).toMatchObject({
+      pos: { x: 1, y: 2, z: 3 },
+      yaw: 0.5,
+      hp: 80,
+      stamina: 0.7,
+      ammo: { mag: 20, reserve: 60 },
+      weapon: 'carbine',
+      speedMps: 5.1,
+      slopeDeg: 12,
+      verticalVel: -2,
+      grounded: true,
+      enemiesNear: { count: 2, types: { prowler: 2 } },
+      threat: 0.4,
+    });
+  });
+
+  it('missing optional fields default to null rather than throwing (v1-style minimal ctx)', () => {
+    const t = createTelemetry();
+    t.start({});
+    expect(() => t.tick(0.016, { time: 0, pos: { x: 0, y: 0, z: 0 }, fps: 60, frameMs: 16 })).not.toThrow();
+    const s = t.log.state[0];
+    expect(s.hp).toBe(null);
+    expect(s.weapon).toBe(null);
+  });
+});
+
+describe('telemetry v2: incident bursts (10Hz ring buffer)', () => {
+  const ctxAt = (time) => ({
+    time, pos: { x: time, y: 0, z: 0 }, fps: 60, frameMs: 16.6, hp: 100 - time,
+  });
+
+  it('death opens a burst carrying the pre-incident ring plus post-incident samples', () => {
+    const t = createTelemetry();
+    t.start({});
+    // build up >5s of 10Hz ring history
+    for (let i = 0; i <= 70; i++) t.tick(0.1, ctxAt(i * 0.1));
+    t.recordDeath({ time: 7.0, pos: { x: 7, y: 0, z: 0 }, cause: 'prowler' });
+    // just over 2 more seconds of post-incident samples (a little margin
+    // past the boundary - real 60fps ticks always clear it within a frame
+    // or two, this just avoids a floating-point fencepost in the test)
+    for (let i = 71; i <= 95; i++) t.tick(0.1, ctxAt(i * 0.1));
+    expect(t.log.bursts.length).toBe(1);
+    const burst = t.log.bursts[0];
+    expect(burst.trigger).toBe('death');
+    // pre-window capped at the ring size (~5s @ 10Hz = 50 samples)
+    expect(burst.samples.length).toBeGreaterThan(40);
+    expect(burst.samples.length).toBeLessThanOrEqual(70);
+    // some samples come from before the death, some from after
+    expect(burst.samples.some((s) => s.t < 7.0)).toBe(true);
+    expect(burst.samples.some((s) => s.t > 7.0)).toBe(true);
+  });
+
+  it('a damage spike >= DAMAGE_SPIKE_THRESHOLD opens a burst; smaller hits do not', () => {
+    const t = createTelemetry();
+    t.start({});
+    for (let i = 0; i <= 20; i++) t.tick(0.1, ctxAt(i * 0.1));
+    t.recordDamageTaken({ time: 2.0, amount: DAMAGE_SPIKE_THRESHOLD - 1, source: 'stingerwing' });
+    expect(t.log.bursts.length).toBe(0);
+    t.recordDamageTaken({ time: 2.1, amount: DAMAGE_SPIKE_THRESHOLD, source: 'juggernaut' });
+    for (let i = 21; i <= 45; i++) t.tick(0.1, ctxAt(i * 0.1));
+    expect(t.log.bursts.length).toBe(1);
+    expect(t.log.bursts[0].trigger).toBe('damageSpike');
+  });
+
+  it('a second incident while a burst is already open extends it instead of opening a duplicate', () => {
+    const t = createTelemetry();
+    t.start({});
+    for (let i = 0; i <= 10; i++) t.tick(0.1, ctxAt(i * 0.1));
+    t.recordDeath({ time: 1.0, pos: { x: 0, y: 0, z: 0 }, cause: 'prowler' });
+    t.recordDamageTaken({ time: 1.1, amount: 50, source: 'juggernaut' }); // still inside the 2s post-window
+    for (let i = 11; i <= 40; i++) t.tick(0.1, ctxAt(i * 0.1));
+    expect(t.log.bursts.length).toBe(1); // not 2
+  });
+
+  it('stop() flushes an in-progress burst rather than losing it (died run keeps its data)', () => {
+    const t = createTelemetry();
+    t.start({});
+    for (let i = 0; i <= 10; i++) t.tick(0.1, ctxAt(i * 0.1));
+    t.recordDeath({ time: 1.0, pos: { x: 0, y: 0, z: 0 }, cause: 'prowler' });
+    t.stop(); // died immediately after - burst never got its 2s post-window
+    expect(t.log.bursts.length).toBe(1);
   });
 });
