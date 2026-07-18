@@ -4,3 +4,6 @@ dist/
 *.log
 .DS_Store
 TEMP/
+
+# Throwaway capture artifacts (screenshots, video, probe output) - never committed
+captures/
