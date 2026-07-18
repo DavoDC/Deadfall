@@ -36,6 +36,7 @@ import { createRecorderAPI } from './capture/recorder.js';
 import { createCinematic } from './game/cinematic.js';
 import { createPipeline } from './render/pipeline.js';
 import { createTelemetry, DAMAGE_SPIKE_THRESHOLD } from './game/telemetry.js';
+import { createCoalescedSender } from './game/telemetrySender.js';
 
 const app = document.getElementById('app');
 
@@ -182,12 +183,21 @@ let lastHurt = null; // {amount, srcPos, source} - reused as the death cause
 // failure. Posted on a ~1s interval AND after every notable event AND at
 // run end, so a died/refreshed/crashed tab loses at most ~1s of data
 // instead of the whole run (the bug both 2026-07-18 playtests hit).
-function postTelemetrySession() {
+//
+// Session posts go through a coalescing sender (see telemetrySender.js) -
+// without it, overlapping POSTs can land out of order and a stale snapshot
+// can clobber endRun()'s final state on disk (caught during end-to-end
+// verification). Frame posts do not need this: each frame is written to
+// its own uniquely-timestamped file, so there is nothing to overwrite.
+const sessionSender = createCoalescedSender(() => {
   const body = telemetry.toJSON();
-  if (!body) return;
-  fetch('/telemetry', {
+  if (!body) return null;
+  return fetch('/telemetry', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true,
-  }).catch(() => {});
+  });
+});
+function postTelemetrySession() {
+  sessionSender.trigger();
 }
 
 // Downscaled (~640px wide) JPEG of the current frame, via an offscreen
