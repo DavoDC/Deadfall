@@ -332,28 +332,6 @@ function sunspireCapGeo() {
   return BufferGeometryUtils.mergeGeometries(parts);
 }
 
-// LANTERN MEDUSA: a drifting jelly that hangs in the humid air over the
-// wet lowlands - a bell with trailing tendrils. Instanced + windified so
-// the whole shoal breathes without a single line of update code.
-function medusaGeo() {
-  const parts = [];
-  const bell = new THREE.SphereGeometry(0.5, 8, 6, 0, Math.PI * 2, 0, Math.PI * 0.62);
-  bell.scale(1, 0.8, 1);
-  parts.push(bell);
-  const skirt = new THREE.TorusGeometry(0.42, 0.06, 5, 9);
-  skirt.rotateX(Math.PI / 2);
-  skirt.translate(0, -0.12, 0);
-  parts.push(skirt);
-  for (let i = 0; i < 5; i++) {
-    const a = (i / 5) * Math.PI * 2;
-    const t = new THREE.CylinderGeometry(0.018, 0.008, 1.6, 4);
-    t.translate(Math.cos(a) * 0.24, -0.9, Math.sin(a) * 0.24);
-    t.rotateY(a * 0.5);
-    parts.push(t);
-  }
-  return BufferGeometryUtils.mergeGeometries(parts);
-}
-
 // ---------- placement ----------
 
 const _m = new THREE.Matrix4();
@@ -423,8 +401,6 @@ export function buildVegetation(scene, opts = {}) {
   const thicketColors = [];
   const warnBlooms = [];
   const sunspires = [];       // stalks + caps share one transform list
-  const medusas = [];
-  const medusaColors = [];
 
   const cBigCanopy = new THREE.Color();
   const cTmp = new THREE.Color();
@@ -663,30 +639,6 @@ export function buildVegetation(scene, opts = {}) {
     sunspires.push(_m.clone());
   });
 
-  // --- lantern medusae (round 5): drifting jellies of the humid lowlands ---
-  // They hang 5-9m up over wet ground near water; windify makes the whole
-  // shoal breathe with zero per-frame code. Ambient fauna - no AI, no sim.
-  scatter(17, 127, (x, z, rng) => {
-    const h = terrainHeight(x, z);
-    if (Math.max(Math.abs(x), Math.abs(z)) > WORLD.playable) return;
-    if (h > WORLD.waterLevel + 6) return; // lowlands + over water only
-    if (rng.next() > 0.55) return;
-    const n = 1 + Math.floor(rng.next() * 3); // small shoals of 1-3
-    for (let i = 0; i < n; i++) {
-      const jx = x + rng.range(-3, 3);
-      const jz = z + rng.range(-3, 3);
-      const jy = Math.max(terrainHeight(jx, jz), WORLD.waterLevel) + 5 + rng.next() * 4;
-      const s = 0.5 + rng.next() * 0.9;
-      _e.set((rng.next() - 0.5) * 0.3, rng.next() * Math.PI * 2, (rng.next() - 0.5) * 0.3);
-      _q.setFromEuler(_e);
-      _m.compose(_p.set(jx, jy, jz), _q, _s.set(s, s, s));
-      medusas.push(_m.clone());
-      // cyan through violet-pink lantern glass
-      cTmp.setHSL(rng.pick([0.5, 0.55, 0.8, 0.88]), 0.75, 0.6 + rng.next() * 0.15);
-      medusaColors.push(cTmp.clone());
-    }
-  });
-
   const counts0 = {
     bigTrees: bigTrunks.length,
     midTrees: midTrunks.length,
@@ -754,15 +706,6 @@ export function buildVegetation(scene, opts = {}) {
     // they bloom softly through the canopy murk
     color: 0xffb63a, emissive: 0xff8210, emissiveIntensity: 9.8, roughness: 0.4,
   });
-  const medusaMat = windify(new THREE.MeshStandardMaterial({
-    // round-6: 0.6 -> 1.8 - the drifting medusae become soft cyan lanterns
-    // (just over the bloom threshold; 2.4 blew their white cores out in
-    // the bright moods)
-    color: 0xffffff, emissive: 0x4fd8f0, emissiveIntensity: 1.8,
-    roughness: 0.3, transparent: true, opacity: 0.82, side: THREE.DoubleSide,
-    depthWrite: false,
-  }), 0.5);
-
   // Load and apply textures asynchronously (non-blocking). If loading fails,
   // materials render with their vertex-colour fallbacks. This preserves the
   // vibrant palette and keeps the game playable in all contexts (headless,
@@ -806,7 +749,6 @@ export function buildVegetation(scene, opts = {}) {
     makeInstanced(warnBloomGeo(), warnBloomMat, warnBlooms, null, 'none'),
     makeInstanced(sunspireStalkGeo(), sunspireStalkMat, sunspires, null, 'none'),
     makeInstanced(sunspireCapGeo(), sunspireCapMat, sunspires, null, 'none'),
-    makeInstanced(medusaGeo(), medusaMat, medusas, medusaColors, 'none'),
   ];
   for (const m of meshes) scene.add(m);
 
@@ -820,7 +762,6 @@ export function buildVegetation(scene, opts = {}) {
     rocks: rocks.length,
     lianas: lianas.length,
     sunspires: sunspires.length,
-    medusas: medusas.length,
     ms: Math.round(performance.now() - t0),
   };
   console.log('[deadfall] vegetation', JSON.stringify(counts));

@@ -9,6 +9,7 @@ import { buildTerrain, buildWater } from './world/terrain.js';
 import { buildSky, trackShadow, MOODS, ATMOS } from './world/sky.js';
 import { tickDapple, updateDappleSun, uniforms as dappleUniforms } from './world/dapple.js';
 import { buildVegetation, tickWind, setSwayMult } from './world/vegetation.js';
+import { buildMedusae, tickMedusae } from './world/medusae.js';
 import { buildProps } from './world/props.js';
 import { buildRoosts } from './world/roosts.js';
 import { colliderCount } from './world/colliders.js';
@@ -77,6 +78,7 @@ const renderFrame = () => pipeline.render();
 buildTerrain(scene);
 const water = buildWater(scene);
 buildVegetation(scene);
+buildMedusae(scene); // round 7: the lantern medusae live (pulse/drift/trail)
 const { tickProps, igniteBeacon, ringPulse } = buildProps(scene);
 buildRoosts(scene); // the flood's vertical retreat (round 5)
 const motes = createMotes(scene);
@@ -517,6 +519,7 @@ function tick(now) {
 
   if (water.userData.tick) water.userData.tick(now / 1000);
   tickWind(now / 1000);
+  tickMedusae(now / 1000);
   tickDapple(now / 1000);
   updateDappleSun(ATMOS.sunPos, sun.color, sun.intensity);
   tickProps(dt);
@@ -555,6 +558,7 @@ const cinematic = createCinematic({
   effects,
   recorder: recorderAPI,
   tickWind,
+  tickMedusae,
   tickDapple,
   trackShadow,
   sun,
