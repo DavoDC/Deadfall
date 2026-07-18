@@ -9,9 +9,8 @@ import {
   WORLD, terrainHeight, moisture, terrainNormal, razorfinHazard,
   floodMask, gorgeZ, FLOOD,
 } from './heightmap.js';
-import { clamp, lerp, smoothstep } from '../core/noise.js';
+import { clamp, lerp, smoothstep, valueNoise, fbm } from '../core/noise.js';
 import { hash2 } from '../core/rng.js';
-import { loadTextureSet, applyTextures } from '../core/textures.js';
 import { dapplify } from './dapple.js';
 
 // Fever-dream ground palette, round-3 saturation push (Far Cry New Dawn
@@ -28,24 +27,43 @@ const COL = {
 };
 
 export function buildTerrain(scene) {
-  const segs = 320;
+  // Round 7 "living world": 448 segs (1.7m/vert, was 2.4m) + micro-relief
+  // noise so terrain silhouettes stop reading as smooth polygon curves.
+  // The relief is VISUAL only (small vs the 1.66m eye height) - gameplay
+  // still samples the analytic terrainHeight, colliders unchanged.
+  const segs = 448;
   const geo = new THREE.PlaneGeometry(WORLD.size, WORLD.size, segs, segs);
   geo.rotateX(-Math.PI / 2);
 
   const pos = geo.attributes.position;
   const colors = new Float32Array(pos.count * 3);
+  const moistAttr = new Float32Array(pos.count);
+  const slopeAttr = new Float32Array(pos.count);
   const c = new THREE.Color();
   const n = { x: 0, y: 1, z: 0 };
 
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i);
     const z = pos.getZ(i);
-    const h = terrainHeight(x, z);
-    pos.setY(i, h);
+    let h = terrainHeight(x, z);
 
     terrainNormal(x, z, n);
     const m = moisture(x, z);
     const slope = 1 - n.y;
+
+    // Micro-relief: lumpy soil on flats (8cm), rubble on rock slopes (up
+    // to 28cm). Suppressed near the waterline so shore bands stay clean,
+    // and where the plane sits underwater (z-fight safety with the river).
+    const nearWater = smoothstep(WORLD.waterLevel + 1.4, WORLD.waterLevel + 0.2, h);
+    const reliefAmp = (0.08 + slope * 0.6 + (h > 17 ? 0.1 : 0)) * (1 - nearWater);
+    if (reliefAmp > 0.001) {
+      const r1 = fbm(x * 0.55, z * 0.55, 733, 2) - 0.5;
+      const r2 = valueNoise(x * 1.7, z * 1.7, 977) - 0.5;
+      h += (r1 * 0.75 + r2 * 0.45) * reliefAmp * 2;
+    }
+    pos.setY(i, h);
+    moistAttr[i] = m;
+    slopeAttr[i] = slope;
 
     // base colour: dry khaki -> lush deep green by moisture
     c.copy(COL.dry).lerp(COL.lush, clamp(m * 1.25, 0, 1));
@@ -71,47 +89,143 @@ export function buildTerrain(scene) {
   }
 
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geo.setAttribute('aMoist', new THREE.BufferAttribute(moistAttr, 1));
+  geo.setAttribute('aSlope', new THREE.BufferAttribute(slopeAttr, 1));
   geo.computeVertexNormals();
 
-  // Add per-vertex UV variance to break up tiling. Each vertex gets a unique
-  // offset into the texture, driven by world position hash, so repeated
-  // textures don't read as wallpaper (the "texture bombing" technique).
-  const uvs = new Float32Array(pos.count * 2);
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i);
-    const z = pos.getZ(i);
-    // Combine multiple scales: 0.5 and 2.0 sampling
-    const v = hash2(Math.round(x * 0.5), Math.round(z * 0.5), 137);
-    // 0.04 -> 0.06: one mud tile per ~17m instead of 25m - at 0.04 the
-    // grain vanished on open ground (mesa top, river banks read as flat
-    // colour fields at gameplay distance)
-    uvs[i * 2] = x * 0.06 + v * 0.5;
-    uvs[i * 2 + 1] = z * 0.06 + (1 - v) * 0.5;
-  }
-  geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
-
-  const mat = dapplify(new THREE.MeshStandardMaterial({
+  // Round 7 ground rewrite: the old single tiled mud texture (whose
+  // per-vertex "UV bombing" offsets interpolated across triangles and
+  // SMEARED the map into directional streaks) is gone. The ground is now
+  // shaded fully procedurally in-fragment: four layers (grass clumps,
+  // bare soil, rock, wet mud) blended by the same moisture/slope fields
+  // that drive vegetation scatter, plus noise-gradient detail normals so
+  // the surface has real small-scale relief response to light.
+  const mat = new THREE.MeshStandardMaterial({
     vertexColors: true,
     roughness: 1,
     metalness: 0,
-  }));
+  });
+  mat.onBeforeCompile = (shader) => {
+    mat.userData.terrShader = shader;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `#include <common>
+        attribute float aMoist;
+        attribute float aSlope;
+        varying vec3 vTerrWP;
+        varying float vMoist;
+        varying float vSlope;`)
+      .replace('#include <project_vertex>', `#include <project_vertex>
+        vTerrWP = (modelMatrix * vec4(transformed, 1.0)).xyz;
+        vMoist = aMoist;
+        vSlope = aSlope;`);
 
-  // Note: Textures will be applied by applyTextures() when they load.
-  // Vertex colors are multiplied with the texture to preserve the vibrant palette.
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>
+        varying vec3 vTerrWP;
+        varying float vMoist;
+        varying float vSlope;
+        float terrHash(vec2 p) {
+          return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+        }
+        float terrNoise(vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = fract(p);
+          vec2 u = f * f * (3.0 - 2.0 * f);
+          return mix(
+            mix(terrHash(i), terrHash(i + vec2(1.0, 0.0)), u.x),
+            mix(terrHash(i + vec2(0.0, 1.0)), terrHash(i + vec2(1.0, 1.0)), u.x),
+            u.y);
+        }
+        float terrFbm(vec2 p) {
+          return terrNoise(p) * 0.55 + terrNoise(p * 2.13 + 17.0) * 0.28
+               + terrNoise(p * 4.31 + 47.0) * 0.17;
+        }
+        // detail height field shared by albedo + normal perturbation:
+        // soil granules + grass-clump lumps
+        float terrDetail(vec2 p) {
+          return terrNoise(p * 5.2) * 0.55 + terrFbm(p * 1.15) * 0.45;
+        }`)
+      .replace('#include <normal_fragment_begin>', `#include <normal_fragment_begin>
+        {
+          // noise-gradient detail normal - the ground stops being an
+          // optically flat sheet; granules and clumps catch the sun
+          vec2 wp = vTerrWP.xz;
+          float e = 0.14;
+          float d0 = terrDetail(wp);
+          float dx = terrDetail(wp + vec2(e, 0.0));
+          float dz = terrDetail(wp + vec2(0.0, e));
+          // strongest on soft ground, weaker on rock faces (they have
+          // real mesh relief) and underwater
+          float k = 1.5 * (1.0 - vSlope * 0.6);
+          vec3 pert = vec3(-(dx - d0) * k / e, 1.0, -(dz - d0) * k / e);
+          vec3 pertView = normalize((viewMatrix * vec4(normalize(pert), 0.0)).xyz);
+          // blend detail into the interpolated surface normal
+          normal = normalize(mix(normal, normalize(normal + pertView * 1.4), 0.8));
+        }`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        {
+          vec2 wp = vTerrWP.xz;
+          // granules: sharp-edged 20cm soil crumbs. Domain-warped so the
+          // cell pattern never tiles into a regular cobble read, and mixed
+          // with plain noise so it stays crumbly rather than scaly.
+          vec2 warp = vec2(terrNoise(wp * 0.7), terrNoise(wp * 0.7 + 31.0)) * 1.6;
+          float ridge = 1.0 - abs(terrNoise(wp * 5.2 + warp) * 2.0 - 1.0);
+          float grain = mix(terrNoise(wp * 6.1), ridge * ridge, 0.45);
+          float micro = terrNoise(wp * 17.0);         // ~6cm speckle
+          float fine = terrNoise(wp * 43.0);          // ~2cm dust sparkle
+          float clump = terrFbm(wp * 0.85);           // ~1.2m grass clumps
+          float mottle = terrFbm(wp * 0.33);          // ~3m mottling, all layers
+          float worn = terrFbm(wp * 0.11);            // ~10m worn patches
+
+          // layer masks from the same fields that drive plant scatter
+          float grassM = smoothstep(0.32, 0.55, vMoist)
+                       * (1.0 - smoothstep(0.18, 0.42, vSlope));
+          // worn-through patches: grass gives way to bare soil in blotches
+          grassM *= smoothstep(0.24, 0.6, worn * 0.65 + clump * 0.35);
+          float rockM = smoothstep(0.3, 0.55, vSlope);
+          float wetM = smoothstep(0.75, 0.95, vMoist);
+
+          // grass layer: clumpy, saturated where clumps peak, root-shadow
+          // dark in the gaps - reads as growth, not paint
+          vec3 grassCol = diffuseColor.rgb
+            * mix(vec3(0.52, 0.62, 0.42), vec3(1.22, 1.3, 0.95), clump)
+            * (0.9 + micro * 0.2);
+          // soil layer: crumbly granules, warmer and browner than grass
+          vec3 soilCol = diffuseColor.rgb * vec3(1.1, 0.88, 0.66)
+            * (0.68 + grain * 0.36 + micro * 0.18 + fine * 0.1);
+          // scattered pale stones half-buried in the soil (bare ground
+          // only - turf swallows them), kept low-contrast so they read as
+          // embedded pebbles, not scattered marshmallows
+          float stone = smoothstep(0.8, 0.88, terrNoise(wp * 3.1));
+          soilCol = mix(soilCol, vec3(0.52, 0.49, 0.44) * (0.75 + micro * 0.4), stone * 0.55);
+          // rock layer: banded strata + speckle
+          float band = terrNoise(vec2(vTerrWP.y * 1.7 + terrFbm(wp * 0.4) * 2.2, wp.x * 0.05));
+          vec3 rockCol = diffuseColor.rgb * (0.74 + band * 0.4 + micro * 0.18);
+          // wet mud: darker, bluer, smooth
+          vec3 mudCol = diffuseColor.rgb * vec3(0.68, 0.68, 0.78)
+            * (0.8 + grain * 0.24 + micro * 0.08);
+
+          vec3 ground = mix(soilCol, grassCol, grassM);
+          ground = mix(ground, mudCol, wetM * (1.0 - rockM));
+          ground = mix(ground, rockCol, rockM);
+          // large-scale mottling breaks the "one texture" vista read
+          ground *= 0.86 + mottle * 0.3;
+          diffuseColor.rgb = ground;
+        }`)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+        {
+          // wet lowland mud takes a sheen; everything else stays matte
+          float wetR = smoothstep(0.75, 0.98, vMoist);
+          roughnessFactor = mix(roughnessFactor, 0.55, wetR * 0.8);
+        }`);
+  };
+  dapplify(mat);
+  mat.customProgramCacheKey = () => 'terrain-r7|dapple';
 
   const mesh = new THREE.Mesh(geo, mat);
   mesh.receiveShadow = true;
   mesh.name = 'terrain';
   scene.add(mesh);
-
-  // Load and apply textures asynchronously (non-blocking)
-  loadTextureSet('mud', '/textures/mud/')
-    .then((textures) => {
-      applyTextures(mat, textures, 0.68);
-    })
-    .catch(() => {
-      // Silently fail - material renders with vertex colour fallback
-    });
 
   return mesh;
 }
