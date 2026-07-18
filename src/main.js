@@ -475,7 +475,17 @@ function tick(now) {
     lightningGlow = Math.max(0, lightningGlow - dt * 5);
     const targetSun = currentMood.sunIntensity * weatherFx.sunMult;
     sun.intensity += (targetSun - sun.intensity) * ease;
-    sun.intensity += lightningGlow * 5;
+    // THUNDER WHITEOUT FIX (playtest bug, 2026-07-18): this used to be
+    // `+= lightningGlow * 5`, fine back when render() was a bare LDR
+    // renderer.render(). Round 6 made the scene real HDR with an
+    // UnrealBloomPass thresholded at 1.0 linear luminance - a bare +5
+    // spike on top of the ~2.3-3.1 baseline pushes nearly every lit pixel
+    // on screen over that threshold AT ONCE, so bloom blows the whole
+    // frame white instead of glowing a flash. Confirmed via in-browser
+    // capture (sun.intensity 2.9 -> 7.9 = a wide white blowout patch
+    // covering most of the visible ground). Cut the boost and hard-clamp
+    // the total so a strike reads as a bright flash, not a wash.
+    sun.intensity = Math.min(sun.intensity + lightningGlow * 1.4, targetSun + 1.6);
     hemi.intensity += (currentMood.hemiIntensity * (1 - stormy * 0.3) - hemi.intensity) * ease;
 
     if (weatherFx.key === 'storm' && game.state === 'RUNNING' && input.state.locked) {
@@ -483,7 +493,10 @@ function tick(now) {
       if (lightningT <= 0) {
         lightningT = 2.5 + Math.random() * 6.5;
         lightningGlow = 1;
-        lightningFlash = 0.5 + Math.random() * 0.4;
+        // same whiteout fix: the DOM flash overlay stacks with the HDR
+        // bloom above it, so its own peak opacity also had to come down
+        // (was 0.5-0.9 - a near-opaque white sheet over the whole canvas).
+        lightningFlash = 0.22 + Math.random() * 0.18;
         const dist = Math.random(); // 0 = overhead, 1 = far
         setTimeout(() => sfxThunder(1 - dist * 0.65), 300 + dist * 1900);
       }
