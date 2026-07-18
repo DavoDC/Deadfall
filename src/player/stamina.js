@@ -12,7 +12,7 @@
 
 export const STAMINA_DRAIN = 0.22;   // per second while sprinting
 export const STAMINA_REGEN = 0.14;   // per second while not sprinting
-export const EXHAUST_RECOVER = 0.25; // stamina must climb back to this to sprint again
+export const EXHAUST_RECOVER = 0.5;  // stamina must climb back to this to sprint again
 
 // state: { stamina: 0..1, exhausted: bool }
 // sprintRequested: true if input+movement conditions want a sprint (caller
