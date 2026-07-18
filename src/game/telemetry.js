@@ -146,11 +146,23 @@ export function createTelemetry() {
     return log.path.length ? log.path[log.path.length - 1].time : -Infinity;
   }
 
+  // HUMAN-ONLY. Triggers a browser download, which lands in the OS Downloads
+  // folder. Automation / Claude / subagents MUST NOT call this - it violates the
+  // no-Downloads workspace rule. To capture a session programmatically, read the
+  // `.log` getter (the full session object, below) and write it to the repo's
+  // gitignored `captures/` folder with file tools instead. See toJSON().
   function download(filename) {
     if (!log) return false;
     const blob = new Blob([JSON.stringify(log, null, 2)], { type: 'application/json' });
     downloadBlob(blob, filename || `deadfall-session-${Date.now()}.json`);
     return true;
+  }
+
+  // Automation-safe: returns the session as a pretty JSON string so Claude can
+  // pull it (via window.__deadfall.telemetry.toJSON()) and write it to captures/
+  // - no browser download, nothing touches Downloads.
+  function toJSON() {
+    return log ? JSON.stringify(log, null, 2) : null;
   }
 
   // A single line for the console at run end - the fast "what happened"
@@ -167,7 +179,7 @@ export function createTelemetry() {
   }
 
   return {
-    start, stop, setOutcome, download, summaryLine,
+    start, stop, setOutcome, download, toJSON, summaryLine,
     recordDeath, recordDamageTaken, recordDamageDealt,
     recordShotFired, recordShotHit, recordKill, recordEvent,
     tick,
