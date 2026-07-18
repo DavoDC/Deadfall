@@ -35,6 +35,7 @@ import { checkLegibility } from './game/legibility.js';
 import { createRecorderAPI } from './capture/recorder.js';
 import { createCinematic } from './game/cinematic.js';
 import { createPipeline } from './render/pipeline.js';
+import { createTelemetry } from './game/telemetry.js';
 
 const app = document.getElementById('app');
 
@@ -160,21 +161,52 @@ function applyXray(on) {
   }
 }
 
+// --- HUMAN-PLAYTEST TELEMETRY ("GIVE CLAUDE MORE DATA", 2026-07-18) ---
+// David plays a real run -> every meaningful metric gets timestamped into
+// a downloadable session file -> Claude ingests it to find issues. Pure
+// logic lives in game/telemetry.js; this file just wires it onto the same
+// ui hooks presentation already subscribes through, plus one per-frame
+// tick() call below for sampled fps/path/waypoints. See window.__deadfall
+// .telemetry for the console API (start/stop/download/summaryLine).
+const telemetry = createTelemetry();
+// landmark positions are resolved once (gates/crossings sit on analytic
+// centre-lines - landmarkPos() is deterministic, no need to recompute
+// every frame) and reused for both the HUD reveal system and telemetry.
+const TELEMETRY_LANDMARKS = LANDMARKS.map((l) => ({ name: l.name, r: l.r, ...landmarkPos(l) }));
+let lastHurt = null; // {amount, srcPos, source} - reused as the death cause
+
 const ui = {
   toast: (msg, secs) => hud && hud.toast(msg, secs),
   setObjective: (text) => hud && hud.setObjective(text),
   showExtract: (progress) => hud && hud.showExtract(progress),
-  hitmarker: (kill, crit) => hud && hud.hitmarker(kill, crit),
-  onHurt(amount) {
+  hitmarker: (kill, crit) => {
+    hud && hud.hitmarker(kill, crit);
+    telemetry.recordShotHit();
+    if (kill) telemetry.recordKill();
+  },
+  onHurt(amount, srcPos, source) {
     sfxHurt();
     vignette = 1;
+    lastHurt = { amount, srcPos, source };
+    telemetry.recordDamageTaken({
+      time: game.time, amount, source,
+      pos: srcPos ? { x: srcPos.x, y: srcPos.y, z: srcPos.z } : null,
+    });
   },
   onDeath() {
     sfxStinger('death');
+    telemetry.recordDeath({
+      time: game.time,
+      pos: { x: player.p.pos.x, y: player.p.pos.y, z: player.p.pos.z },
+      cause: lastHurt ? lastHurt.source : 'unknown',
+      enemy: lastHurt ? lastHurt.source : null,
+    });
+    telemetry.setOutcome('died');
     endRun(false);
   },
   onWin() {
     sfxStinger('win');
+    telemetry.setOutcome('extracted');
     endRun(true);
   },
   onHazard(kind) {
@@ -187,10 +219,16 @@ const ui = {
     }
   },
   onExtractTone: (progress) => sfxExtractTone(progress),
-  onSurge: () => {},
+  onSurge: () => telemetry.recordEvent('extraction', 'committed'),
   onBuff: () => sfxAyahuasca(),
-  onWeather: (w, initial) => applyWeatherFx(w, initial),
-  onBoss: () => sfxCreature('miremother', { x: WORLD.maw.x, y: 0, z: WORLD.maw.z }, 1.8),
+  onWeather: (w, initial) => {
+    applyWeatherFx(w, initial);
+    if (!initial) telemetry.recordEvent('weather', w.key);
+  },
+  onBoss: () => {
+    sfxCreature('miremother', { x: WORLD.maw.x, y: 0, z: WORLD.maw.z }, 1.8);
+    telemetry.recordEvent('boss', 'spawned');
+  },
   onFlood(phase) {
     // the flood announces itself like weather does - but it is a threat
     // with a clock, so every line names the correct response: UP
@@ -203,6 +241,7 @@ const ui = {
     } else if (phase === 'recede') {
       hud && hud.toast('THE WATERS RECEDE', 2.5);
     }
+    telemetry.recordEvent('flood', phase);
   },
 };
 
@@ -211,6 +250,24 @@ const effects = createEffects(scene);
 razorfins = createRazorfins(scene, effects);
 const sim = createSim({ scene, camera, effects, ui });
 const { game, player, weapons, grenades, enemyMgr, director, pickups, extraction } = sim;
+
+// telemetry: wrap the two weaponHooks that carry per-shot detail sim.js
+// doesn't otherwise surface to `ui` - shots fired (frequency/rate) and
+// damage dealt per hit (target/headshot/crit, for a real accuracy +
+// "what am I actually hurting" picture, not just aggregate kill counts).
+{
+  const origOnShot = sim.weaponHooks.onShot;
+  sim.weaponHooks.onShot = () => {
+    origOnShot();
+    telemetry.recordShotFired();
+  };
+  const origOnEnemyHit = sim.weaponHooks.onEnemyHit;
+  sim.weaponHooks.onEnemyHit = (enemy, dmg, headshot, point, crit) => {
+    const res = origOnEnemyHit(enemy, dmg, headshot, point, crit);
+    telemetry.recordDamageDealt({ time: game.time, amount: dmg, target: enemy.type, headshot, crit });
+    return res;
+  };
+}
 
 scene.add(camera); // viewmodel rig hangs off the camera
 player.p.onStep = (wet, sprint) => sfxFootstep(wet, sprint);
@@ -272,6 +329,10 @@ function endRun(extracted) {
   input.exitLock();
   hudEl.classList.add('hidden');
   endEl.classList.remove('hidden');
+  if (telemetry.recording) {
+    telemetry.stop();
+    console.log(telemetry.summaryLine());
+  }
   const isRecord = saveBest(extracted);
   const title = document.getElementById('end-title');
   title.textContent = extracted ? 'EXTRACTED' : 'K.I.A.';
@@ -303,6 +364,8 @@ function startRun() {
   sim.resetRun();
   vignette = 0;
   seenLandmarks.clear();
+  lastHurt = null;
+  telemetry.start({ difficulty: difficultyKey, seed: WORLD.seed });
   menuEl.classList.add('hidden');
   endEl.classList.add('hidden');
   hudEl.classList.remove('hidden');
@@ -377,6 +440,10 @@ function tick(now) {
     setListener(player.p.pos, camera.getWorldDirection(_listenerFwd));
     hud.update(dt);
     updateLandmarkCallout();
+    telemetry.tick(dt, {
+      time: game.time, pos: player.p.pos, fps, frameMs: dt * 1000,
+      landmarks: TELEMETRY_LANDMARKS,
+    });
     razorfins.update(dt, now / 1000, player.p.pos, player.p.inWater);
 
     // apex health bar while she lives
@@ -643,6 +710,11 @@ window.__deadfall = {
   // round-6 signature moment, drivable headlessly (hidden tabs have no
   // RAF, so capture rigs step tickProps themselves)
   ignition: { igniteBeacon, ringPulse, tickProps },
+  // HUMAN-PLAYTEST TELEMETRY: auto-starts on startRun()/telemetry.start().
+  // window.__deadfall.telemetry.stop() to close early, .download() to save
+  // the session JSON, .summaryLine() for the one-line console readout,
+  // .log for the live object (readable mid-run without stopping).
+  telemetry,
 };
 console.log('[deadfall] ready (round 2)');
 

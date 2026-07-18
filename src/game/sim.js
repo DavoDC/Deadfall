@@ -8,7 +8,7 @@
 //
 // Presentation subscribes through `ui` hooks (all optional):
 //   toast(msg, secs), setObjective(text), showExtract(progress|null),
-//   hitmarker(kill, crit), onHurt(amount), onDeath(), onWin(),
+//   hitmarker(kill, crit), onHurt(amount, srcPos, source), onDeath(), onWin(),
 //   onHazard(kind), onExtractTone(progress), onSurge(), onBuff()
 
 import * as THREE from 'three';
@@ -151,7 +151,9 @@ export function createSim({ scene, camera, effects, ui = {} }) {
     target.damage(scaled);
     game.damageTaken += scaled;
     game.dmgBySource[source] = (game.dmgBySource[source] || 0) + scaled;
-    U.onHurt(scaled, srcPos);
+    // source forwarded for telemetry (main.js records damage-by-source and
+    // reuses the last hit's source/pos as the death cause when hp hits 0)
+    U.onHurt(scaled, srcPos, source);
 
     if (!target.p.alive && target.p.hp <= 0) {
       // Player went down - check if this is the last alive player
