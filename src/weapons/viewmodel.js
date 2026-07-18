@@ -482,9 +482,20 @@ export function createViewmodel(camera, weapons, playerRef) {
     swayX = lerp(swayX, targetSwayX, Math.min(1, dt * 10));
     swayY = lerp(swayY, targetSwayY, Math.min(1, dt * 10));
 
-    // walk bob (phase shared with camera bob via player) - steadied by ADS
+    // walk bob (phase shared with camera bob via player) - steadied by ADS.
+    // SPRINT SHAKE FIX (playtest bug, 2026-07-18): sprint already drives a
+    // faster bob automatically - bobPhase advances with raw speedNow
+    // (controller.js), and SPRINT (7.9) over WALK (5.1) is ~1.55x the
+    // oscillation frequency with zero help from here. The old 1.5x
+    // amplitude multiplier stacked ON TOP of that, so the gun swung both
+    // 1.5x bigger AND 1.55x faster while the camera's own head-bob (which
+    // has no such multiplier, see controller.js camera.rotation.z) barely
+    // changed - the world stayed calm while the gun visibly thrashed.
+    // Verified numerically: peak-to-peak swing at 1.5x was 0.036 vs a
+    // 0.024 walk baseline; 1.15x brings it to 0.028, close to walk and
+    // letting the frequency alone carry the "you're sprinting" read.
     const bobAmp = Math.min(1, playerRef.p.speedNow / 5.1)
-      * (playerRef.p.sprinting ? 1.5 : 1) * (1 - ads * 0.85);
+      * (playerRef.p.sprinting ? 1.15 : 1) * (1 - ads * 0.85);
     const bx = Math.sin(playerRef.p.bobPhase) * 0.012 * bobAmp;
     const by = -Math.abs(Math.sin(playerRef.p.bobPhase * 2)) * 0.009 * bobAmp;
 
