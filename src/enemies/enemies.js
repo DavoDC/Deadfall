@@ -28,6 +28,12 @@ import { sfxCreature, sfxAcidSpit, sfxAcidSplat, sfxBloomPulse, sfxMimicShriek }
 import { RUIN_SITES } from '../world/props.js';
 import { makeRng } from '../core/rng.js';
 
+// Per-type baseScale multiplier on top of the standard 0.9-1.15 random
+// variance. Round-8 playtest: the stingerwing was so small it was hard to
+// see coming; bigger reads more fairly against its damage (see touchDamage
+// above) and stays legible against foliage (checkLegibility probes it).
+const SIZE_MULT = { stingerwing: 1.6 };
+
 export const ENEMY_DEFS = {
   prowler: {
     hp: 55,
@@ -85,8 +91,14 @@ export const ENEMY_DEFS = {
     hp: 9,
     speed: 8.4,
     turnRate: 7.5,
-    touchDamage: 3,
-    touchCooldown: 1.0,
+    // round-8 playtest: "tiny but do a lot of dmg" - was 3/1.0s, and it
+    // swarms in packs of 3-5 (director.js), so several attackers overlapping
+    // stacked into a damage spike out of proportion to how hard the thing is
+    // to even see. Cut per-hit damage and give it a longer cooldown; the
+    // model got bigger (see baseScale multiplier below) so it is easier to
+    // spot and shoot before it closes to touch range.
+    touchDamage: 2,
+    touchCooldown: 1.3,
     callEvery: [1.8, 3.4],
     radius: 0.28,
     eyeH: 0,
@@ -264,7 +276,7 @@ export function createEnemyManager(scene, playerHelpers, effects, hooks) {
     e.rage = 0;
     e.flank = (flankCounter++ % 2) * 2 - 1; // alternate -1 / +1
     e.lungeVec = e.lungeVec || new THREE.Vector3();
-    e.baseScale = type === 'juggernaut' ? 1 : 0.9 + Math.random() * 0.25;
+    e.baseScale = (type === 'juggernaut' ? 1 : 0.9 + Math.random() * 0.25) * (SIZE_MULT[type] || 1);
     // type-specific spawn state
     if (type === 'stingerwing') {
       e.flyPhase = Math.random() * 10;
