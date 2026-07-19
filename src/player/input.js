@@ -33,6 +33,17 @@ export function createInput(canvas) {
     keys.clear();
     firing = false;
     aiming = false;
+    // Alt-tab does not reliably fire pointerlockchange in every browser
+    // before or in place of blur (2026-07-19 freeze playtest bug: resume
+    // then alt-tab left the sim gated off with the pause menu never shown
+    // because callers only heard about the unlock via pointerlockchange).
+    // Treat blur itself as an authoritative "we are not locked" signal so
+    // the caller's menu/pause logic runs even if pointerlockchange is late,
+    // dropped, or the browser silently keeps the OS-level lock object.
+    if (state.locked) {
+      state.locked = false;
+      if (state.onLockChange) state.onLockChange(false);
+    }
   });
 
   document.addEventListener('mousemove', (e) => {
@@ -65,6 +76,16 @@ export function createInput(canvas) {
       aiming = false;
     }
     if (state.onLockChange) state.onLockChange(state.locked);
+  });
+  // Browsers throttle/deny requestPointerLock() calls made too soon after
+  // an unlock (a real quirk, not a bug in this game) - e.g. clicking RESUME
+  // right after an alt-tab. No pointerlockchange fires when that happens,
+  // so without this handler the caller never hears back and the menu the
+  // click already hid never returns: sim frozen, ESC a no-op (no lock left
+  // to exit). Report the denial explicitly so the caller can recover.
+  document.addEventListener('pointerlockerror', () => {
+    state.locked = false;
+    if (state.onLockChange) state.onLockChange(false);
   });
 
   return {

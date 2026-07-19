@@ -14,6 +14,7 @@ import { buildProps } from './world/props.js';
 import { buildRoosts } from './world/roosts.js';
 import { colliderCount } from './world/colliders.js';
 import { createInput } from './player/input.js';
+import { shouldShowMenu, resumeButtonLabel } from './player/pauseState.js';
 import { createViewmodel } from './weapons/viewmodel.js';
 import { createEffects } from './weapons/effects.js';
 import { createHud } from './game/hud.js';
@@ -466,8 +467,14 @@ function startRun() {
 const btnStart = document.getElementById('btn-start');
 btnStart.addEventListener('click', () => {
   if (game.state === 'RUNNING') {
-    // ESC pause -> resume the same run, do not reset it
-    menuEl.classList.add('hidden');
+    // ESC pause -> resume the same run, do not reset it. Do NOT hide the
+    // menu here: that used to be optimistic (assumed the lock request would
+    // succeed). Browsers throttle/deny requestPointerLock() calls made too
+    // soon after an unlock (e.g. resume right after an alt-tab) with no
+    // pointerlockchange event at all - the menu we hid never came back and
+    // the sim stayed frozen (2026-07-19 playtest freeze). The menu now only
+    // hides once onLockChange actually confirms the lock, and the watchdog
+    // below self-heals any other missed transition.
     input.requestLock();
   } else {
     startRun();
@@ -475,16 +482,25 @@ btnStart.addEventListener('click', () => {
 });
 document.getElementById('btn-again').addEventListener('click', startRun);
 
-input.state.onLockChange = (locked) => {
-  if (!locked && game.state === 'RUNNING') {
-    // treat unlock as pause -> menu overlay, run frozen (loop gates on lock)
-    btnStart.textContent = 'RESUME';
-    menuEl.classList.remove('hidden');
-  } else if (locked && game.state === 'RUNNING') {
-    menuEl.classList.add('hidden');
-  }
-  if (game.state !== 'RUNNING') btnStart.textContent = 'DEPLOY';
-};
+function syncPauseMenu() {
+  const show = shouldShowMenu(game.state, input.state.locked);
+  menuEl.classList.toggle('hidden', !show);
+  btnStart.textContent = resumeButtonLabel(game.state);
+}
+
+input.state.onLockChange = () => syncPauseMenu();
+
+// ESC fallback: if pointer lock is already gone (a prior unlock we somehow
+// missed, or the browser ate the pointerlockchange event) the browser's
+// native Escape-releases-lock behavior is a no-op and the player is stuck
+// staring at a frozen game with no way back to the menu. A direct keydown
+// handler means ESC always reaches the menu, independent of pointer lock
+// event ordering.
+window.addEventListener('keydown', (e) => {
+  if (e.code !== 'Escape' || game.state !== 'RUNNING') return;
+  input.exitLock();
+  syncPauseMenu();
+});
 
 // --- named-place reveals: every landmark announces itself once per run ---
 const seenLandmarks = new Set();
@@ -519,6 +535,13 @@ function tick(now) {
     frames = 0;
     fpsTimer = 0;
   }
+
+  // Self-healing pause watchdog: the menu's visibility must always match
+  // (game.state, locked) even if a pointer-lock event (pointerlockchange,
+  // blur, pointerlockerror) was missed entirely. Cheap (two property reads
+  // + a class toggle) and closes the freeze bug's whole failure class
+  // rather than one specific browser-event ordering.
+  syncPauseMenu();
 
   // Sim advances only under pointer lock: ESC is a real pause, and the
   // autotest bot (which steps the sim itself, unlocked) never double-ticks.
