@@ -151,19 +151,30 @@ export function createTraps(scene, playerRef, hooks) {
     scene.add(runeRing);
 
     // tripwire: thin emissive line between two stakes (perpendicular to corridor)
+    // Playtest 2026-07-19: "floating hexagonal prism near HOWLING GATE" - the
+    // stakes are offset +-3.5 from the totem centre but used to reuse the
+    // totem's own terrainHeight(x, z) sample instead of resampling at their
+    // own position, so on any slope one (or both) stakes floated above or
+    // sank into the ground. Same bug shape as the insertion-crate fix.
+    const stakeLX = x - 3.5;
+    const stakeLZ = z + (corridorDir === 'z' ? 3.5 : 0);
+    const hStakeL = terrainHeight(stakeLX, stakeLZ);
     const wireStakeL = new THREE.Mesh(
       new THREE.CylinderGeometry(0.08, 0.08, 0.3, 6),
       new THREE.MeshStandardMaterial({ color: 0x3c3c3c, roughness: 0.8 })
     );
-    wireStakeL.position.set(x - 3.5, h + 0.15, z + (corridorDir === 'z' ? 3.5 : 0));
+    wireStakeL.position.set(stakeLX, hStakeL + 0.15, stakeLZ);
     wireStakeL.castShadow = true;
     scene.add(wireStakeL);
 
+    const stakeRX = x + 3.5;
+    const stakeRZ = z + (corridorDir === 'z' ? -3.5 : 0);
+    const hStakeR = terrainHeight(stakeRX, stakeRZ);
     const wireStakeR = new THREE.Mesh(
       new THREE.CylinderGeometry(0.08, 0.08, 0.3, 6),
       new THREE.MeshStandardMaterial({ color: 0x3c3c3c, roughness: 0.8 })
     );
-    wireStakeR.position.set(x + 3.5, h + 0.15, z + (corridorDir === 'z' ? -3.5 : 0));
+    wireStakeR.position.set(stakeRX, hStakeR + 0.15, stakeRZ);
     wireStakeR.castShadow = true;
     scene.add(wireStakeR);
 

@@ -96,17 +96,24 @@ export function buildProps(scene) {
   function ringPulse() { ringT = 0; }
 
   // ---------- insertion crate ----------
-  const insH = terrainHeight(WORLD.insertion.x, WORLD.insertion.z);
+  // Playtest 2026-07-19: "floating cube at the starting point" - this used
+  // to sample terrain height at the insertion point itself, then offset the
+  // crate's x/z by (+2.4, +1.5) without resampling. On sloped ground that
+  // leaves the crate floating above (or sunk into) the terrain it actually
+  // sits on. Sample height at the crate's own final position instead.
+  const crateX = WORLD.insertion.x + 2.4;
+  const crateZ = WORLD.insertion.z + 1.5;
+  const crateH = terrainHeight(crateX, crateZ);
   const crate = new THREE.Mesh(
     new THREE.BoxGeometry(1.6, 1.1, 1.1),
     new THREE.MeshStandardMaterial({ color: 0x4c5a3a, roughness: 0.85 })
   );
-  crate.position.set(WORLD.insertion.x + 2.4, insH + 0.55, WORLD.insertion.z + 1.5);
+  crate.position.set(crateX, crateH + 0.55, crateZ);
   crate.rotation.y = 0.4;
   crate.castShadow = true;
   crate.receiveShadow = true;
   group.add(crate);
-  addCylinder(crate.position.x, crate.position.z, 0.95, 1.2, insH);
+  addCylinder(crate.position.x, crate.position.z, 0.95, 1.2, crateH);
 
   // ---------- ruins ----------
   const rng = makeRng(WORLD.seed + 555);
