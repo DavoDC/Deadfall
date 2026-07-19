@@ -351,23 +351,58 @@ export function buildProwler() {
 // ---------- SPITTER (toxic frog-thing, 1.7m) ----------
 export function buildSpitter() {
   const g = new THREE.Group();
-  const torso = mesh(G('spTorso', () => {
-    const t = new THREE.CapsuleGeometry(0.3, 0.55, 4, 8);
+  const torso = mesh(G('spTorso2', () => {
+    // wider than tall, and vertex-pinched behind the shoulders so the
+    // silhouette is an amphibian teardrop, not a pill
+    const t = new THREE.CapsuleGeometry(0.3, 0.55, 4, 10);
     t.rotateX(0.55);
+    t.scale(1.3, 1, 1.08);
+    const pos = t.getAttribute('position');
+    for (let i = 0; i < pos.count; i++) {
+      const z = pos.getZ(i);
+      if (z < -0.15) { // shoulder end narrows toward the head
+        const k = 1 - Math.min(1, (-z - 0.15) / 0.45) * 0.28;
+        pos.setX(i, pos.getX(i) * k);
+      }
+    }
+    t.computeVertexNormals();
     return t;
   }), MAT.spitterSkin, 0, 1.05, 0.05);
   g.add(torso);
   const belly = mesh(G('spBelly', () => {
     const t = new THREE.CapsuleGeometry(0.24, 0.4, 4, 8);
     t.rotateX(0.55);
+    t.scale(1.25, 1, 1.05);
     return t;
   }), MAT.spitterBelly, 0, 0.98, -0.08);
   belly.castShadow = false;
   g.add(belly);
+  // hip mass: frogs are all haunch - a wide rear dome the legs grow out of
+  const hips = mesh(G('spHips', () => {
+    const s = new THREE.SphereGeometry(0.3, 9, 7);
+    s.scale(1.45, 0.95, 1.1);
+    return s;
+  }), MAT.spitterSkin, 0, 0.92, 0.26);
+  g.add(hips);
+  // shoulder hunch: merges the skull into the back - no neck, pure frog
+  const hunch = mesh(G('spHunch', () => {
+    const s = new THREE.SphereGeometry(0.26, 9, 7);
+    s.scale(1.2, 0.9, 1.15);
+    return s;
+  }), MAT.spitterSkin, 0, 1.26, -0.14);
+  g.add(hunch);
+  // vocal pouch: pale throat bubble under the jaw - instant amphibian tell
+  const pouch = mesh(G('spPouch', () => {
+    const s = new THREE.SphereGeometry(0.16, 8, 6);
+    s.scale(1.3, 0.95, 1.05);
+    return s;
+  }), MAT.spitterBelly, 0, 1.18, -0.4);
+  pouch.castShadow = false;
+  g.add(pouch);
 
-  const head = mesh(G('spHead', () => {
-    const h = new THREE.SphereGeometry(0.21, 8, 6);
-    h.scale(1, 0.85, 1.25);
+  const head = mesh(G('spHead2', () => {
+    const h = new THREE.SphereGeometry(0.24, 9, 7);
+    h.scale(1.05, 0.82, 1.25);
     return h;
   }), MAT.spitterSkin, 0, 1.38, -0.32);
   g.add(head);
@@ -407,30 +442,59 @@ export function buildSpitter() {
 
   const legs = [];
   const knees = [];
-  for (const x of [-0.16, 0.16]) {
-    const { hip, knee } = twoSegLeg(MAT.spitterSkin, MAT.spitterSkin, 0.45, 0.42, 0.065);
-    hip.position.set(x, 0.85, 0.1);
-    knee.rotation.x = 0.4;
+  const haunchGeoSp = G('spHaunch', () => {
+    const s = new THREE.SphereGeometry(0.19, 8, 6);
+    s.scale(0.9, 1.15, 1.3);
+    return s;
+  });
+  for (const x of [-0.22, 0.22]) {
+    // thigh mass the leg grows out of - the leg meets muscle, not surface
+    g.add(mesh(haunchGeoSp, MAT.spitterSkin, x, 0.86, 0.26));
+    const { hip, knee } = twoSegLeg(MAT.spitterSkin, MAT.spitterSkin, 0.45, 0.42, 0.105);
+    hip.position.set(x * 0.85, 0.85, 0.16);
+    // crouch pivot: the walk swing drives hip.rotation.x absolutely, so the
+    // frog-fold base angle lives on a wrapper group the animation never sees
+    const crouch = new THREE.Group();
+    crouch.position.copy(hip.position);
+    hip.position.set(0, 0, 0);
+    crouch.rotation.x = -0.38;
+    crouch.add(hip);
+    knee.rotation.x = 0.75;
+    // webbed foot: broad flat toe fan grounding the stance
+    const foot = mesh(G('spFoot', () => {
+      const s = new THREE.SphereGeometry(0.085, 7, 5);
+      s.scale(1.3, 0.55, 1.7);
+      return s;
+    }), MAT.spitterSkin, 0, -0.42, -0.05);
+    knee.add(foot);
     legs.push(hip);
     knees.push(knee);
-    g.add(hip);
+    g.add(crouch);
   }
-  const armGeo = G('spArm', () => {
-    const a = new THREE.CylinderGeometry(0.045, 0.035, 0.6, 5);
-    a.translate(0, -0.3, 0);
-    return a;
-  });
+  // forelimbs: real two-segment arms planted forward like a sitting frog,
+  // not noodle cylinders hanging off the flank
   const arms = [];
-  const shoulderGeoSp = G('spShoulder', () => new THREE.SphereGeometry(0.075, 6, 5));
-  for (const x of [-0.32, 0.32]) {
-    // shoulder sphere anchors the arm to the torso (they floated before)
-    const shoulder = mesh(shoulderGeoSp, MAT.spitterSkin, x * 0.92, 1.22, -0.05);
+  const shoulderGeoSp = G('spShoulder2', () => new THREE.SphereGeometry(0.11, 7, 6));
+  for (const x of [-0.28, 0.28]) {
+    // shoulder ball buried in the torso side - the arm grows out of it
+    g.add(mesh(shoulderGeoSp, MAT.spitterSkin, x * 0.9, 1.18, -0.14));
+    const { hip: shoulder, knee: elbow } = twoSegLeg(MAT.spitterSkin, MAT.spitterSkin, 0.3, 0.32, 0.06);
+    shoulder.position.set(x, 1.16, -0.16);
+    shoulder.rotation.z = x > 0 ? -0.3 : 0.3;
+    shoulder.rotation.x = -0.35;
+    elbow.rotation.x = 0.5; // forearm plants down and forward
+    // three-toed hand
+    const toeGeo = G('spToe', () => {
+      const s = new THREE.SphereGeometry(0.035, 6, 5);
+      s.scale(1, 0.7, 1.6);
+      return s;
+    });
+    for (const tx of [-0.045, 0, 0.045]) {
+      const toe = mesh(toeGeo, MAT.spitterSkin, tx, -0.33, -0.04 - Math.abs(tx) * -0.5);
+      elbow.add(toe);
+    }
+    arms.push(shoulder);
     g.add(shoulder);
-    const arm = mesh(armGeo, MAT.spitterSkin, x, 1.2, -0.05);
-    arm.rotation.z = x > 0 ? -0.35 : 0.35;
-    arm.rotation.x = -0.5;
-    arms.push(arm);
-    g.add(arm);
   }
 
   return {
