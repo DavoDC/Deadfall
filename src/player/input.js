@@ -91,10 +91,27 @@ export function createInput(canvas) {
   return {
     state,
     requestLock() {
-      canvas.requestPointerLock();
+      // requestPointerLock() can throw synchronously (not just fail async
+      // via pointerlockerror) - e.g. a rapid re-request right after unlock.
+      // An uncaught throw here would break the click handler and leave the
+      // menu/game state exactly where the P0 freeze bug lived. Fall back to
+      // the same recovery path as an async denial.
+      try {
+        canvas.requestPointerLock();
+      } catch {
+        state.locked = false;
+        if (state.onLockChange) state.onLockChange(false);
+      }
     },
     exitLock() {
-      if (state.locked) document.exitPointerLock();
+      if (state.locked) {
+        try {
+          document.exitPointerLock();
+        } catch {
+          // already unlocked or unlockable - state.locked is corrected via
+          // the pointerlockchange/blur/error paths, nothing more to do here.
+        }
+      }
     },
     // Consume one frame of input intent.
     sample() {
