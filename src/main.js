@@ -32,6 +32,7 @@ import { createBot } from './game/autotest.js';
 import { createSnapshot } from './game/snapshot.js';
 import { createShotsAPI } from './game/shots.js';
 import { checkLegibility } from './game/legibility.js';
+import { makeViewer } from './game/viewer.js';
 import { createRecorderAPI } from './capture/recorder.js';
 import { createCinematic } from './game/cinematic.js';
 import { createPipeline } from './render/pipeline.js';
@@ -831,6 +832,9 @@ window.__deadfall = {
   // enemy-legibility metric: is a threat readable against dark/dappled
   // foliage? See game/legibility.js for the difference-imaging method.
   checkLegibility: (opts = {}) => checkLegibility({ renderer, camera, scene, game, enemyMgr, drizzle, effects, motes, renderFrame, ...opts }),
+  // creature portrait/turntable rig - spawn one enemy, frame it, capture
+  // portraits straight to captures/telemetry/frames/ (see game/viewer.js)
+  viewer: makeViewer({ renderer, scene, camera, game, enemyMgr, drizzle, effects, motes, renderFrame, sim }),
   // round-6 rendering pipeline - pass toggles + uniforms for live A/B
   post: pipeline,
   // round-6 signature moment, drivable headlessly (hidden tabs have no
