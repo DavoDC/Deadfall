@@ -1105,15 +1105,18 @@ export function buildMiremother() {
     const t = i / (N_SEG - 1);
     const r = 0.95 * (1 - t * 0.72);
     const seg = new THREE.Group();
-    const scaleMesh = mesh(G(`mmSeg${i}`, () => {
-      const s = new THREE.SphereGeometry(r, 9, 7);
-      s.scale(1, 0.92, 1.35);
+    const scaleMesh = mesh(G(`mmSeg2${i}`, () => {
+      // stretched along the chain axis so consecutive segments bury their
+      // ends in each other (spacing runs 1.5 -> 0.7 while these half-lengths
+      // run ~1.5 -> 0.4) - the coil reads as one body, not a bead chain
+      const s = new THREE.SphereGeometry(r, 10, 8);
+      s.scale(1, 0.92, 1.62);
       return s;
     }), i % 3 === 1 ? MIRE.scaleGlow : MIRE.scale, 0, 0, 0);
     seg.add(scaleMesh);
-    const bellyMesh = mesh(G(`mmBelly${i}`, () => {
+    const bellyMesh = mesh(G(`mmBelly2${i}`, () => {
       const s = new THREE.SphereGeometry(r * 0.82, 8, 6);
-      s.scale(1.05, 0.6, 1.3);
+      s.scale(1.05, 0.6, 1.55);
       return s;
     }), MIRE.belly, 0, -r * 0.42, 0);
     bellyMesh.castShadow = false;
@@ -1142,15 +1145,29 @@ export function buildMiremother() {
 // ---------- VIPERBLOSSOM (dormant flower mimic, 0.9m) ----------
 export function buildViperblossom() {
   const g = new THREE.Group();
-  const stalk = mesh(G('vbStalk', () => {
-    const s = new THREE.CylinderGeometry(0.12, 0.2, 1.2, 6);
-    s.translate(0, 0.6, 0);
+  const stalk = mesh(G('vbStalk2', () => {
+    // continuous plant lathe: root flare, waist, calyx swelling into the
+    // bulb - same organic-growth fix as the bloomcaller's stalk
+    const s = new THREE.LatheGeometry([
+      new THREE.Vector2(0.24, 0),
+      new THREE.Vector2(0.15, 0.2),
+      new THREE.Vector2(0.1, 0.55),
+      new THREE.Vector2(0.09, 0.85),
+      new THREE.Vector2(0.14, 1.1),
+      new THREE.Vector2(0.2, 1.28),
+      new THREE.Vector2(0.001, 1.38),
+    ], 8);
+    s.computeVertexNormals();
     return s;
   }), MAT.bloomStalk, 0, 0.15, 0);
   g.add(stalk);
 
-  // bulb head: closed petals hugging it
-  const bulb = mesh(G('vbBulb', () => new THREE.SphereGeometry(0.28, 8, 7)), MAT.bloomStalk, 0, 1.45, 0);
+  // bulb head: closed petals hugging it - ovoid seed pod
+  const bulb = mesh(G('vbBulb2', () => {
+    const s = new THREE.SphereGeometry(0.28, 9, 7);
+    s.scale(1, 1.12, 1);
+    return s;
+  }), MAT.bloomStalk, 0, 1.45, 0);
   g.add(bulb);
 
   // petals: arranged around the bulb, closed position hugs it tight
