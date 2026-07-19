@@ -686,12 +686,38 @@ export function buildStingerwing() {
 // ---------- CANOPY SHRIKE (leaping wraith, 1.4m crouched) ----------
 export function buildShrike() {
   const g = new THREE.Group();
-  const torso = mesh(G('shTorso', () => {
-    const t = new THREE.CapsuleGeometry(0.22, 0.5, 4, 8);
+  const torso = mesh(G('shTorso2', () => {
+    // gibbon chest: broad shoulder girdle tapering to a narrow waist -
+    // vertex-reshaped before the forward lean so the rule tracks the spine
+    const t = new THREE.CapsuleGeometry(0.22, 0.5, 4, 10);
+    const pos = t.getAttribute('position');
+    for (let i = 0; i < pos.count; i++) {
+      const y = pos.getY(i);
+      let k = 1;
+      if (y > 0.08) k = 1 + Math.min(1, (y - 0.08) / 0.3) * 0.32; // shoulders
+      else if (y < -0.04) k = 1 - Math.min(1, (-y - 0.04) / 0.4) * 0.22; // waist
+      pos.setX(i, pos.getX(i) * k);
+      pos.setZ(i, pos.getZ(i) * (k > 1 ? 1 + (k - 1) * 0.5 : 1));
+    }
+    t.computeVertexNormals();
     t.rotateX(0.35);
     return t;
   }), MAT.shrikeFur, 0, 0.95, 0);
   g.add(torso);
+  // hip mass: the legs fold out of a real pelvis, not the capsule tip
+  const pelvis = mesh(G('shPelvis', () => {
+    const s = new THREE.SphereGeometry(0.17, 8, 6);
+    s.scale(1.25, 0.95, 1.1);
+    return s;
+  }), MAT.shrikeFur, 0, 0.74, 0.09);
+  g.add(pelvis);
+  // neck wedge: the skull grows out of the shoulder girdle (prowler pattern)
+  const neck = mesh(G('shNeck', () => {
+    const n = new THREE.CylinderGeometry(0.09, 0.14, 0.22, 7);
+    n.rotateX(-0.35);
+    return n;
+  }), MAT.shrikeFur, 0, 1.2, -0.08);
+  g.add(neck);
   const chest = mesh(G('shChest', () => new THREE.SphereGeometry(0.19, 7, 6)), MAT.shrikeChest, 0, 1.0, -0.14);
   chest.castShadow = false;
   g.add(chest);
@@ -705,26 +731,42 @@ export function buildShrike() {
   const stripe = mesh(G('shStripe', () => new THREE.BoxGeometry(0.3, 0.05, 0.1)), MAT.shrikeStripe, 0, 1.4, -0.22);
   stripe.castShadow = false;
   g.add(stripe);
-  // two big cyan eyes UNDER the brow - a face, not a smear
+  // two big cyan eyes UNDER the brow - a face, not a smear. Pushed proud of
+  // the skull surface (they were buried inside the head sphere and never
+  // actually rendered - the stripe was carrying the whole face).
   for (const ex of [-0.075, 0.075]) {
-    g.add(eye(0.06, MAT.shrikeStripe, ex, 1.31, -0.25));
+    g.add(eye(0.06, MAT.shrikeStripe, ex, 1.31, -0.29));
   }
 
   // long two-segment arms - it swings, you duck
   const arms = [];
   const elbows = [];
+  const shoulderGeoSh = G('shShoulder', () => {
+    const s = new THREE.SphereGeometry(0.11, 8, 6);
+    s.scale(1.15, 1, 1);
+    return s;
+  });
   for (const x of [-0.28, 0.28]) {
-    const { hip: shoulder, knee: elbow } = twoSegLeg(MAT.shrikeFur, MAT.shrikeFur, 0.5, 0.55, 0.05);
+    // deltoid ball buried across torso edge and arm root - the reaching
+    // limb grows out of the girdle instead of swinging beside it
+    g.add(mesh(shoulderGeoSh, MAT.shrikeFur, x * 0.88, 1.19, -0.02));
+    const { hip: shoulder, knee: elbow } = twoSegLeg(MAT.shrikeFur, MAT.shrikeFur, 0.5, 0.55, 0.062);
     shoulder.position.set(x, 1.18, 0);
     shoulder.rotation.z = x > 0 ? -0.5 : 0.5;
     elbow.rotation.x = -0.4;
-    // hooked hand-claws at the arm ends (it swings; now you see with what)
-    const clawHand = mesh(G('shClaw', () => {
-      const s = new THREE.ConeGeometry(0.045, 0.16, 5);
+    // knuckled hand: a wrist ball with three hooked claws fanned forward
+    // (it swings; now you see with what)
+    const hand = mesh(G('shHand', () => new THREE.SphereGeometry(0.055, 7, 6)), MAT.shrikeFur, 0, -0.54, -0.01);
+    elbow.add(hand);
+    const clawGeoSh = G('shClaw', () => {
+      const s = new THREE.ConeGeometry(0.03, 0.15, 5);
       s.rotateX(Math.PI * 0.5);
       return s;
-    }), MAT.claw, 0, -0.55, -0.04);
-    elbow.add(clawHand);
+    });
+    for (const [cx, cz] of [[-0.045, -0.05], [0, -0.08], [0.045, -0.05]]) {
+      const clawHand = mesh(clawGeoSh, MAT.claw, cx, -0.56, cz);
+      elbow.add(clawHand);
+    }
     arms.push(shoulder);
     elbows.push(elbow);
     g.add(shoulder);
@@ -740,8 +782,18 @@ export function buildShrike() {
     knees.push(knee);
     g.add(hip);
   }
-  const tail = mesh(G('shTail', () => {
-    const t = new THREE.CylinderGeometry(0.018, 0.04, 0.85, 5);
+  const tail = mesh(G('shTail2', () => {
+    // curved-taper lathe - thick root whipping to a fine tip
+    const t = new THREE.LatheGeometry([
+      new THREE.Vector2(0.001, 0),
+      new THREE.Vector2(0.048, 0.02),
+      new THREE.Vector2(0.042, 0.2),
+      new THREE.Vector2(0.028, 0.5),
+      new THREE.Vector2(0.014, 0.7),
+      new THREE.Vector2(0.001, 0.85),
+    ], 7);
+    t.computeVertexNormals();
+    t.translate(0, -0.42, 0);
     t.rotateX(1.3);
     t.translate(0, 0.1, 0.5);
     return t;
