@@ -24,6 +24,7 @@
 
 import { freezeForCapture, placeCamera } from './shots.js';
 import { ENEMY_DEFS } from '../enemies/enemies.js';
+import { terrainHeight } from '../world/heightmap.js';
 
 // Director-spawned archetypes only - miremother (boss) and viperblossom
 // (dormant, seed-placed mimic) are placed specially, not director-spawned,
@@ -181,6 +182,14 @@ export async function checkLegibility(options = {}) {
 
       console.log(`[legibility] probing ${type}...`);
       const e = enemyMgr.spawn(type, vantage.lookAt.x, vantage.lookAt.z);
+      // the shrike spawns perched 7-10m aloft - usually OUTSIDE the probe
+      // frame, so its score was mostly 0-mask noise (round-8 audit: 6 of 11
+      // probes returned an empty mask). Ground it for the measurement; the
+      // player meets it at ground level mid-leap anyway.
+      if (type === 'shrike') {
+        e.pos.y = terrainHeight(vantage.lookAt.x, vantage.lookAt.z);
+        e.model.group.position.copy(e.pos);
+      }
       const enemyFrame = captureFramePixels(renderer, scene, camera, renderFrame);
 
       const mask = maskFromDiff(bgFrame.data, enemyFrame.data, bgFrame.width, bgFrame.height);
