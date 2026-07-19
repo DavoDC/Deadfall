@@ -511,12 +511,32 @@ export function buildSpitter() {
 // ---------- JUGGERNAUT (moss titan, 2.6m) ----------
 export function buildJuggernaut() {
   const g = new THREE.Group();
-  const torso = mesh(G('juTorso', () => {
-    const t = new THREE.CapsuleGeometry(0.62, 0.7, 4, 10);
-    t.scale(1.25, 1, 0.9);
+  const torso = mesh(G('juTorso2', () => {
+    // gorilla mass distribution: chest and shoulders carry the width, the
+    // silhouette tapers into the hips - not a uniform pill
+    const t = new THREE.CapsuleGeometry(0.62, 0.7, 4, 12);
+    t.scale(1.34, 1, 0.92);
+    const pos = t.getAttribute('position');
+    for (let i = 0; i < pos.count; i++) {
+      const y = pos.getY(i);
+      let k = 1;
+      if (y > 0.12) k = 1 + Math.min(1, (y - 0.12) / 0.6) * 0.18; // chest flares
+      else if (y < -0.12) k = 1 - Math.min(1, (-y - 0.12) / 0.75) * 0.2; // hips narrow
+      pos.setX(i, pos.getX(i) * k);
+      pos.setZ(i, pos.getZ(i) * k);
+    }
+    t.computeVertexNormals();
     return t;
   }), MAT.juggHide, 0, 1.55, 0);
   g.add(torso);
+  // neck: the skull grew straight out of empty air above the mantle before -
+  // now a thick trunk of hide bridges torso top into the head box
+  const neck = mesh(G('juNeck', () => {
+    const n = new THREE.CylinderGeometry(0.24, 0.34, 0.5, 9);
+    n.rotateX(0.35);
+    return n;
+  }), MAT.juggHide, 0, 2.12, -0.14);
+  g.add(neck);
   // moss mantle over the shoulders
   const mantle = mesh(G('juMantle', () => {
     const t = new THREE.SphereGeometry(0.78, 8, 6);
@@ -588,11 +608,18 @@ export function buildJuggernaut() {
   boil.castShadow = false;
   g.add(boil);
 
-  const armGeo = G('juArm', () => {
-    const a = new THREE.CylinderGeometry(0.19, 0.24, 1.5, 7);
-    a.translate(0, -0.75, 0);
-    return a;
-  });
+  // arms: lathed muscle profile - deltoid buried in the shoulder sphere,
+  // bicep swell, elbow waist, forearm swell, wrist - not a plumbing pipe
+  const armGeo = lathe('juArm2', [
+    [0.001, -1.56],
+    [0.15, -1.5],
+    [0.2, -1.15],
+    [0.27, -0.75],
+    [0.21, -0.5],
+    [0.32, -0.12],
+    [0.34, 0.06],
+    [0.001, 0.14],
+  ], 9);
   const arms = [];
   for (const x of [-0.82, 0.82]) {
     const arm = mesh(armGeo, MAT.juggHide, x, 1.9, 0);
@@ -600,21 +627,41 @@ export function buildJuggernaut() {
     g.add(arm);
   }
   const clawGeo = G('juClaw', () => new THREE.ConeGeometry(0.09, 0.3, 5));
+  const knuckleGeo = G('juKnuckle', () => {
+    const s = new THREE.SphereGeometry(0.17, 8, 6);
+    s.scale(1.15, 0.85, 1.1);
+    return s;
+  });
   for (const arm of arms) {
+    // knuckle mass at the hand end - the claws grow out of a fist
+    arm.add(mesh(knuckleGeo, MAT.juggHide, 0, -1.52, -0.04));
     for (let i = 0; i < 3; i++) {
-      const claw = mesh(clawGeo, MAT.claw, (i - 1) * 0.12, -1.6, -0.08);
+      const claw = mesh(clawGeo, MAT.claw, (i - 1) * 0.12, -1.66, -0.08);
       claw.rotation.x = Math.PI;
       arm.add(claw);
     }
   }
 
+  // legs: lathed - thigh into knee waist into calf swell into ankle
+  const legGeo = lathe('juLeg2', [
+    [0.001, -1.12],
+    [0.16, -1.05],
+    [0.25, -0.72],
+    [0.21, -0.5],
+    [0.3, -0.18],
+    [0.31, 0.04],
+    [0.001, 0.1],
+  ], 9);
+  const haunchGeoJu = G('juHaunch', () => {
+    const s = new THREE.SphereGeometry(0.33, 9, 7);
+    s.scale(1.05, 1.15, 1.15);
+    return s;
+  });
   const legs = [];
   for (const x of [-0.35, 0.35]) {
-    const leg = mesh(G('juLeg', () => {
-      const l = new THREE.CylinderGeometry(0.24, 0.19, 1.1, 7);
-      l.translate(0, -0.55, 0);
-      return l;
-    }), MAT.juggHide, x, 1.1, 0.05);
+    // glute/haunch mass burying the leg root into the pelvis
+    g.add(mesh(haunchGeoJu, MAT.juggHide, x, 1.12, 0.08));
+    const leg = mesh(legGeo, MAT.juggHide, x, 1.1, 0.05);
     // stone-toed foot - the titan stands ON something now
     const foot = mesh(G('juFoot', () => {
       const f = new THREE.BoxGeometry(0.34, 0.14, 0.44);
