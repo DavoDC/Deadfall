@@ -860,15 +860,31 @@ export function buildShrike() {
 // ---------- BLOOMCALLER (walking orchid, 2.2m) ----------
 export function buildBloomcaller() {
   const g = new THREE.Group();
-  const stalk = mesh(G('blStalk', () => {
-    const s = new THREE.CylinderGeometry(0.16, 0.3, 1.5, 7);
-    s.translate(0, 0.75, 0);
+  const stalk = mesh(G('blStalk2', () => {
+    // one continuous plant curve: root flare, slim waist, then a calyx
+    // swell that grows INTO the bulb - no cylinder-meets-sphere seam
+    const s = new THREE.LatheGeometry([
+      new THREE.Vector2(0.34, 0),
+      new THREE.Vector2(0.24, 0.22),
+      new THREE.Vector2(0.17, 0.6),
+      new THREE.Vector2(0.14, 1.0),
+      new THREE.Vector2(0.17, 1.35),
+      new THREE.Vector2(0.26, 1.62),
+      new THREE.Vector2(0.3, 1.78),
+      new THREE.Vector2(0.001, 1.9),
+    ], 9);
+    s.computeVertexNormals();
     return s;
-  }), MAT.bloomStalk, 0, 0.3, 0);
+  }), MAT.bloomStalk, 0, 0.15, 0);
   g.add(stalk);
 
-  // bulb head with a ring of petals that OPEN when it calls
-  const bulb = mesh(G('blBulb', () => new THREE.SphereGeometry(0.34, 8, 7)), MAT.bloomStalk, 0, 2.0, 0);
+  // bulb head with a ring of petals that OPEN when it calls - slightly
+  // ovoid, a seed pod rather than a ball
+  const bulb = mesh(G('blBulb2', () => {
+    const s = new THREE.SphereGeometry(0.34, 9, 8);
+    s.scale(1, 1.14, 1);
+    return s;
+  }), MAT.bloomStalk, 0, 2.0, 0);
   g.add(bulb);
   // the core is an EYEBALL that watches you while it screams - iris ring
   // + pupil on the golden sphere (crit zone unchanged)
@@ -891,19 +907,19 @@ export function buildBloomcaller() {
   g.add(corePupil);
   const petals = [];
   const petalGeo = G('blPetal', () => {
-    const p = new THREE.PlaneGeometry(0.3, 0.62, 1, 2);
+    const p = new THREE.PlaneGeometry(0.34, 0.66, 1, 2);
     const pos = p.attributes.position;
     for (let i = 0; i < pos.count; i++) {
       const y = pos.getY(i);
-      pos.setZ(i, Math.sin((y + 0.31) / 0.62 * Math.PI) * 0.12);
+      pos.setZ(i, Math.sin((y + 0.33) / 0.66 * Math.PI) * 0.12);
     }
-    p.translate(0, 0.31, 0);
+    p.translate(0, 0.33, 0);
     return p;
   });
-  for (let i = 0; i < 7; i++) {
+  for (let i = 0; i < 8; i++) {
     const pivot = new THREE.Group();
     pivot.position.set(0, 1.95, 0);
-    pivot.rotation.y = (i / 7) * Math.PI * 2;
+    pivot.rotation.y = (i / 8) * Math.PI * 2;
     const petal = new THREE.Mesh(petalGeo, MAT.bloomPetal);
     petal.position.set(0, 0, 0.2);
     petal.rotation.x = 0.25; // closed: petals hug the bulb
@@ -913,24 +929,38 @@ export function buildBloomcaller() {
     g.add(pivot);
   }
 
-  // vine arms + stumpy root legs
-  for (const x of [-0.4, 0.4]) {
-    const vine = mesh(G('blVine', () => {
-      const v = new THREE.CylinderGeometry(0.045, 0.02, 1.1, 5);
-      v.translate(0, -0.55, 0);
-      return v;
-    }), MAT.bloomStalk, x, 1.6, 0.05);
-    vine.rotation.z = x > 0 ? -0.6 : 0.6;
-    vine.rotation.x = 0.3;
+  // vine arms: curved aerial-root tendrils following a real 3D droop, not
+  // straight cylinders pinned at an angle
+  const vineGeo = G('blVine2', () => {
+    const curve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(0.3, -0.28, -0.1),
+      new THREE.Vector3(0.42, -0.68, -0.22),
+      new THREE.Vector3(0.34, -1.05, -0.38),
+    ]);
+    return new THREE.TubeGeometry(curve, 10, 0.038, 6, false);
+  });
+  const vineTipGeo = G('blVineTip', () => new THREE.SphereGeometry(0.05, 6, 5));
+  for (const s of [-1, 1]) {
+    const vine = mesh(vineGeo, MAT.bloomStalk, s * 0.2, 1.62, 0.05);
+    vine.scale.x = s;
     g.add(vine);
+    // budding tip where the tendril ends - a touch of orchid colour
+    const tip = mesh(vineTipGeo, MAT.bloomPetal, s * 0.54, 0.57, -0.33);
+    tip.castShadow = false;
+    g.add(tip);
   }
+  // root legs: lathed with a ground flare - the thing WALKS on its roots
   const legs = [];
+  const legGeoBl = lathe('blLeg2', [
+    [0.11, -0.5],
+    [0.055, -0.32],
+    [0.05, -0.12],
+    [0.085, 0.06],
+    [0.001, 0.12],
+  ], 7);
   for (const [x, z] of [[-0.2, -0.08], [0.2, -0.08], [0, 0.18]]) {
-    const leg = mesh(G('blLeg', () => {
-      const l = new THREE.CylinderGeometry(0.09, 0.05, 0.5, 5);
-      l.translate(0, -0.25, 0);
-      return l;
-    }), MAT.bloomStalk, x, 0.42, z);
+    const leg = mesh(legGeoBl, MAT.bloomStalk, x, 0.42, z);
     legs.push(leg);
     g.add(leg);
   }
