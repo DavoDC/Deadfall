@@ -687,13 +687,30 @@ export function buildJuggernaut() {
 // ---------- STINGERWING (glass wasp, 0.4m) ----------
 export function buildStingerwing() {
   const g = new THREE.Group();
-  const body = mesh(G('swBody', () => {
-    const b = new THREE.CapsuleGeometry(0.09, 0.2, 3, 6);
+  const body = mesh(G('swBody2', () => {
+    // wasp thorax: fat at the front, pinched into a true wasp waist at the
+    // rear - vertex taper is free at build time, no extra mesh for the swarm
+    const b = new THREE.CapsuleGeometry(0.09, 0.2, 3, 8);
     b.rotateX(Math.PI / 2);
+    const pos = b.getAttribute('position');
+    for (let i = 0; i < pos.count; i++) {
+      const z = pos.getZ(i);
+      let k = 1;
+      if (z > 0.04) k = 1 - Math.min(1, (z - 0.04) / 0.16) * 0.45; // waist pinch
+      else if (z < -0.02) k = 1 + Math.min(1, (-z - 0.02) / 0.14) * 0.12; // thorax
+      pos.setX(i, pos.getX(i) * k);
+      pos.setY(i, pos.getY(i) * k);
+    }
+    b.computeVertexNormals();
     return b;
   }), MAT.wingBody, 0, 0, 0);
   g.add(body);
-  const abdomen = mesh(G('swAbd', () => new THREE.SphereGeometry(0.11, 6, 5)), MAT.wingAbdomen, 0, -0.02, 0.2);
+  // abdomen: hot magenta egg tapering back toward the stinger, not a ball
+  const abdomen = mesh(G('swAbd2', () => {
+    const s = new THREE.SphereGeometry(0.11, 8, 6);
+    s.scale(1, 0.95, 1.55);
+    return s;
+  }), MAT.wingAbdomen, 0, -0.02, 0.22);
   abdomen.castShadow = false;
   g.add(abdomen);
   // a face: head bulb + two big forward eyes - it flies AT yours, so the
@@ -703,12 +720,26 @@ export function buildStingerwing() {
   for (const ex of [-0.045, 0.045]) {
     g.add(eye(0.038, MAT.wingAbdomen, ex, 0.045, -0.2));
   }
-  const stinger = mesh(G('swSting', () => new THREE.ConeGeometry(0.035, 0.16, 5)), MAT.claw, 0, -0.03, 0.34);
+  const stinger = mesh(lathe('swSting2', [
+    [0.001, -0.01],
+    [0.038, 0],
+    [0.024, 0.06],
+    [0.012, 0.11],
+    [0.001, 0.17],
+  ], 6), MAT.claw, 0, -0.03, 0.36);
   stinger.rotation.x = Math.PI / 2;
   g.add(stinger);
   const wings = [];
-  const wingGeo = G('swWing', () => {
-    const w = new THREE.PlaneGeometry(0.34, 0.12);
+  const wingGeo = G('swWing2', () => {
+    // rounded wing membrane: elliptical vertex profile instead of a bare
+    // rectangle - same two triangles' worth of cost, insect instead of flag
+    const w = new THREE.PlaneGeometry(0.34, 0.12, 4, 1);
+    const pos = w.getAttribute('position');
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i);
+      const t = (x + 0.17) / 0.34; // 0 at root, 1 at tip
+      pos.setY(i, pos.getY(i) * Math.sqrt(Math.max(0.05, 1 - (2 * t - 1) ** 2)) * 1.15);
+    }
     w.translate(0.17, 0, 0);
     return w;
   });
