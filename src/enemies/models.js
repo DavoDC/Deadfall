@@ -126,24 +126,52 @@ function eye(r, irisMat, x, y, z, fwdZ = -1, slit = false) {
   return g;
 }
 
+// Curved-profile lathe: revolve a 2D taper profile around Y. points =
+// [[radius, y], ...] in ascending y. The organic alternative to a straight
+// two-radius cylinder: fat where muscle sits, narrow at the joint, closed
+// at both ends so no open rim ever shows. computeVertexNormals gives the
+// smooth organic shading (hard/armour parts keep their faceted look).
+function lathe(key, points, segs = 8) {
+  return G(key, () => {
+    const pts = points.map(([x, y]) => new THREE.Vector2(x, y));
+    const g = new THREE.LatheGeometry(pts, segs);
+    g.computeVertexNormals();
+    return g;
+  });
+}
+
 // Two-segment leg: thigh pivots at hip, shin hangs from knee. Animate the
 // hip (rotation.x) and the knee counter-bends in enemies.animate - real
 // limbs, not stilts (round-1 feedback: "not proper legs").
+// Round-8 creature pass: segments are lathed muscle profiles now - a thigh
+// bulges where the muscle sits and tapers hard (~55%) into the knee, the
+// shin carries a calf swell and runs to a fine ankle, and a ball of flesh
+// rides the knee joint so the two segments stay visually continuous at any
+// bend angle. Same refs contract ({ hip, knee }) as always.
 function twoSegLeg(matA, matB, thighLen, shinLen, r) {
   const hip = new THREE.Group();
-  const thigh = mesh(G(`thigh${thighLen}${r}`, () => {
-    const g = new THREE.CylinderGeometry(r, r * 0.8, thighLen, 6);
-    g.translate(0, -thighLen / 2, 0);
-    return g;
-  }), matA, 0, 0, 0);
+  const thigh = mesh(lathe(`thigh2:${thighLen}:${r}`, [
+    [0.001, -thighLen - 0.01],
+    [r * 0.5, -thighLen],
+    [r * 0.78, -thighLen * 0.62],
+    [r * 1.14, -thighLen * 0.26],
+    [r * 0.98, 0],
+    [0.001, thighLen * 0.09],
+  ]), matA, 0, 0, 0);
   hip.add(thigh);
   const knee = new THREE.Group();
   knee.position.y = -thighLen;
-  const shin = mesh(G(`shin${shinLen}${r}`, () => {
-    const g = new THREE.CylinderGeometry(r * 0.75, r * 0.5, shinLen, 6);
-    g.translate(0, -shinLen / 2, 0);
-    return g;
-  }), matB, 0, 0, 0);
+  // knee ball - hides the hinge gap however far the shin swings
+  const ball = mesh(G(`kneeBall:${r}`, () => new THREE.SphereGeometry(r * 0.62, 7, 6)), matA, 0, 0, 0);
+  knee.add(ball);
+  const shin = mesh(lathe(`shin2:${shinLen}:${r}`, [
+    [0.001, -shinLen - 0.01],
+    [r * 0.32, -shinLen],
+    [r * 0.46, -shinLen * 0.6],
+    [r * 0.68, -shinLen * 0.24],
+    [r * 0.56, 0],
+    [0.001, shinLen * 0.07],
+  ]), matB, 0, 0, 0);
   knee.add(shin);
   hip.add(knee);
   return { hip, knee };
@@ -175,6 +203,14 @@ export function buildProwler() {
     return n;
   }), MAT.prowlerHide, 0, 0.7, -0.48);
   g.add(neck);
+  // brisket: a chest mass under the neck root, so neck + shoulders read as
+  // one muscled front instead of a tube meeting a pill
+  const brisket = mesh(G('prBrisket', () => {
+    const s = new THREE.SphereGeometry(0.21, 8, 6);
+    s.scale(1, 1.02, 1.4);
+    return s;
+  }), MAT.prowlerHide, 0, 0.58, -0.36);
+  g.add(brisket);
   const head = mesh(G('prHead', () => {
     const h = new THREE.BoxGeometry(0.3, 0.26, 0.38);
     // taper the muzzle end so the skull reads feline, not brick
@@ -249,6 +285,15 @@ export function buildProwler() {
   for (const [x, z] of [[-0.15, 0.36], [0.15, 0.36]]) {
     g.add(mesh(haunchGeo, MAT.prowlerHide, x, 0.64, z));
   }
+  // topline: one long low ellipsoid riding the spine, filling the dips
+  // between shoulder mass, body pill, and haunch mass - the side silhouette
+  // reads as ONE flowing back, not three lumps
+  const topline = mesh(G('prTopline', () => {
+    const s = new THREE.SphereGeometry(0.2, 8, 6);
+    s.scale(0.85, 0.75, 2.3);
+    return s;
+  }), MAT.prowlerHide, 0, 0.74, 0.02);
+  g.add(topline);
   // coral spine ridge - fantastical crest, glows like the stripes
   const spikeGeo = G('prSpike', () => new THREE.ConeGeometry(0.035, 0.14, 5));
   for (let i = 0; i < 4; i++) {
@@ -261,7 +306,7 @@ export function buildProwler() {
   const legs = [];
   const knees = [];
   for (const [x, z] of [[-0.18, -0.38], [0.18, -0.38], [-0.18, 0.38], [0.18, 0.38]]) {
-    const { hip, knee } = twoSegLeg(MAT.prowlerHide, MAT.prowlerHide, 0.34, 0.32, 0.065);
+    const { hip, knee } = twoSegLeg(MAT.prowlerHide, MAT.prowlerHide, 0.34, 0.32, 0.085);
     hip.position.set(x, 0.62, z);
     knee.rotation.x = 0.35;
     // paw at the shin's end - feet ground the silhouette
@@ -275,8 +320,18 @@ export function buildProwler() {
     knees.push(knee);
     g.add(hip);
   }
-  const tail = mesh(G('prTail', () => {
-    const t = new THREE.CylinderGeometry(0.02, 0.045, 0.7, 5);
+  const tail = mesh(G('prTail2', () => {
+    // curved-taper lathe: thick at the root, whips to a fine tip
+    const t = new THREE.LatheGeometry([
+      new THREE.Vector2(0.001, 0),
+      new THREE.Vector2(0.052, 0.02),
+      new THREE.Vector2(0.048, 0.16),
+      new THREE.Vector2(0.034, 0.38),
+      new THREE.Vector2(0.018, 0.56),
+      new THREE.Vector2(0.001, 0.7),
+    ], 7);
+    t.computeVertexNormals();
+    t.translate(0, -0.35, 0);
     t.rotateX(1.15);
     t.translate(0, 0.12, 0.42);
     return t;
