@@ -199,7 +199,15 @@ export function thicketAt(x, z) {
 }
 
 export function isThicket(x, z) {
-  return thicketAt(x, z) > THICKET_BLOCK;
+  if (thicketAt(x, z) <= THICKET_BLOCK) return false;
+  // Strangler growth cannot root in deep water. The vegetation scatter
+  // already skips thicket clumps where the ground sits drowned (see
+  // vegetation.js), so a capsule end reaching into a river used to block
+  // movement with NOTHING rendered there - an invisible wall (playtest
+  // 2026-07-19, 6,265). Collision now follows the same rule as the
+  // visuals: drowned ground (vs the RESTING water level - a flood does
+  // not uproot a wall) carries no thicket.
+  return terrainHeight(x, z) > WORLD.waterLevel - 0.5;
 }
 
 // Terrain height in metres at world (x, z).
