@@ -240,12 +240,24 @@ function grassGeo() {
 function rockGeo() {
   const g = new THREE.IcosahedronGeometry(1, 1);
   const pos = g.attributes.position;
-  const r = makeRng(4242);
+  // Deterministic per-DIRECTION displacement. IcosahedronGeometry is
+  // non-indexed (each face owns copies of its corners), so the old
+  // per-iteration random scale moved the copies apart and TORE the hull
+  // into sliver faces that lit as jagged black shards (playtest
+  // 2026-07-19, "collection of black triangles" at 107,-160 and across
+  // the SCREE). Hashing the vertex DIRECTION gives every copy of a corner
+  // the same offset - lumpy, but watertight.
   for (let i = 0; i < pos.count; i++) {
-    pos.setXYZ(i,
-      pos.getX(i) * (0.8 + r.next() * 0.4),
-      pos.getY(i) * (0.55 + r.next() * 0.3),
-      pos.getZ(i) * (0.8 + r.next() * 0.4));
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    // smooth trig lump field over the sphere direction - continuous, so
+    // float noise between copies cannot open a crack
+    const rad = 0.82
+      + 0.16 * Math.sin(4.2 * x + 1.3 * y - 2.1 * z)
+      + 0.11 * Math.sin(2.3 * y + 5.1 * z + 1.1)
+      + 0.07 * Math.sin(6.1 * x + 3.7 * z - 0.6);
+    pos.setXYZ(i, x * rad, y * rad * 0.72, z * rad);
   }
   g.computeVertexNormals();
   return g;
@@ -591,9 +603,33 @@ export function buildVegetation(scene, opts = {}) {
     _q.setFromEuler(_e);
     _m.compose(_p.set(x, h - 0.35 * s, z), _q, _s.set(s, s * (0.7 + rng.next() * 0.5), s));
     rocks.push(_m.clone());
-    cTmp.setHSL(0.1, 0.05 + rng.next() * 0.06, 0.3 + rng.next() * 0.14);
+    // warm mid-grey - dark enough to read as stone, light enough that a
+    // shaded face never crushes to a black blob against bright ground
+    cTmp.setHSL(0.09, 0.07 + rng.next() * 0.06, 0.42 + rng.next() * 0.16);
     rockColors.push(cTmp.clone());
     if (s > 1.1) addCylinder(x, z, s * 0.75, s * 1.2, h - 1);
+  });
+
+  // --- THE SCREE talus stones: the ramp is MADE of fallen rock, so show
+  // it. keepSpot deliberately keeps plants off the ramp (walkability),
+  // which left it a bare smooth dune - artificial for a talus slope.
+  // Low flat-lying stones, no colliders (visual gravel, not obstacles).
+  scatter(3.5, 131, (x, z, rng) => {
+    const sc = WORLD.scree;
+    const fz = fractureZ(sc.x);
+    const dx = Math.abs(x - sc.x);
+    const dz = Math.abs(z - fz);
+    if (dx > sc.w + 8 || dz > 44) return;
+    const band = (1 - dx / (sc.w + 8)) * (1 - dz / 44);
+    if (rng.next() > band * 1.4) return;
+    const h = terrainHeight(x, z);
+    const s = 0.25 + rng.next() * rng.next() * 1.1;
+    _e.set(rng.next() * 0.5, rng.next() * Math.PI * 2, rng.next() * 0.5);
+    _q.setFromEuler(_e);
+    _m.compose(_p.set(x, h - 0.28 * s, z), _q, _s.set(s, s * 0.55, s));
+    rocks.push(_m.clone());
+    cTmp.setHSL(0.09, 0.06 + rng.next() * 0.05, 0.45 + rng.next() * 0.18);
+    rockColors.push(cTmp.clone());
   });
 
   // --- thicket walls (round 3): dense, tall, glowing warnings on top ---
@@ -685,7 +721,13 @@ export function buildVegetation(scene, opts = {}) {
     color: 0xffffff, roughness: 1, side: THREE.DoubleSide,
     map: atlas, alphaTest: 0.45,
   }), 0.6));
-  const rockMat = dapplify(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, flatShading: true }));
+  // Emissive floor (viewmodel trick): rocks spend half their faces turned
+  // from the sun; without a fill term those faces crush to black shards
+  // against bright ground (playtest 2026-07-19, 107,-160 / SCREE)
+  const rockMat = dapplify(new THREE.MeshStandardMaterial({
+    color: 0xffffff, roughness: 1, flatShading: true,
+    emissive: 0x8a8078, emissiveIntensity: 0.38,
+  }));
   const lianaMat = dapplify(new THREE.MeshStandardMaterial({ color: 0x3c4a26, roughness: 1 }));
   const thicketMat = dapplify(windify(new THREE.MeshStandardMaterial({
     color: 0xffffff, roughness: 1, side: THREE.DoubleSide,
