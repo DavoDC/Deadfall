@@ -44,13 +44,18 @@ const BRASS = new THREE.MeshStandardMaterial({
   emissive: 0x2a1a06, emissiveIntensity: 0.7,
 });
 
-// Alien hand materials
+// Alien hand materials. ROUND 9: the old teal skin (0x3aa8a0) was near-
+// identical to the guns' cyan CELL glow strips, and at the old scale the
+// hands vanished into the weapon entirely - David's playtest read was
+// "NO HANDS HOLDING GUN". Warm tan flesh separates from both the
+// gunmetal and the cyan tech, and from the green jungle backdrop, with an emissive floor so the shaded palm
+// never crushes to black.
 const ALIEN_SKIN = new THREE.MeshStandardMaterial({
-  color: 0x3aa8a0, roughness: 0.6, metalness: 0.0,
-  emissive: 0x0a4844, emissiveIntensity: 0.5
+  color: 0xb08a5a, roughness: 0.6, metalness: 0.0,
+  emissive: 0x33220e, emissiveIntensity: 0.9,
 });
-const ALIEN_KNUCKLE = new THREE.MeshStandardMaterial({ color: 0x1e4a48, roughness: 0.7 });
-const ALIEN_CLAW = new THREE.MeshStandardMaterial({ color: 0x1e4a48, roughness: 0.6 });
+const ALIEN_KNUCKLE = new THREE.MeshStandardMaterial({ color: 0x6a4a26, roughness: 0.7 });
+const ALIEN_CLAW = new THREE.MeshStandardMaterial({ color: 0x3c2a12, roughness: 0.6 });
 
 const HIP = new THREE.Vector3(0.17, -0.16, -0.32);
 const SPRINT_POS = new THREE.Vector3(0.04, -0.06, -0.03); // added at full sprint
@@ -133,26 +138,33 @@ function alienHand(mirror) {
   const thumbClaw = cone(0.005, 0.013, ALIEN_CLAW, 0.038, -0.009, -0.044);
   hand.add(thumbClaw);
 
-  // Forearm: tapered cylinder from wrist back toward camera's shoulder line
-  // Positioned to angle from the wrist back to the bottom-right/left
-  const forearmLen = 0.16;
-  const forearm = cyl(0.028, 0.021, forearmLen, ALIEN_SKIN, 0, -0.008, 0.08, 0);
-  forearm.rotation.x = 0.25; // angle back toward camera
-  if (mirror) forearm.rotation.y = Math.PI * 0.15; // slight outward angle for natural pose
+  // Forearm: a LONG tapered cylinder running from the wrist back down
+  // toward the camera's off-screen shoulder. This is the piece that
+  // connects the hand to a body - a hand with no arm floats just as
+  // badly as a gun with no hand.
+  const forearmLen = 0.3;
+  const forearm = cyl(0.024, 0.018, forearmLen, ALIEN_SKIN, 0, -0.062, 0.14, 0);
+  forearm.rotation.x = 0.52; // drops toward the bottom of the frame
+  if (mirror) forearm.rotation.y = Math.PI * 0.12; // slight outward angle
   hand.add(forearm);
 
-  // Wrist band: thin glowing torus
+  // Wrist band: thin ring of woven vine-copper (was teal - same
+  // camouflage problem as the skin)
   const wristBand = new THREE.Mesh(
-    new THREE.TorusGeometry(0.018, 0.004, 6, 12),
-    new THREE.MeshStandardMaterial({ color: 0x1a7a76, emissive: 0x0a9a96, emissiveIntensity: 0.8 })
+    new THREE.TorusGeometry(0.02, 0.005, 6, 12),
+    new THREE.MeshStandardMaterial({ color: 0x8a5a2a, emissive: 0x442a08, emissiveIntensity: 0.8 })
   );
-  wristBand.rotation.x = Math.PI / 2;
-  wristBand.position.set(0, -0.010, 0.15);
+  wristBand.rotation.x = Math.PI / 2 - 0.38;
+  wristBand.position.set(0, -0.028, 0.11);
   hand.add(wristBand);
+
+  // ROUND 9: 1.35x - at the old size the whole hand was a ~3cm blob lost
+  // inside the gun's silhouette
+  hand.scale.setScalar(1.35);
 
   // Mirror geometry if needed
   if (mirror) {
-    hand.scale.x = -1;
+    hand.scale.x = -1.35;
   }
 
   return hand;
