@@ -22,6 +22,9 @@ const ACCEL = 42;
 const FRICTION = 11;
 const AIR_CONTROL = 0.25;
 const GROUND_FOLLOW_RATE = 28; // 1/s, damps terrain-noise judder while walking (not landing)
+// walking downhill, feet stay glued to ground falling away up to this many
+// metres below; beyond it (a real ledge/cliff) you go properly airborne
+const DOWNHILL_STICK = 0.55;
 
 export function createPlayer(camera) {
   const p = {
@@ -173,6 +176,15 @@ export function createPlayer(camera) {
       p.pos.y = wasAirborne ? ground : dampTowards(p.pos.y, ground, GROUND_FOLLOW_RATE, dt);
       p.vel.y = 0;
       p.grounded = true;
+    } else if (p.grounded && !intent.jump && p.pos.y < ground + DOWNHILL_STICK) {
+      // walking DOWNHILL: the ground falls away a few cm per frame, which
+      // used to flip the state airborne and re-land it with an instant
+      // snap every couple of frames - the RESIDUAL judder of the round-8
+      // playtest (RAPIDS ALTAR bank, -24,-2). Within a small stick range
+      // the feet now FOLLOW the descending ground through the same damped
+      // filter; a real ledge (drop > stick) still goes airborne.
+      p.pos.y = dampTowards(p.pos.y, ground, GROUND_FOLLOW_RATE, dt);
+      p.vel.y = 0;
     } else if (p.pos.y > ground + 0.05) {
       p.grounded = false;
     }
