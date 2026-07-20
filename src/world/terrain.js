@@ -234,26 +234,29 @@ export function buildWater(scene) {
   const geo = new THREE.PlaneGeometry(WORLD.size, WORLD.size, 128, 128);
   geo.rotateX(-Math.PI / 2);
 
+  // ROUND 9 WATER LAW: water is a VOLUME filling basins to a level, not a
+  // sheet draped over terrain. The mesh stays FLAT at the effective water
+  // level everywhere (flood rise included); a baked ground-height texture
+  // lets the fragment shader compute true depth per PIXEL and discard where
+  // the level meets rising ground. The shoreline is therefore the exact
+  // terrain contour line - no more 6m-grid straight edges, and no more
+  // "water mound" sheets riding up slopes (playtest 2026-07-19, 23,143 and
+  // 14,-85). The old sunk-vertex "dry film" hack is gone entirely.
+  //
   // per-vertex colour: living teal water, blooming BLOOD RED over the
   // razorfin gorge AND the Sunken Maw (the boss's moat) - hazards
   // telegraph themselves from a distance.
-  // per-vertex swell AMPLITUDE is scaled by real water depth; where the
-  // plane would form a paper-thin film over near-coplanar ground (the
-  // round-2 "pool grows and shrinks with view angle" z-fighting bug) the
-  // vertex is sunk below the terrain instead.
   const pos = geo.attributes.position;
   const wCol = new Float32Array(pos.count * 3);
   const amp = new Float32Array(pos.count);
-  const depthAttr = new Float32Array(pos.count); // 0 shallow edge -> 1 deep
   const cSafe = new THREE.Color(0x25b89a);
   const cBlood = new THREE.Color(0xa01a2e);
   const cw = new THREE.Color();
-  // per-vertex caches for the FLOOD (round 5): ground height, the dry-film
-  // sink, the flood-zone mask, the resting blood tint and the distance to
-  // the gorge line - everything setFlood needs to re-pose the SAME surface
-  // at any rise without re-sampling the heightfield
+  // per-vertex caches for the FLOOD (round 5): ground height, the flood-
+  // zone mask, the resting blood tint and the distance to the gorge line -
+  // everything setFlood needs to re-pose the SAME surface at any rise
+  // without re-sampling the heightfield
   const hCache = new Float32Array(pos.count);
-  const sinkCache = new Float32Array(pos.count);
   const maskCache = new Float32Array(pos.count);
   const blood0 = new Float32Array(pos.count);
   const dGorge = new Float32Array(pos.count);
@@ -265,29 +268,10 @@ export function buildWater(scene) {
     maskCache[i] = floodMask(x, z);
     dGorge[i] = Math.abs(z - gorgeZ(x));
     const depth = WORLD.waterLevel - hC;
-    if (depth < 0.22) {
-      // Sink the dry film just below ground - deep enough that the linear
-      // plane between grid verts never pokes out of the hillside, shallow
-      // enough that pool borders stay a thin band instead of a visible
-      // "dune" wall (the old fixed -2.5 painted red slopes at the Maw;
-      // a fixed -0.45 poked a giant teal sheet through the mesa cliff).
-      // Slope-adaptive: flat shoreline sinks 0.45, steep ground sinks by
-      // its own per-cell height change plus margin.
-      const cell = WORLD.size / 128;
-      const slope = Math.max(
-        Math.abs(terrainHeight(x + cell, z) - hC),
-        Math.abs(terrainHeight(x - cell, z) - hC),
-        Math.abs(terrainHeight(x, z + cell) - hC),
-        Math.abs(terrainHeight(x, z - cell) - hC)
-      );
-      sinkCache[i] = 0.45 + slope * 1.3;
-      pos.setY(i, hC - WORLD.waterLevel - sinkCache[i]);
-      amp[i] = 0;
-    } else {
-      sinkCache[i] = 0.45; // flat enough to be wet - sink is nominal
-      amp[i] = clamp(depth / 1.2, 0, 1);
-    }
-    depthAttr[i] = clamp(depth / 2.5, 0, 1);
+    // the plane is FLAT at the level; only the swell amplitude varies.
+    // Calm at the shoreline so the waterline holds still against the bank.
+    pos.setY(i, 0);
+    amp[i] = depth < 0.3 ? 0 : clamp(depth / 1.2, 0, 1);
     const dMaw = Math.hypot(x - WORLD.maw.x, z - WORLD.maw.z);
     const blood = Math.max(
       razorfinHazard(x, z),
@@ -300,7 +284,31 @@ export function buildWater(scene) {
     wCol[i * 3 + 2] = cw.b;
   }
   geo.setAttribute('color', new THREE.BufferAttribute(wCol, 3));
-  geo.setAttribute('aDepth', new THREE.BufferAttribute(depthAttr, 1));
+
+  // Baked ground-height texture: FloatType, nearest-filtered (manual
+  // bilinear in the shader - full float precision, core WebGL2, no
+  // extension roulette). 1 texel per 1.5m; the shader's bilinear read
+  // turns that into a smooth, curved shoreline contour.
+  const HTEX = 512;
+  const hData = new Float32Array(HTEX * HTEX);
+  {
+    const step = WORLD.size / (HTEX - 1);
+    const half = WORLD.size / 2;
+    for (let j = 0; j < HTEX; j++) {
+      const z = -half + j * step;
+      for (let i = 0; i < HTEX; i++) {
+        hData[j * HTEX + i] = terrainHeight(-half + i * step, z);
+      }
+    }
+  }
+  const groundTex = new THREE.DataTexture(
+    hData, HTEX, HTEX, THREE.RedFormat, THREE.FloatType
+  );
+  groundTex.magFilter = THREE.NearestFilter;
+  groundTex.minFilter = THREE.NearestFilter;
+  groundTex.wrapS = THREE.ClampToEdgeWrapping;
+  groundTex.wrapT = THREE.ClampToEdgeWrapping;
+  groundTex.needsUpdate = true;
 
   const mat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
@@ -322,21 +330,23 @@ export function buildWater(scene) {
   // (grazing angles go reflective-opaque - the classic water cue).
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uWTime = { value: 0 };
+    shader.uniforms.uGround = { value: groundTex };
+    shader.uniforms.uWorldSize = { value: WORLD.size };
+    shader.uniforms.uHTex = { value: HTEX };
     mat.userData.shader = shader;
 
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>
-        attribute float aDepth;
-        varying float vWDepth;
         varying vec3 vWaterWP;`)
       .replace('#include <project_vertex>', `#include <project_vertex>
-        vWDepth = aDepth;
         vWaterWP = (modelMatrix * vec4(transformed, 1.0)).xyz;`);
 
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>
         uniform float uWTime;
-        varying float vWDepth;
+        uniform sampler2D uGround;
+        uniform float uWorldSize;
+        uniform float uHTex;
         varying vec3 vWaterWP;
         float waterHash(vec2 p) {
           return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
@@ -357,28 +367,54 @@ export function buildWater(scene) {
           return waterNoise(p * 0.35 + uWTime * vec2(0.16, 0.06)) * 0.5
                + waterNoise(p * 1.30 - uWTime * vec2(0.11, 0.18)) * 0.32
                + waterNoise(vec2(p.x * 0.22 - uWTime * 0.55, p.y * 1.7)) * 0.18;
+        }
+        // ground height under world (x,z): manual bilinear over the baked
+        // float texture (nearest-filtered taps, full precision everywhere)
+        float groundHeight(vec2 wxz) {
+          vec2 g = (wxz / uWorldSize + 0.5) * (uHTex - 1.0);
+          vec2 g0 = floor(g);
+          vec2 f = g - g0;
+          vec2 inv = vec2(1.0) / uHTex;
+          vec2 uv00 = (g0 + 0.5) * inv;
+          float h00 = texture2D(uGround, uv00).r;
+          float h10 = texture2D(uGround, uv00 + vec2(inv.x, 0.0)).r;
+          float h01 = texture2D(uGround, uv00 + vec2(0.0, inv.y)).r;
+          float h11 = texture2D(uGround, uv00 + inv).r;
+          return mix(mix(h00, h10, f.x), mix(h01, h11, f.x), f.y);
         }`)
       .replace('#include <normal_fragment_begin>', `#include <normal_fragment_begin>
         {
-          // finite-difference gradient of the ripple field -> world normal
           vec2 wp = vWaterWP.xz;
+          // TRUE per-pixel depth: water surface height minus the ground
+          // under this fragment. Where the level meets rising ground the
+          // water ENDS - exactly on the terrain contour line.
+          float ground = groundHeight(wp);
+          float wDepth = vWaterWP.y - ground;
+          if (wDepth < 0.02) discard;
+          float depthN = clamp(wDepth / 2.5, 0.0, 1.0);
+          // finite-difference gradient of the ripple field -> world normal
           float e = 0.35;
           float h0 = rippleHeight(wp);
           float hx = rippleHeight(wp + vec2(e, 0.0));
           float hz = rippleHeight(wp + vec2(0.0, e));
           // calm shallow edges, lively deep channel
-          float k = 2.0 * mix(0.35, 1.0, vWDepth);
+          float k = 2.0 * mix(0.35, 1.0, depthN);
           vec3 nW = normalize(vec3(-(hx - h0) * k / e, 1.0, -(hz - h0) * k / e));
           nW.y *= gl_FrontFacing ? 1.0 : -1.0; // seen from underwater
           normal = normalize((viewMatrix * vec4(nW, 0.0)).xyz);
           // depth-based colour + alpha: thin bright edges, deep dark water
           // (lives here, not color_fragment, because 'normal' only exists
           // from normal_fragment_begin onward - chunk order matters)
-          diffuseColor.rgb *= mix(0.95, 0.52, vWDepth);
-          float wAlpha = mix(0.38, 0.84, vWDepth);
+          diffuseColor.rgb *= mix(0.95, 0.52, depthN);
+          float wAlpha = mix(0.34, 0.84, depthN);
           vec3 wViewDir = normalize(vViewPosition);
           float wFres = pow(1.0 - saturate(dot(wViewDir, normal)), 3.0);
-          diffuseColor.a = clamp(wAlpha + wFres * 0.28, 0.0, 0.9);
+          // shoreline lapping band: a thin, ripple-animated bright fringe
+          // where the water thins onto the bank - reads as a wet waterline,
+          // and its noise wobble kills any residual contour banding
+          float lap = 1.0 - smoothstep(0.02, 0.3 + rippleHeight(wp * 2.1) * 0.35, wDepth);
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.88, 0.97, 0.94), lap * 0.55);
+          diffuseColor.a = clamp(wAlpha + wFres * 0.28 + lap * 0.18, 0.0, 0.9);
         }`)
       // FLOOD/RAZORFIN READABILITY FIX (playtest bug, 2026-07-18): the
       // blood-red hazard telegraph is supposed to read "from a distance"
@@ -457,17 +493,12 @@ export function buildWater(scene) {
       const m = maskCache[i];
       const level = WORLD.waterLevel + (m > 0 ? rise * m : 0);
       const depth = level - hCache[i];
-      let y;
-      if (depth < 0.22) {
-        y = hCache[i] - WORLD.waterLevel - sinkCache[i];
-        amp[i] = 0;
-      } else {
-        y = level - WORLD.waterLevel;
-        amp[i] = clamp(depth / 1.2, 0, 1);
-      }
+      // the surface stays a LEVEL (flood mask varies it smoothly); the
+      // fragment shader clips it against the ground per pixel
+      const y = level - WORLD.waterLevel;
+      amp[i] = depth < 0.3 ? 0 : clamp(depth / 1.2, 0, 1);
       base[i * 3 + 1] = y;
       arr[i * 3 + 1] = y;
-      depthAttr[i] = clamp(depth / 2.5, 0, 1);
       // the telegraph: blood sweeps outward from the rift, saturating
       // with the event - the exact language the gorge already taught
       let blood = blood0[i];
@@ -482,7 +513,6 @@ export function buildWater(scene) {
     }
     geo.attributes.position.needsUpdate = true;
     geo.attributes.color.needsUpdate = true;
-    geo.attributes.aDepth.needsUpdate = true;
   };
 
   mesh.userData.tick = (t) => {
