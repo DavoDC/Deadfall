@@ -102,6 +102,51 @@ describe('critique: findUnfairDeaths', () => {
     expect(findUnfairDeaths([r])).toEqual([]);
   });
 
+  it('judges the FINISHING blow, not every hit in the window - a mixed-visibility burst still flags if the killer itself was unseen', () => {
+    // Real pattern found in headless sweep data: a jugg-charge death with 3
+    // hits in the fatal window (84 dmg total, well above the spike bar),
+    // two unseen and a final ALSO-unseen one. windowEvents.every(!inView)
+    // would also catch this; the regression this guards is the opposite
+    // case below.
+    const events = [
+      dmgEvent({ t: 99.0, amount: 30, inView: false, withinReactionDist: true }),
+      dmgEvent({ t: 99.5, amount: 24, inView: false, withinReactionDist: true }),
+      dmgEvent({ t: 100.0, amount: 30, inView: false, withinReactionDist: false }),
+    ];
+    const r = run({ result: 'DEAD', damageEvents: events, deathRecord: events[2] });
+    const findings = findUnfairDeaths([r]);
+    expect(findings.length).toBe(1);
+  });
+
+  it('flags a burst where earlier hits were visible but the FINISHING blow was not - the death itself is what matters', () => {
+    // The inverse of "sustained visible pressure": total window damage
+    // clears the spike bar, and the hit that actually ended the run was
+    // never in view - even though an earlier hit in the same window was.
+    // windowEvents.every(!inView) would silently miss this (one visible
+    // event disqualifies the whole window); classifying on dr (the death
+    // record) alone catches it, which is what this test locks in.
+    const events = [
+      dmgEvent({ t: 99.2, amount: 20, inView: true, withinReactionDist: true }),
+      dmgEvent({ t: 100.0, amount: 45, inView: false, withinReactionDist: false }),
+    ];
+    const r = run({ result: 'DEAD', damageEvents: events, deathRecord: events[1] });
+    const findings = findUnfairDeaths([r]);
+    expect(findings.length).toBe(1);
+    expect(findings[0].evidence.reasons.some((r2) => r2.includes('view'))).toBe(true);
+  });
+
+  it('does NOT flag a burst where the finishing blow itself was visible, even if an earlier hit in the window was not', () => {
+    // Mirror case: the window contains an unseen chip hit followed by a
+    // clearly visible finishing blow that alone clears the spike bar -
+    // the player saw what killed them, even though an earlier hit did not.
+    const events = [
+      dmgEvent({ t: 99.2, amount: 25, inView: false, withinReactionDist: false }),
+      dmgEvent({ t: 100.0, amount: 30, inView: true, withinReactionDist: true }),
+    ];
+    const r = run({ result: 'DEAD', damageEvents: events, deathRecord: events[1] });
+    expect(findUnfairDeaths([r])).toEqual([]);
+  });
+
   it('does not flag a small, visible hit even if it happens to be the killing blow (low prior hp is expected, not unfair)', () => {
     // player already at 20 hp from earlier sustained combat, final 10-dmg
     // visible hit finishes them - textbook earned death, not a spike.

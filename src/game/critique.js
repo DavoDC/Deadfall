@@ -151,8 +151,15 @@ export function findUnfairDeaths(runs, opts = {}) {
     const isSpike = spikeAmount >= maxHp * spikeFrac;
     if (!isSpike) continue;
 
-    const neverInView = windowEvents.every((e) => !e.inView);
-    const neverInReach = windowEvents.every((e) => !e.withinReactionDist);
+    // "the killing enemy" (brief's own phrasing) means the FINISHING blow,
+    // not every hit in the window - real data caught this: a jugg-charge
+    // death windowed 3 hits (84 dmg total), 2 unseen then a final visible
+    // one. Requiring ALL window events hidden (windowEvents.every(...))
+    // never fires on a mixed burst like that and would make this heuristic
+    // useless on real combat, which is rarely a single clean hit. Judge the
+    // hit that actually ended the run - dr IS the last window event.
+    const neverInView = !dr.inView;
+    const neverInReach = !dr.withinReactionDist;
 
     const lookbackStart = windowStart - NO_TELEGRAPH_LOOKBACK_S;
     const priorTicks = (run.ticks || []).filter((t) => t.t >= lookbackStart && t.t < windowStart);
