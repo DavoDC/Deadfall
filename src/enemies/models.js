@@ -603,8 +603,10 @@ export function buildJuggernaut() {
   }
 
   // the amber boil on its back - the real weakpoint. Bait the charge,
-  // shoot the pass.
-  const boil = mesh(G('juBoil', () => new THREE.SphereGeometry(0.26, 8, 6)), MAT.juggBoil, 0, 1.72, 0.62);
+  // shoot the pass. Cloned per-instance (like the spitter's sacs) because
+  // enemies.js now brightens it as the melee-windup telegraph - a shared
+  // material would flash every juggernaut on the map for one attack.
+  const boil = mesh(G('juBoil', () => new THREE.SphereGeometry(0.26, 8, 6)), MAT.juggBoil.clone(), 0, 1.72, 0.62);
   boil.castShadow = false;
   g.add(boil);
 

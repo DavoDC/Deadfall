@@ -169,6 +169,13 @@ export const ENEMY_DEFS = {
 const GLOB_POOL = 14;
 const PLAYER_RADIUS = 0.42;
 
+// Juggernaut melee windup telegraph (round: extraction-redesign, root cause
+// 1). Base/gain match models.js's MAT.juggBoil authoring (base 2.6) and the
+// spitter's sac brighten-through-windup gain (+4) - same visual language,
+// different weakpoint.
+const JUGG_BOIL_BASE_EMISSIVE = 2.6;
+const JUGG_BOIL_TELEGRAPH_GAIN = 4;
+
 export function createEnemyManager(scene, playerHelpers, effects, hooks) {
   // playerHelpers: { nearestPlayer(pos), players[] }
   // hooks: { damagePlayer(amount, srcPos), onKill(type, pos),
@@ -600,6 +607,17 @@ export function createEnemyManager(scene, playerHelpers, effects, hooks) {
       if (dist < e.def.attackRange && e.attackCd <= 0) {
         e.state = 'windup';
         e.stateT = 0;
+        // THE TELEGRAPH (round: extraction-redesign, root cause 1). This
+        // was the only heavy attack in the game with zero windup cue - a
+        // silent 0.5s window then 30dmg on distance alone, no facing/LOS
+        // check at all. Copy the pattern every OTHER heavy already uses
+        // (prowler fires sfxCreature at windup entry; spitter brightens its
+        // sacs through the windup): a roar now, and the back boil - its own
+        // shootable weakpoint - flares brighter as the swing builds. A
+        // player who hears it or glances at it gets a real, fair window to
+        // open distance (see autotest.js computeDodgeIntent) before it
+        // lands, instead of eating an unseen hit from behind.
+        sfxCreature('juggernaut', e.pos, 1.6);
       } else if (dist > 9 && dist < 32 && e.hasLOS && e.chargeCd <= 0) {
         e.state = 'chargewind';
         e.stateT = 0;
@@ -607,6 +625,11 @@ export function createEnemyManager(scene, playerHelpers, effects, hooks) {
       }
     } else if (e.state === 'windup') {
       e.stateT += dt;
+      // back-boil flare through the windup - additive emissive only, the
+      // base juggHide/juggMoss/juggPlate materials are never touched
+      // (legibility gate: telegraphs must not dim the enemy)
+      e.model.refs.boil.material.emissiveIntensity = JUGG_BOIL_BASE_EMISSIVE
+        + Math.min(1, e.stateT / e.def.windup) * JUGG_BOIL_TELEGRAPH_GAIN;
       if (e.stateT >= e.def.windup) {
         const d2 = _v.subVectors(pp, e.pos).length();
         if (d2 < e.def.attackRange + 0.7) {
@@ -616,6 +639,7 @@ export function createEnemyManager(scene, playerHelpers, effects, hooks) {
           nearestPlayer(e.pos).vel.addScaledVector(_v2, 9);
           nearestPlayer(e.pos).vel.y = 3.5;
         }
+        e.model.refs.boil.material.emissiveIntensity = JUGG_BOIL_BASE_EMISSIVE;
         e.state = 'hunt';
         e.attackCd = e.def.strikeCooldown;
       }

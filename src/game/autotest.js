@@ -96,6 +96,59 @@ const AIM_Y = {
 // Miremother states in which she can actually be shot
 const BOSS_TARGETABLE = new Set(['coil', 'telegraph', 'strike', 'recover', 'venom', 'erupt']);
 
+// Dodge reaction to a committed/telegraphed attack, checked in priority
+// order - only the FIRST match fires, matching how a human reacts to the
+// most urgent threat in front of them, not several superimposed dodges.
+// Exported and pure (no sim access) so it is unit-tested in isolation
+// (tests/dodgeIntent.test.js) rather than only through a full bot run.
+export function computeDodgeIntent(enemies, pp, yaw) {
+  for (const e of enemies) {
+    const charging = (e.type === 'juggernaut' && (e.state === 'charge' || e.state === 'chargewind'))
+      || (e.type === 'miremother' && (e.state === 'telegraph' || e.state === 'strike'));
+    const pouncing = e.type === 'shrike' && e.state === 'air' && e.pouncing;
+    // round: extraction-redesign (root cause 1) - the juggernaut's melee
+    // windup now has a real tell (roar + flaring back boil, enemies.js
+    // updateJuggernaut). A player who catches it has time to open distance
+    // before the 0.5s windup ends. Unlike a charge/pounce it is NOT a
+    // committed line to step off - it is stationary and purely range-based
+    // (hit test is a radius check, enemies.js:~620), so the correct
+    // reaction is straight back, not a lateral sidestep.
+    const meleeWindup = e.type === 'juggernaut' && e.state === 'windup';
+    if (!charging && !pouncing && !meleeWindup) continue;
+    const ex = pp.x - e.pos.x;
+    const ez = pp.z - e.pos.z;
+    const ed = Math.hypot(ex, ez);
+    if (ed > (meleeWindup ? 6 : 16)) continue;
+    const fwdX = -Math.sin(yaw);
+    const fwdZ = -Math.cos(yaw);
+    const rightX = -fwdZ;
+    const rightZ = fwdX;
+    if (meleeWindup) {
+      const inv = ed > 0.05 ? 1 / ed : 0;
+      const awayX = ex * inv;
+      const awayZ = ez * inv;
+      return {
+        moveX: awayX * rightX + awayZ * rightZ,
+        moveZ: -(awayX * fwdX + awayZ * fwdZ),
+        sprint: true, // only actually engages if this nets moveZ < 0 - the
+        // game does not let you sprint backward, same as a human player
+      };
+    }
+    // step to whichever side of the attack line we already lean toward
+    const hx = Math.sin(e.heading);
+    const hz = Math.cos(e.heading);
+    const side = Math.sign(ex * hz - ez * hx) || 1;
+    const dodgeX = hz * side;
+    const dodgeZ = -hx * side;
+    return {
+      moveX: Math.sign(dodgeX * rightX + dodgeZ * rightZ) || 1,
+      moveZ: 0.4, // and give ground
+      sprint: false,
+    };
+  }
+  return null;
+}
+
 export function createBot(ctx) {
   // ctx: { sim, startRun } - startRun must put sim into a fresh RUNNING state
   const { sim } = ctx;
@@ -402,33 +455,14 @@ export function createBot(ctx) {
         }
       }
 
-      // dodge committed attacks like a human: a charging juggernaut, a
-      // pouncing shrike and a striking Miremother are locked onto a line -
-      // step OFF the line, hard
-      for (const e of enemyMgr.aliveList()) {
-        const charging = (e.type === 'juggernaut' && (e.state === 'charge' || e.state === 'chargewind'))
-          || (e.type === 'miremother' && (e.state === 'telegraph' || e.state === 'strike'));
-        const pouncing = e.type === 'shrike' && e.state === 'air' && e.pouncing;
-        if (!charging && !pouncing) continue;
-        const ex = pp.x - e.pos.x;
-        const ez = pp.z - e.pos.z;
-        const ed = Math.hypot(ex, ez);
-        if (ed > 16) continue;
-        // step to whichever side of the attack line we already lean toward
-        const hx = Math.sin(e.heading);
-        const hz = Math.cos(e.heading);
-        const side = Math.sign(ex * hz - ez * hx) || 1;
-        // convert world side direction into strafe relative to player yaw
-        const dodgeX = hz * side;
-        const dodgeZ = -hx * side;
-        const fwdX = -Math.sin(player.p.yaw);
-        const fwdZ = -Math.cos(player.p.yaw);
-        const rightX = -fwdZ;
-        const rightZ = fwdX;
-        intent.moveX = Math.sign(dodgeX * rightX + dodgeZ * rightZ) || 1;
-        intent.moveZ = 0.4; // and give ground
-        intent.sprint = false;
-        break;
+      // dodge committed/telegraphed attacks like a human: a charging
+      // juggernaut, a pouncing shrike, a striking Miremother, and now a
+      // juggernaut mid melee-windup (see computeDodgeIntent above)
+      const dodge = computeDodgeIntent(enemyMgr.aliveList(), pp, player.p.yaw);
+      if (dodge) {
+        intent.moveX = dodge.moveX;
+        intent.moveZ = dodge.moveZ;
+        intent.sprint = dodge.sprint;
       }
 
       // THE FLOOD (round 5): the correct play is written on the tin -
