@@ -62,10 +62,20 @@ export function createDirector(enemyMgr, playerHelpers, opts = {}) {
     budget: 1,
     spawned: {},
     diff: null,       // difficulty object, set via setDifficulty
+    // 0..1, how far through the extraction hold the player has survived -
+    // fed by sim.js (updateExtraction) every frame while committed. This is
+    // the in-hold escalation ramp (root cause 2/3, docs/fable-brief-
+    // extraction.md): the final stand BUILDS across the hold instead of
+    // slamming to its ceiling the instant the player commits.
+    holdProgress: 0,
   };
 
   function setDifficulty(diff) {
     d.diff = diff;
+  }
+
+  function setHoldProgress(frac) {
+    d.holdProgress = clamp(frac, 0, 1);
   }
 
   let weatherRef = null;
@@ -85,7 +95,26 @@ export function createDirector(enemyMgr, playerHelpers, opts = {}) {
     const timeRamp = clamp(d.time / rampTime, 0, 1);
     // deep north is hot no matter how fast you got there
     const base = Math.max(timeRamp, progressNorth() * 0.82);
-    return clamp(base * 0.85 + d.heat + (d.surge ? 0.35 : 0), 0, 1.3);
+    // the surge bonus now BUILDS across the hold (0.08 -> 0.4) instead of
+    // slamming in at a flat +0.35 the instant extraction is committed -
+    // root cause 2: base alone is already ~0.7-0.8 the moment the player
+    // reaches the beacon (progressNorth is maxed), so the old flat bonus
+    // pinned threat at its ceiling on frame one. This mainly nudges cap()
+    // and the budget-regen rate (see below); WHICH squads are available is
+    // gated separately by surgeIntensity(), not this raw threat value.
+    const surgeBonus = d.surge ? lerp(0.08, 0.4, d.holdProgress) : 0;
+    return clamp(base * 0.85 + d.heat + surgeBonus, 0, 1.3);
+  }
+
+  // Gates WHICH surge squads are purchasable, independent of world threat.
+  // Early hold = light contact only (prowler/stingerwing skirmishes, min 0
+  // in SURGE_SQUADS); the melee-weighted and juggernaut recipes (min
+  // 0.5-0.7) only unlock as the player survives further into the hold, so
+  // the danger MIX escalates toward the climax instead of the full recipe
+  // book being available the instant the surge starts (root cause 2/3).
+  function surgeIntensity() {
+    if (!d.surge) return 0;
+    return clamp(0.1 + d.holdProgress * 0.9, 0, 1);
   }
 
   function onShot() {
@@ -190,7 +219,10 @@ export function createDirector(enemyMgr, playerHelpers, opts = {}) {
     if (alive >= cap()) return;
 
     const pool = d.surge ? SURGE_SQUADS : SQUADS;
-    const unlocked = pool.filter((s) => t >= s.min);
+    // surge recipe selection is gated by the hold-progress ramp
+    // (surgeIntensity), not raw world threat - see threat()'s comment
+    const gate = d.surge ? surgeIntensity() : t;
+    const unlocked = pool.filter((s) => gate >= s.min);
     if (unlocked.length === 0) return;
     // prefer the freshest recipes: pick among the last few unlocked
     const window = d.surge ? unlocked : unlocked.slice(-4);
@@ -241,8 +273,12 @@ export function createDirector(enemyMgr, playerHelpers, opts = {}) {
       const t = threat();
       const tickScale = d.diff ? d.diff.tickScale : 1;
       const budgetRate = d.diff ? d.diff.budgetRate : 1;
-      // squad cadence: one purchase decision, then a real pause
-      d.tickT = (d.surge ? lerp(6, 3.6, t) : lerp(24, 9, t)) * tickScale;
+      // squad cadence: one purchase decision, then a real pause. During a
+      // surge this now paces off the SAME hold-progress ramp as recipe
+      // selection (surgeIntensity), not raw threat, so the cadence itself
+      // quickens toward the climax instead of being uniformly fast from
+      // the first tick.
+      d.tickT = (d.surge ? lerp(7, 3, surgeIntensity()) : lerp(24, 9, t)) * tickScale;
       // budget regen saturates at full threat - the overdrive band (>1)
       // sharpens cadence and cap, not spawn volume, or the surge becomes
       // an unwinnable faucet on hard
@@ -254,8 +290,13 @@ export function createDirector(enemyMgr, playerHelpers, opts = {}) {
 
   function startSurge() {
     d.surge = true;
-    d.budget += 6;
-    d.tickT = 0.1;
+    d.holdProgress = 0;
+    // a small OPENING BEAT, not the whole wave dumped on commit frame (was
+    // +6 budget / 0.1s tick - root cause 3). The escalation now comes from
+    // holdProgress ramping through surgeIntensity()/threat() as the hold
+    // continues, not from a single instant injection.
+    d.budget += 2;
+    d.tickT = 0.6;
   }
 
   function stopSurge() {
@@ -269,10 +310,12 @@ export function createDirector(enemyMgr, playerHelpers, opts = {}) {
     d.tickT = d.diff ? d.diff.grace : 14;
     d.budget = 1.5;
     d.spawned = {};
+    d.holdProgress = 0;
   }
 
   return {
     update, onShot, startSurge, stopSurge, reset, threat, setDifficulty,
-    setWeather, assistSpawn, progressNorth, state: d,
+    setWeather, assistSpawn, progressNorth, setHoldProgress, surgeIntensity,
+    state: d,
   };
 }

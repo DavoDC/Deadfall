@@ -334,6 +334,11 @@ export function createSim({ scene, camera, effects, ui = {} }) {
         return;
       }
     }
+    // feed the in-hold escalation ramp (director.js threat()/
+    // surgeIntensity()) - extraction.progress already pauses (not resets)
+    // when the player kites out of the zone, so this stays consistent with
+    // root cause 7's "felt length" even across brief exits.
+    if (extraction.committed) director.setHoldProgress(extraction.progress);
     U.showExtract(extraction.committed ? extraction.progress : null);
   }
 
