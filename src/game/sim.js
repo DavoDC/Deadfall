@@ -24,6 +24,7 @@ import { createWeather } from './weather.js';
 import { createFlood } from './flood.js';
 import { getDifficulty, DEFAULT_DIFFICULTY } from './difficulty.js';
 import { burstGraceMultiplier, BURST_GRACE_EXCLUDED_SOURCES } from './burstGrace.js';
+import { shouldWakeMiremother } from './bossWake.js';
 
 const AYAHUASCA_DURATION = 25;
 
@@ -366,15 +367,18 @@ export function createSim({ scene, camera, effects, ui = {} }) {
     U.showExtract(extraction.committed ? extraction.progress : null);
   }
 
-  // --- the apex: wake her when the player reaches the moat (or commits
-  // to extraction without ever having crossed it) ---
+  // --- the apex: wake her when the player reaches the moat (organic,
+  // unrelated to extraction), or as the CRESCENDO partway through the
+  // extraction hold (root cause 6 - see src/game/bossWake.js) ---
   function updateBoss() {
     const dm = Math.hypot(player.p.pos.x - WORLD.maw.x, player.p.pos.z - WORLD.maw.z);
     // the jungle defers to its apex: director throttles during her fight
     director.state.bossFight = !!(boss.ref && !boss.ref.dead
       && boss.ref.state !== 'dying' && dm < 52);
     if (boss.spawned) return;
-    if (dm < 46 || extraction.committed) {
+    if (shouldWakeMiremother({
+      dm, extractionCommitted: extraction.committed, holdProgress: extraction.progress,
+    })) {
       boss.spawned = true;
       boss.ref = enemyMgr.spawn('miremother', WORLD.maw.x, WORLD.maw.z);
       boss.maxHp = boss.ref.maxHp;
