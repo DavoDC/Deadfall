@@ -23,6 +23,7 @@ import { createTraps } from './traps.js';
 import { createWeather } from './weather.js';
 import { createFlood } from './flood.js';
 import { getDifficulty, DEFAULT_DIFFICULTY } from './difficulty.js';
+import { burstGraceMultiplier, BURST_GRACE_EXCLUDED_SOURCES } from './burstGrace.js';
 
 const AYAHUASCA_DURATION = 25;
 
@@ -151,10 +152,27 @@ export function createSim({ scene, camera, effects, ui = {} }) {
 
     if (target.p.alive === false || target.p.bleedoutT > 0) return; // can't damage dead/bleeding players
 
-    const scaled = amount * difficulty.playerDamageTaken;
+    // anti-burst grace (root cause 5, src/game/burstGrace.js): a short
+    // window after any discrete hit where a SECOND overlapping hit is
+    // softened, so multiple simultaneous attackers cannot chain-delete a
+    // player with zero reaction time between blows. Excludes the
+    // continuous razorfin/flood hazard ticks entirely - see burstGrace.js.
+    //
+    // Scoped to the extraction hold (extraction.committed) ON PURPOSE: an
+    // early build applied this everywhere and it measurably softened the
+    // whole run, not just the climax (critic: normal win-rate 33% -> ~90%,
+    // hard 13% -> 47% - see docs/critic-report-inc4-normal-check.md). All
+    // seven root causes in the brief are specifically about the extraction
+    // hold; the rest of the map's tuned difficulty curve is not this
+    // round's target and should not move.
+    const inHold = extraction.committed;
+    const graceMult = inHold
+      ? burstGraceMultiplier(source, game.time, target.p.lastBurstHitAt) : 1;
+    const scaled = amount * difficulty.playerDamageTaken * graceMult;
     target.damage(scaled);
     game.damageTaken += scaled;
     game.dmgBySource[source] = (game.dmgBySource[source] || 0) + scaled;
+    if (inHold && !BURST_GRACE_EXCLUDED_SOURCES.has(source)) target.p.lastBurstHitAt = game.time;
     // source forwarded for telemetry (main.js records damage-by-source and
     // reuses the last hit's source/pos as the death cause when hp hits 0)
     U.onHurt(scaled, srcPos, source);
