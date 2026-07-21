@@ -52,8 +52,25 @@ const SQUADS = [
   { min: 0.88, recipe: [['juggernaut', 1], ['stingerwing', 4]] },
 ];
 
+// Directional wave telegraph (root cause 4): a spawn is never IN the
+// player's view (the universal `if (hasLOS...) continue` a few lines
+// down), so the fix is not to make ambushes visible - it is to tell the
+// player WHICH WAY one is coming from, so first contact reads as "brace,
+// incoming from the north" instead of "deleted from offscreen." World
+// convention: -Z is north (WORLD.insertion.z is large positive, the south
+// start; WORLD.extraction.z is deep negative, the north end), +X is east.
+// Pure and exported so it is unit-tested directly.
+export function compassBearing(dx, dz) {
+  const ang = Math.atan2(dx, -dz);
+  const deg = ((ang * 180 / Math.PI) + 360) % 360;
+  const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+  return dirs[Math.round(deg / 45) % 8];
+}
+
 export function createDirector(enemyMgr, playerHelpers, opts = {}) {
   const { furthestNorthPlayer, nearestPlayer } = playerHelpers;
+  const onWave = opts.onWave || (() => {});
+  let lastSpawnPos = null;
   const d = {
     time: 0,
     heat: 0,          // noise-driven, decays
@@ -210,6 +227,7 @@ export function createDirector(enemyMgr, playerHelpers, opts = {}) {
     enemyMgr.spawn(type, pos.x, pos.z);
     d.budget -= COSTS[type];
     d.spawned[type] = (d.spawned[type] || 0) + 1;
+    lastSpawnPos = pos;
     return true;
   }
 
@@ -228,17 +246,30 @@ export function createDirector(enemyMgr, playerHelpers, opts = {}) {
     const window = d.surge ? unlocked : unlocked.slice(-4);
     const squad = window[Math.floor(Math.random() * window.length)];
 
+    let spawnedAny = false;
+    outer:
     for (const [type, count] of squad.recipe) {
       for (let i = 0; i < count; i++) {
-        if (d.budget < COSTS[type]) return;
+        if (d.budget < COSTS[type]) break outer;
         // juggernauts stay rare
         if (type === 'juggernaut') {
           const jAlive = enemyMgr.aliveList().filter((e) => e.type === 'juggernaut').length;
           if (jAlive >= (t > 0.85 ? 2 : 1)) continue;
         }
-        if (enemyMgr.aliveCount() >= cap() + 2) return;
-        if (!spawnOne(type)) return;
+        if (enemyMgr.aliveCount() >= cap() + 2) break outer;
+        if (!spawnOne(type)) break outer;
+        spawnedAny = true;
       }
+    }
+    // Directional wave telegraph (root cause 4) - one cue per squad
+    // purchase during a surge, using the real spawn point's bearing from
+    // the beacon. Never fires for ordinary (non-surge) patrol spawns - the
+    // extraction hold is the moment this matters. Browser-only payoff
+    // (HUD/audio via sim.js's U.onSurgeWave); onWave defaults to a no-op,
+    // so this is inert - and unverifiable - in the headless critic.
+    if (d.surge && spawnedAny && lastSpawnPos) {
+      const ex = WORLD.extraction;
+      onWave(compassBearing(lastSpawnPos.x - ex.x, lastSpawnPos.z - ex.z), squad.recipe[0][0]);
     }
   }
 

@@ -43,6 +43,10 @@ export function createSim({ scene, camera, effects, ui = {} }) {
     onWeather: ui.onWeather || noop,
     onBoss: ui.onBoss || noop,
     onFlood: ui.onFlood || noop,
+    // directional wave telegraph (root cause 4): "brace, incoming from the
+    // north" instead of "deleted from offscreen" - fired once per surge
+    // squad purchase, browser-only (HUD/audio), no-op headlessly
+    onSurgeWave: ui.onSurgeWave || noop,
   };
 
   const game = {
@@ -203,7 +207,9 @@ export function createSim({ scene, camera, effects, ui = {} }) {
       director.assistSpawn(pos, director.threat());
     },
   });
-  const director = createDirector(enemyMgr, { furthestNorthPlayer, nearestPlayer });
+  const director = createDirector(enemyMgr, { furthestNorthPlayer, nearestPlayer }, {
+    onWave: (bearing, squadLabel) => U.onSurgeWave(bearing, squadLabel),
+  });
   const weather = createWeather(U);
   director.setWeather(weather);
   // THE FLOOD (round 5): the gorge's time-pressured second act
