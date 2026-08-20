@@ -18,3 +18,24 @@ export function shouldShowMenu(gameState, locked) {
 export function resumeButtonLabel(gameState) {
   return gameState === 'RUNNING' ? 'RESUME' : 'DEPLOY';
 }
+
+// Broken-telemetry P0 (2026-08-20): main.js used to gate telemetry.tick()
+// and its burst-flush behind the exact same condition as sim.step(), so
+// any pause or alt-tab silently halted telemetry capture along with the
+// sim - none of David's real playtest sessions produced usable data
+// because of this. These two predicates are the seam that keeps the two
+// concerns separate:
+//
+// shouldStepSim: the sim must stay gated strictly on RUNNING+locked - ESC
+// is a real pause, and the autotest bot steps the sim itself while
+// unlocked, so double-ticking must never happen.
+export function shouldStepSim(gameState, locked) {
+  return gameState === 'RUNNING' && locked;
+}
+
+// shouldRecordTelemetry: telemetry must survive a pause/alt-tab so a
+// human session is captured continuously - it only cares that a run is
+// in progress, never whether pointer lock currently holds.
+export function shouldRecordTelemetry(gameState) {
+  return gameState === 'RUNNING';
+}

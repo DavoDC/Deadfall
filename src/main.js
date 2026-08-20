@@ -14,7 +14,7 @@ import { buildProps } from './world/props.js';
 import { buildRoosts } from './world/roosts.js';
 import { colliderCount } from './world/colliders.js';
 import { createInput } from './player/input.js';
-import { shouldShowMenu, resumeButtonLabel } from './player/pauseState.js';
+import { shouldShowMenu, resumeButtonLabel, shouldStepSim, shouldRecordTelemetry } from './player/pauseState.js';
 import { createViewmodel } from './weapons/viewmodel.js';
 import { createEffects } from './weapons/effects.js';
 import { createHud } from './game/hud.js';
@@ -177,6 +177,14 @@ const telemetry = createTelemetry();
 // every frame) and reused for both the HUD reveal system and telemetry.
 const TELEMETRY_LANDMARKS = LANDMARKS.map((l) => ({ name: l.name, r: l.r, ...landmarkPos(l) }));
 let lastHurt = null; // {amount, srcPos, source} - reused as the death cause
+// broken-telemetry P0 (2026-08-20): telemetryStartPerf anchors a wall-clock
+// (performance.now()-based) time base for telemetry.tick(), independent of
+// game.time (sim time), so state/path sampling keeps advancing through a
+// pause instead of freezing. telemetryWasLocked tracks pointer-lock
+// transitions so a pause/resume can be logged as an explicit event rather
+// than the session just going quiet.
+let telemetryStartPerf = 0;
+let telemetryWasLocked = null;
 
 // --- TELEMETRY V2 TRANSPORT (docs/telemetry-v2-spec.md) ---
 // David plays -> the disk endpoint (vite.config.js -> src/server/
@@ -457,6 +465,8 @@ function startRun() {
   vignette = 0;
   seenLandmarks.clear();
   lastHurt = null;
+  telemetryWasLocked = null;
+  telemetryStartPerf = performance.now();
   telemetry.start({ difficulty: difficultyKey, seed: WORLD.seed });
   menuEl.classList.add('hidden');
   endEl.classList.add('hidden');
@@ -543,9 +553,43 @@ function tick(now) {
   // rather than one specific browser-event ordering.
   syncPauseMenu();
 
+  // Telemetry must survive a pause/alt-tab (broken-telemetry P0,
+  // 2026-08-20): this used to live inside the sim-step gate below, so any
+  // pause or alt-tab silently halted sampling and the burst-flush along
+  // with it. It is deliberately OUTSIDE that gate now - shouldRecordTelemetry
+  // only cares that a run is in progress, never whether pointer lock holds.
+  // Uses a wall-clock elapsed-since-telemetry-start value (telemetryElapsedT),
+  // NOT game.time: game.time is sim time and correctly freezes while
+  // paused (gameplay cooldowns/timers must not jump on resume), but a
+  // frozen time value would stop the state/path sampler from ever
+  // advancing again even though tick() keeps being called every frame.
+  if (shouldRecordTelemetry(game.state)) {
+    const locked = input.state.locked;
+    if (telemetryWasLocked === true && locked === false) telemetry.recordEvent('paused');
+    else if (telemetryWasLocked === false && locked === true) telemetry.recordEvent('resumed');
+    telemetryWasLocked = locked;
+
+    const telemetryElapsedT = telemetryStartPerf ? (now - telemetryStartPerf) / 1000 : 0;
+    // telemetry v2 game-state ctx: everything main.js can see that the
+    // spec's diagnosis fields need (stamina, uphill speed vs slope, jump
+    // arcs, nearby-threat pressure) - see docs/telemetry-v2-spec.md
+    terrainNormal(player.p.pos.x, player.p.pos.z, _slopeNormal);
+    const slopeDeg = Math.acos(Math.min(1, Math.max(-1, _slopeNormal.y))) * RAD2DEG;
+    const wst = weapons.state;
+    telemetry.tick(dt, {
+      time: telemetryElapsedT, pos: player.p.pos, fps, frameMs: dt * 1000,
+      landmarks: TELEMETRY_LANDMARKS,
+      yaw: player.p.yaw, hp: player.p.hp, stamina: player.p.stamina,
+      ammo: { mag: wst.mag[wst.current], reserve: wst.reserve[wst.current] },
+      weapon: wst.current, speedMps: player.p.speedNow,
+      slopeDeg, verticalVel: player.p.vel.y, grounded: player.p.grounded,
+      enemiesNear: computeEnemiesNear(player.p.pos), threat: director.threat(),
+    });
+  }
+
   // Sim advances only under pointer lock: ESC is a real pause, and the
   // autotest bot (which steps the sim itself, unlocked) never double-ticks.
-  if (game.state === 'RUNNING' && input.state.locked) {
+  if (shouldStepSim(game.state, input.state.locked)) {
     const intent = input.sample();
     sim.step(intent, dt);
     viewmodel.update(intent, dt);
@@ -554,21 +598,6 @@ function tick(now) {
     setListener(player.p.pos, camera.getWorldDirection(_listenerFwd));
     hud.update(dt);
     updateLandmarkCallout();
-    // telemetry v2 game-state ctx: everything main.js can see that the
-    // spec's diagnosis fields need (stamina, uphill speed vs slope, jump
-    // arcs, nearby-threat pressure) - see docs/telemetry-v2-spec.md
-    terrainNormal(player.p.pos.x, player.p.pos.z, _slopeNormal);
-    const slopeDeg = Math.acos(Math.min(1, Math.max(-1, _slopeNormal.y))) * RAD2DEG;
-    const wst = weapons.state;
-    telemetry.tick(dt, {
-      time: game.time, pos: player.p.pos, fps, frameMs: dt * 1000,
-      landmarks: TELEMETRY_LANDMARKS,
-      yaw: player.p.yaw, hp: player.p.hp, stamina: player.p.stamina,
-      ammo: { mag: wst.mag[wst.current], reserve: wst.reserve[wst.current] },
-      weapon: wst.current, speedMps: player.p.speedNow,
-      slopeDeg, verticalVel: player.p.vel.y, grounded: player.p.grounded,
-      enemiesNear: computeEnemiesNear(player.p.pos), threat: director.threat(),
-    });
     telemetry.recordInput(intent, dt, {
       time: game.time, pos: player.p.pos,
       lookDeltaDeg: Math.hypot(intent.lookDX, intent.lookDY) * player.p.sensitivity * RAD2DEG,
