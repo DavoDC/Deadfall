@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ensureDir, decodeDataURL, writeSession, writeFrame } from '../src/server/telemetryStore.js';
+import { ensureDir, decodeDataURL, writeSession, writeFrame, writeCapture } from '../src/server/telemetryStore.js';
 
 let tmpDir;
 
@@ -116,5 +116,41 @@ describe('telemetryStore: writeFrame', () => {
     writeFrame(tmpDir, 2, 0, dataURL);
     expect(fs.existsSync(path.join(tmpDir, 'frames', '1', '0.jpg'))).toBe(true);
     expect(fs.existsSync(path.join(tmpDir, 'frames', '2', '0.jpg'))).toBe(true);
+  });
+});
+
+// Generic named-capture sink (video recordings, screenshot rig exports) -
+// see src/capture/save.js and src/capture/recorder.js/src/game/shots.js,
+// which used to trigger an OS Downloads-folder save instead of this.
+describe('telemetryStore: writeCapture', () => {
+  it('writes a decoded file to <subdir>/<filename> under the telemetry dir', () => {
+    const bytes = Buffer.from([0x1a, 0x45, 0xdf, 0xa3]); // webm-ish magic bytes
+    const dataURL = `data:video/webm;base64,${bytes.toString('base64')}`;
+    const filePath = writeCapture(tmpDir, 'recordings', 'deadfall-capture-123.webm', dataURL);
+    expect(filePath).toBe(path.join(tmpDir, 'recordings', 'deadfall-capture-123.webm'));
+    expect(fs.existsSync(filePath)).toBe(true);
+    expect(Buffer.compare(fs.readFileSync(filePath), bytes)).toBe(0);
+  });
+
+  it('creates the subdir recursively when it does not exist', () => {
+    const dataURL = `data:image/png;base64,${Buffer.from('x').toString('base64')}`;
+    writeCapture(tmpDir, 'shots', 'bloom-vista.png', dataURL);
+    expect(fs.existsSync(path.join(tmpDir, 'shots'))).toBe(true);
+  });
+
+  it('keeps different subdirs (recordings vs shots) separate', () => {
+    const dataURL = `data:application/octet-stream;base64,${Buffer.from('x').toString('base64')}`;
+    writeCapture(tmpDir, 'recordings', 'a.webm', dataURL);
+    writeCapture(tmpDir, 'shots', 'a.webm', dataURL);
+    expect(fs.existsSync(path.join(tmpDir, 'recordings', 'a.webm'))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, 'shots', 'a.webm'))).toBe(true);
+  });
+
+  it('overwrites an existing file of the same name in place', () => {
+    const b1 = Buffer.from('first');
+    const b2 = Buffer.from('second-longer-payload');
+    writeCapture(tmpDir, 'recordings', 'run.webm', `data:video/webm;base64,${b1.toString('base64')}`);
+    const filePath = writeCapture(tmpDir, 'recordings', 'run.webm', `data:video/webm;base64,${b2.toString('base64')}`);
+    expect(Buffer.compare(fs.readFileSync(filePath), b2)).toBe(0);
   });
 });

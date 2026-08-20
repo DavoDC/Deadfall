@@ -48,3 +48,17 @@ export function writeFrame(telemetryDir, startedAt, t, dataURL) {
   fs.writeFileSync(framePath, decodeDataURL(dataURL));
   return framePath;
 }
+
+// Write an arbitrary named capture (a video recording, a named screenshot,
+// a contact sheet) to captures/telemetry/<subdir>/<filename>. Generalises
+// writeFrame's decode-and-persist pattern for capture tooling that isn't a
+// numbered per-session frame - see src/capture/recorder.js and
+// src/game/shots.js, both of which used to trigger an OS Downloads-folder
+// save instead of writing into the repo's gitignored captures/ folder.
+export function writeCapture(telemetryDir, subdir, filename, dataURL) {
+  const dir = path.join(telemetryDir, subdir);
+  ensureDir(dir);
+  const filePath = path.join(dir, filename);
+  fs.writeFileSync(filePath, decodeDataURL(dataURL));
+  return filePath;
+}

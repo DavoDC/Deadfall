@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite';
 import path from 'node:path';
-import { writeSession, writeFrame } from './src/server/telemetryStore.js';
+import { writeSession, writeFrame, writeCapture } from './src/server/telemetryStore.js';
 
 // TELEMETRY V2 (the playtest flight recorder, docs/telemetry-v2-spec.md).
 // David plays -> the client fire-and-forget POSTs here -> files land in
@@ -59,6 +59,24 @@ function telemetryPlugin() {
             res.end();
           } catch (err) {
             console.error('[telemetry] /telemetry/frame write failed:', err.message);
+            res.statusCode = 500;
+            res.end();
+          }
+          return;
+        }
+
+        // Generic named-capture sink for capture tooling that isn't a
+        // numbered session frame (trailer recordings, screenshot rig
+        // exports) - see src/capture/save.js for the client side.
+        if (req.url === '/telemetry/capture') {
+          try {
+            const body = await readBody(req);
+            const { subdir, filename, dataURL } = JSON.parse(body);
+            writeCapture(telemetryDir, subdir, filename, dataURL);
+            res.statusCode = 204;
+            res.end();
+          } catch (err) {
+            console.error('[telemetry] /telemetry/capture write failed:', err.message);
             res.statusCode = 500;
             res.end();
           }

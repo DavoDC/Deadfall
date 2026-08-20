@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeStats } from '../src/game/shots.js';
+import { computeStats, slugify, contactSheetFilename, shotFilename } from '../src/game/shots.js';
 
 // Build a flat RGBA Uint8 buffer of a single solid colour, width x height pixels.
 function solidBuffer(r, g, b, width, height, a = 255) {
@@ -78,5 +78,41 @@ describe('shots: computeStats (objective colour-grading metrics)', () => {
     expect(stats.meanSat).toBeLessThanOrEqual(1);
     expect(stats.meanVal).toBeGreaterThanOrEqual(0);
     expect(stats.meanVal).toBeLessThanOrEqual(1);
+  });
+});
+
+// downloadShots() used to trigger individual browser Downloads-folder
+// saves for every PNG; it now saves under captures/telemetry/shots/ via
+// src/capture/save.js. slugify/contactSheetFilename/shotFilename are the
+// pure naming pieces of that path - unit-testable without a canvas/DOM.
+describe('shots: slugify (filename-safe vantage names)', () => {
+  it('lowercases and hyphenates spaces', () => {
+    expect(slugify('RIVER CROSSING')).toBe('river-crossing');
+  });
+
+  it('strips punctuation that is not a word character or hyphen', () => {
+    expect(slugify('RIVER CROSSING (The Rapids)')).toBe('river-crossing-the-rapids');
+  });
+
+  it('collapses multiple spaces into a single hyphen', () => {
+    expect(slugify('THE  SUNKEN   MAW')).toBe('the-sunken-maw');
+  });
+});
+
+describe('shots: contactSheetFilename / shotFilename (capture-sink naming)', () => {
+  it('contactSheetFilename builds a .png name from a timestamp', () => {
+    expect(contactSheetFilename('2026-08-20T21-00-00')).toBe('contact-sheet-2026-08-20T21-00-00.png');
+  });
+
+  it('shotFilename combines mood, slugified vantage name, and timestamp', () => {
+    expect(shotFilename('bloom', 'INSERTION BEACH', '2026-08-20T21-00-00')).toBe(
+      'bloom-insertion-beach-2026-08-20T21-00-00.png'
+    );
+  });
+
+  it('shotFilename keeps different moods for the same vantage distinct', () => {
+    const a = shotFilename('bloom', 'RIDGE VISTA (Eastern spine)', 't');
+    const b = shotFilename('violet', 'RIDGE VISTA (Eastern spine)', 't');
+    expect(a).not.toBe(b);
   });
 });

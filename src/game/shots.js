@@ -9,6 +9,7 @@
 //   window.__deadfall.shots.downloadShots(shots)              # save to disk + contact sheet
 
 import { LANDMARKS, terrainHeight, WORLD } from '../world/heightmap.js';
+import { saveCapture } from '../capture/save.js';
 
 // Canonical vantage points - chosen to cover the visual range of the game.
 // Each has deterministic position and look-at direction to ensure pixel-perfect
@@ -316,28 +317,44 @@ export async function captureShots(options = {}) {
   }
 }
 
-// Download shots to disk. Triggers browser downloads of individual PNGs
-// and a contact-sheet composite showing all vantages at a glance.
+// Filename-safe slug for a vantage name ("RIVER CROSSING (The Rapids)" ->
+// "river-crossing-the-rapids"). Pure - unit-testable without a DOM.
+export function slugify(name) {
+  return name.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
+}
+
+// Filenames for the shots rig's saved artifacts. Split out as pure
+// functions (no Date.now()/canvas dependency) so the naming scheme is
+// unit-testable even though the capture itself needs a browser.
+export function contactSheetFilename(timestamp) {
+  return `contact-sheet-${timestamp}.png`;
+}
+export function shotFilename(moodKey, vantageName, timestamp) {
+  return `${moodKey}-${slugify(vantageName)}-${timestamp}.png`;
+}
+
+// Save shots to disk (captures/telemetry/shots/ - see src/capture/save.js).
+// Used to trigger individual browser downloads of the PNGs and a
+// contact-sheet composite; the repo rule is generated artifacts never go
+// to the OS Downloads folder, so this now POSTs them to the dev-server
+// capture endpoint instead, the same pattern game/viewer.js already uses.
 export async function downloadShots(shots) {
   if (!shots || shots.length === 0) {
-    console.warn('[shots] no shots to download');
+    console.warn('[shots] no shots to save');
     return;
   }
 
-  console.log(`[shots] preparing downloads for ${shots.length} frames...`);
+  console.log(`[shots] saving ${shots.length} frames to disk...`);
 
   // Create contact sheet
   const contactSheetDataURL = await createContactSheet(shots, 2);
   if (contactSheetDataURL) {
-    const link = document.createElement('a');
-    link.href = contactSheetDataURL;
     const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-    link.download = `deadfall-contact-sheet-${timestamp}.png`;
-    link.click();
-    console.log('[shots] downloading contact sheet...');
+    const path = await saveCapture('shots', contactSheetFilename(timestamp), contactSheetDataURL);
+    console.log(`[shots] saved contact sheet to ${path}`);
   }
 
-  // Download individual frames (grouped by mood)
+  // Save individual frames (grouped by mood)
   const shotsByMood = {};
   for (const shot of shots) {
     if (!shotsByMood[shot.mood]) {
@@ -348,19 +365,13 @@ export async function downloadShots(shots) {
 
   for (const [moodKey, moodShots] of Object.entries(shotsByMood)) {
     for (const shot of moodShots) {
-      // Small delay between downloads to avoid browser throttling
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      const link = document.createElement('a');
-      link.href = shot.dataURL;
-      const sanitized = shot.name.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
       const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-      link.download = `deadfall-${moodKey}-${sanitized}-${timestamp}.png`;
-      link.click();
+      const path = await saveCapture('shots', shotFilename(moodKey, shot.name, timestamp), shot.dataURL);
+      console.log(`[shots] saved ${path}`);
     }
   }
 
-  console.log('[shots] downloads complete');
+  console.log('[shots] saves complete');
 }
 
 // Pure pixel-math helper - no canvas/Image dependency, so it is unit-testable

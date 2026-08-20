@@ -12,6 +12,16 @@
 // the canvas's native captureStream() at the requested frame rate - the
 // browser paces frame delivery, there is no wall-clock/audio desync to
 // correct for.
+//
+// stop() used to trigger a browser Downloads-folder save via downloadBlob()
+// - the repo rule is generated artifacts never go to Downloads, so it now
+// routes the finished webm through src/capture/save.js's saveCapture(),
+// the same POST-a-dataURL-to-disk pattern game/viewer.js uses for portrait
+// captures. downloadBlob() itself is kept and still exported: game/
+// telemetry.js imports it separately for the human-triggered "save this
+// session's JSON" action, which is a deliberate download, not this rule.
+
+import { saveCapture, blobToDataURL } from './save.js';
 
 // Preferred codec order: vp9 first (best quality/size), vp8 fallback, then
 // bare webm container for browsers that support neither codec string.
@@ -30,7 +40,10 @@ export function pickMimeType(isTypeSupported, candidates = MIME_CANDIDATES) {
   return '';
 }
 
-// Triggers a browser download of a blob under the given filename.
+// Triggers a browser download of a blob under the given filename. Still
+// used by game/telemetry.js for the explicit human-triggered "save this
+// session's JSON" action - not used by this module's own stop() any more,
+// see the note at the top of the file.
 export function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -42,11 +55,18 @@ export function downloadBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+// Filename for a finished recording, given the timestamp it stopped at.
+// Pure - no Date.now() call inside - so it's unit-testable without mocking
+// the clock; callers pass Date.now() themselves.
+export function recordingFilename(timestamp) {
+  return `deadfall-capture-${timestamp}.webm`;
+}
+
 // getCanvas: () => HTMLCanvasElement, e.g. () => renderer.domElement.
 // Kept as a callback rather than a direct reference so the recorder can be
 // constructed before the renderer's canvas exists, and always captures the
 // live canvas even if it's ever replaced.
-export function createRecorderAPI({ getCanvas }) {
+export function createRecorderAPI({ getCanvas, saveCapture: saveCaptureFn = saveCapture }) {
   let recorder = null;
   let chunks = [];
   let stream = null;
@@ -102,7 +122,11 @@ export function createRecorderAPI({ getCanvas }) {
         recorder = null;
         stream = null;
         activeStream.getTracks().forEach((t) => t.stop());
-        downloadBlob(blob, 'deadfall-capture-' + Date.now() + '.webm');
+        const filename = recordingFilename(Date.now());
+        blobToDataURL(blob)
+          .then((dataURL) => saveCaptureFn('recordings', filename, dataURL))
+          .then((path) => console.log('[capture] recording saved - ' + path))
+          .catch((err) => console.error('[capture] failed to save recording:', err.message));
         console.log('[capture] recording stopped - blob size=' + blob.size + ' bytes, type=' + blob.type);
         resolve(blob);
       };

@@ -870,11 +870,13 @@ window.__deadfall = {
   shots: shotsAPI,
   // in-engine trailer capture (plumbing only - see src/capture/recorder.js).
   // window.__deadfall.recorder.start() / .stop() records the render canvas
-  // to a downloaded .webm; camera choreography is a later session's job.
+  // to captures/telemetry/recordings/<file>.webm; camera choreography is a
+  // later session's job.
   recorder: recorderAPI,
   // THE TRAILER (round 5B): cinematic.seek(t) poses camera + world at time t
   // deterministically; cinematic.play() runs it; cinematic.record() plays it
-  // into the recorder and downloads the .webm (foreground window required).
+  // into the recorder and saves the .webm to captures/ (foreground window
+  // required).
   cinematic,
   // THE FLOOD (round 5): trigger/inspect the event for grading + filming.
   // flood.trigger() springs it now (once per run - startSimRun to re-arm);
@@ -901,7 +903,7 @@ window.__deadfall = {
 console.log('[deadfall] ready (round 2)');
 
 // --- URL param entry point for screenshot rig ---
-// ?shots=1  - boot the game, capture all vantages across all moods, download contact sheet
+// ?shots=1  - boot the game, capture all vantages across all moods, save contact sheet to captures/
 const params = new URLSearchParams(window.location.search);
 if (params.has('shots')) {
   // Start the game silently and trigger capture after a brief delay to let the
@@ -914,7 +916,7 @@ if (params.has('shots')) {
       await new Promise((resolve) => setTimeout(resolve, 500));
       const shots = await window.__deadfall.shots.captureShots();
       await window.__deadfall.shots.downloadShots(shots);
-      console.log('[shots] capture complete - check your downloads');
+      console.log('[shots] capture complete - saved under captures/telemetry/shots/');
     } catch (err) {
       console.error('[shots] capture failed:', err);
     }
