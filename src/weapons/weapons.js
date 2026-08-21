@@ -110,6 +110,18 @@ const _right = new THREE.Vector3();
 const _up = new THREE.Vector3();
 const _to = new THREE.Vector3();
 
+// Pure slot-cycling helpers, shared by the forward swap key (Q) and the
+// mouse-wheel cycle so both walk the same ring in the same order.
+export function nextSlot(slots, current) {
+  const idx = slots.indexOf(current);
+  return slots[(idx + 1) % slots.length];
+}
+
+export function prevSlot(slots, current) {
+  const idx = slots.indexOf(current);
+  return slots[(idx - 1 + slots.length) % slots.length];
+}
+
 export function createWeapons(camera, playerRef, hooks) {
   // hooks: { rayEnemies(origin, dir, maxDist) -> {t, enemy, zone, zoneMult, headshot}|null,
   //          onTracer(from, to), onImpact(point, kind),
@@ -372,10 +384,8 @@ export function createWeapons(camera, playerRef, hooks) {
     if (intent.weapon1) switchTo('carbine');
     if (intent.weapon2) switchTo('breacher');
     if (intent.weapon3) switchTo('longarm');
-    if (intent.swap) {
-      const idx = slots.indexOf(state.current);
-      switchTo(slots[(idx + 1) % slots.length]);
-    }
+    if (intent.swap || intent.weaponNext) switchTo(nextSlot(slots, state.current));
+    if (intent.weaponPrev) switchTo(prevSlot(slots, state.current));
     if (intent.reload) tryStartReload();
 
     const wantsFire = d.auto ? intent.firing : intent.fireDown;

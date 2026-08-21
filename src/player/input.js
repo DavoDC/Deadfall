@@ -11,6 +11,8 @@ export function createInput(canvas) {
   let firedThisFrame = false; // single-click edge for semi-auto/pump
   let aiming = false;         // RMB held = aim-down-sights
   let grenadeReleased = false;
+  let wheelNext = false;      // one-frame mouse-wheel weapon-cycle edges
+  let wheelPrev = false;
   const pressed = new Set(); // one-frame key edges
   const released = new Set();
 
@@ -67,6 +69,11 @@ export function createInput(canvas) {
   });
   // RMB is a game control, not a browser menu
   document.addEventListener('contextmenu', (e) => e.preventDefault());
+  document.addEventListener('wheel', (e) => {
+    if (!state.locked) return;
+    if (e.deltaY > 0) wheelNext = true;
+    else if (e.deltaY < 0) wheelPrev = true;
+  });
 
   document.addEventListener('pointerlockchange', () => {
     state.locked = document.pointerLockElement === canvas;
@@ -133,6 +140,8 @@ export function createInput(canvas) {
         weapon2: pressed.has('Digit2'),
         weapon3: pressed.has('Digit3'),
         swap: pressed.has('KeyQ'),
+        weaponNext: wheelNext,
+        weaponPrev: wheelPrev,
         interact: pressed.has('KeyE'),
         melee: pressed.has('KeyV'),
         grenadeHold: keys.has('KeyG'),
@@ -145,6 +154,8 @@ export function createInput(canvas) {
       lookDY = 0;
       firedThisFrame = false;
       grenadeReleased = false;
+      wheelNext = false;
+      wheelPrev = false;
       pressed.clear();
       released.clear();
       return intent;
