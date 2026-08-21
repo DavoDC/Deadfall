@@ -16,7 +16,14 @@ export const RUIN_SITES = [
   { x: 52, z: 190, name: 'south ruin' }, // moved off the Palisade line (round 3)
   { x: 146, z: 34, name: 'ridge watchpost' }, // just east of the crest walk
   { x: 4, z: -14, name: 'rapids altar' },       // south approach, river route
-  { x: -108, z: -16, name: 'causeway shrine' }, // south approach, swamp route
+  // south approach, swamp route. Was x:-108 (4m off the ROOT CAUSEWAY
+  // crossing centre-line at x:-112) - its own block scatter (radius up to
+  // 8.5m + pillar) reached onto the crossing sill and produced a cluster
+  // of colliders overlapping each other AND the crossing passage itself,
+  // a wedge the critic's SOFT_LOCK findings kept flagging (docs/IDEAS.md
+  // P1 item 3) and a human would snag on too. Moved 22m clear of the
+  // sill; see tests/props.test.js for the passage-clearance regression.
+  { x: -90, z: -16, name: 'causeway shrine' },
   { x: 148, z: -110, name: 'east descent' },    // north of the fallen giant
   { x: -58, z: -176, name: 'north ruin' },      // west of the river line
   { x: 44, z: -252, name: 'mesa gate' },        // last cache before the climb
@@ -134,8 +141,19 @@ export function buildProps(scene) {
   const _q = new THREE.Quaternion();
   const _e = new THREE.Euler();
 
+  // Two player-radii (src/player/controller.js RADIUS=0.42) plus a margin -
+  // the minimum edge-to-edge gap a capsule needs to actually fit and slide
+  // between two colliders. Ruin blocks scatter randomly (r 1.5-8.5 from
+  // the site centre); unchecked, two large blocks can land close enough
+  // to pinch a gap shut, and a player wandering into the resulting pocket
+  // gets pushed by both at once with no way out - the recurring SOFT_LOCK
+  // the critic flags near ruin sites (docs/IDEAS.md P1 item 3). Fixed at
+  // the generator, not per-site, so it can't resurface at a relocated site.
+  const MIN_PASSABLE_GAP = 0.42 * 2 + 0.4;
+
   for (const site of RUIN_SITES) {
     const n = rng.int(6, 11);
+    const siteColliders = [];
     for (let i = 0; i < n; i++) {
       const a = rng.next() * Math.PI * 2;
       const r = rng.next() * 7 + 1.5;
@@ -149,7 +167,17 @@ export function buildProps(scene) {
       _q.setFromEuler(_e);
       _m.compose(new THREE.Vector3(x, h + sy * 0.3, z), _q, new THREE.Vector3(sx, sy, sz));
       (rng.chance(0.45) ? mossBlocks : blocks).push(_m.clone());
-      if (Math.max(sx, sz) > 1.2) addCylinder(x, z, Math.max(sx, sz) * 0.55, sy, h - 0.5);
+      if (Math.max(sx, sz) > 1.2) {
+        const cr = Math.max(sx, sz) * 0.55;
+        // block still renders (rubble on the ground reads fine underfoot);
+        // only skip the PHYSICAL collider if it would pinch shut a gap
+        // against a block already placed at this same site.
+        const pinched = siteColliders.some((c) => Math.hypot(x - c.x, z - c.z) - cr - c.r < MIN_PASSABLE_GAP);
+        if (!pinched) {
+          addCylinder(x, z, cr, sy, h - 0.5);
+          siteColliders.push({ x, z, r: cr });
+        }
+      }
     }
     // one broken pillar per site as a silhouette landmark
     const px = site.x + rng.range(-3, 3);
@@ -163,7 +191,8 @@ export function buildProps(scene) {
     pillar.rotation.z = rng.range(-0.12, 0.12);
     pillar.castShadow = true;
     group.add(pillar);
-    addCylinder(px, pz, 0.8, 5, ph - 0.5);
+    const pillarPinched = siteColliders.some((c) => Math.hypot(px - c.x, pz - c.z) - 0.8 - c.r < MIN_PASSABLE_GAP);
+    if (!pillarPinched) addCylinder(px, pz, 0.8, 5, ph - 0.5);
   }
 
   // ---------- gorge crossing landmarks ----------
