@@ -139,4 +139,4 @@ challenge, real FPS feel, the fever-dream look, and the headless tooling.
 Round 3 (2026-07-13, the Fable finale) rebuilt the world as physical
 geography, added the Miremother, live weather, the deception layer and the
 trip - with Sonnet subagents building to Fable's specs in parallel.
-See `docs/HISTORY.md` for the evidence.*
+See `the central backlog HISTORY.md` for the evidence.*

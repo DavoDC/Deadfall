@@ -52,13 +52,13 @@ describe('world props / static colliders', () => {
   // The swamp ROOT CAUSEWAY crossing is different: routeWaypoints()
   // (src/game/autotest.js) walks it dead straight (cross()) because it is
   // a DESIGNED single-file passage (a sill over the gorge) - nothing
-  // should scatter a prop collider across it. docs/IDEAS.md P1 item 3
+  // should scatter a prop collider across it. the central backlog IDEAS.md P1 item 3
   // (recurring soft-locks): the critic's SOFT_LOCK findings clustered
   // right on this approach - this is the geometry check that catches it,
   // a wedge a human would snag on too, not a bot-pathing quirk. Scoped to
   // this one evidenced passage - other crossings/gates/fracture breaks may
   // have their own tight-clearance decoration but are not evidenced by the
-  // critic and are out of scope here (see docs/IDEAS.md item 3).
+  // critic and are out of scope here (see the central backlog IDEAS.md item 3).
   it('the ROOT CAUSEWAY (swamp gorge crossing) passage stays clear of prop colliders', () => {
     const causeway = WORLD.crossings[0];
     const zg = gorgeZ(causeway.x);

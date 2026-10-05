@@ -20,7 +20,7 @@ export const RUIN_SITES = [
   // crossing centre-line at x:-112) - its own block scatter (radius up to
   // 8.5m + pillar) reached onto the crossing sill and produced a cluster
   // of colliders overlapping each other AND the crossing passage itself,
-  // a wedge the critic's SOFT_LOCK findings kept flagging (docs/IDEAS.md
+  // a wedge the critic's SOFT_LOCK findings kept flagging (the central backlog IDEAS.md
   // P1 item 3) and a human would snag on too. Moved 22m clear of the
   // sill; see tests/props.test.js for the passage-clearance regression.
   { x: -90, z: -16, name: 'causeway shrine' },
@@ -147,7 +147,7 @@ export function buildProps(scene) {
   // the site centre); unchecked, two large blocks can land close enough
   // to pinch a gap shut, and a player wandering into the resulting pocket
   // gets pushed by both at once with no way out - the recurring SOFT_LOCK
-  // the critic flags near ruin sites (docs/IDEAS.md P1 item 3). Fixed at
+  // the critic flags near ruin sites (the central backlog IDEAS.md P1 item 3). Fixed at
   // the generator, not per-site, so it can't resurface at a relocated site.
   const MIN_PASSABLE_GAP = 0.42 * 2 + 0.4;
 
