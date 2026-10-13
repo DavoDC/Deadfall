@@ -11,6 +11,7 @@ import {
   terrainHeight, gorgeZ, palisadeZ, fractureZ, isThicket, WORLD,
 } from '../world/heightmap.js';
 import { clamp, lerp } from '../core/noise.js';
+import { slotsCrossed, slotAt, slotGroup, slotFlora } from '../game/routeEncounters.js';
 
 // Every place the world forces you through is a tollgate the jungle can
 // garrison: gorge sills (round 2), plus the round-3 gates and fracture ways.
@@ -70,6 +71,7 @@ export function compassBearing(dx, dz) {
 export function createDirector(enemyMgr, playerHelpers, opts = {}) {
   const { furthestNorthPlayer, nearestPlayer } = playerHelpers;
   const onWave = opts.onWave || (() => {});
+  const onForeshadow = opts.onForeshadow || (() => {});
   let lastSpawnPos = null;
   const d = {
     time: 0,
@@ -85,6 +87,11 @@ export function createDirector(enemyMgr, playerHelpers, opts = {}) {
     // root cause 2/3): the final stand BUILDS across the hold instead of
     // slamming to its ceiling the instant the player commits.
     holdProgress: 0,
+    // authored route encounters (game/routeEncounters.js): highest progress
+    // seen so far, slots waiting for a valid spawn spot, and what has fired
+    slotProgress: 0,
+    slotQueue: [],
+    slotsFired: [],
   };
 
   function setDifficulty(diff) {
@@ -296,9 +303,99 @@ export function createDirector(enemyMgr, playerHelpers, opts = {}) {
     return spawned;
   }
 
+  // ---- authored route encounters (game/routeEncounters.js) ----
+  // A spot AHEAD of the player (along their heading, or their look direction
+  // when standing still), on land, out of sight, at a height they could
+  // plausibly reach. Flora wants gentle ground. Returns null if none found.
+  function findAheadPos(minR, maxR, flora) {
+    const pdata = furthestNorthPlayer();
+    const pp = pdata.pos;
+    const v = pdata.vel;
+    const moving = v && Math.hypot(v.x, v.z) > 1.5;
+    const heading = moving ? Math.atan2(-v.x, -v.z) : pdata.yaw;
+    const groundH = terrainHeight(pp.x, pp.z);
+    for (let i = 0; i < 40; i++) {
+      const cone = i < 24 ? 0.7 : 1.5;
+      const ang = heading + (Math.random() - 0.5) * 2 * cone;
+      const r = minR + Math.random() * (maxR - minR);
+      const x = pp.x - Math.sin(ang) * r;
+      const z = pp.z - Math.cos(ang) * r;
+      if (Math.max(Math.abs(x), Math.abs(z)) > WORLD.playable - 6) continue;
+      const h = terrainHeight(x, z);
+      if (h < WORLD.waterLevel + (flora ? 0.3 : -0.5)) continue;
+      if (isThicket(x, z)) continue;
+      if (Math.abs(h - groundH) > 11) continue; // across a cliff band
+      if (!flora && hasLOS(pp.x, pp.y, pp.z, x, h + 1.4, z)) continue;
+      return { x, z };
+    }
+    return null;
+  }
+
+  function fireSlot(slot) {
+    const diffKey = d.diff ? d.diff.key : 'normal';
+    d.slotsFired.push(slot.id);
+    if (slot.foreshadow) {
+      onForeshadow(slot.foreshadow);
+      return;
+    }
+    d.slotQueue.push({
+      slot,
+      expires: slotAt(slot, diffKey) + 0.1,
+      want: slotGroup(slot, diffKey).map(([type, n]) => [type, n]),
+      flora: slotFlora(slot, diffKey),
+    });
+  }
+
+  function runSlotQueue() {
+    if (d.slotQueue.length === 0) return;
+    const prog = d.slotProgress;
+    for (const job of d.slotQueue) {
+      // spawn the group in one go, but not on top of a crowd: authored
+      // groups may exceed the cap a little, never run away from it
+      for (const entry of job.want) {
+        while (entry[1] > 0 && enemyMgr.aliveCount() < cap() + 5) {
+          const pos = findAheadPos(36, 62, false);
+          if (!pos) break;
+          enemyMgr.spawn(entry[0], pos.x, pos.z);
+          d.spawned[entry[0]] = (d.spawned[entry[0]] || 0) + 1;
+          entry[1] -= 1;
+        }
+      }
+      while (job.flora > 0) {
+        const pos = findAheadPos(16, 34, true);
+        if (!pos) break;
+        enemyMgr.spawn('viperblossom', pos.x, pos.z);
+        job.flora -= 1;
+      }
+    }
+    d.slotQueue = d.slotQueue.filter((job) => prog < job.expires
+      && (job.flora > 0 || job.want.some((e) => e[1] > 0)));
+  }
+
+  function updateRouteSlots() {
+    const diffKey = d.diff ? d.diff.key : 'normal';
+    const p = progressNorth();
+    if (p > d.slotProgress) {
+      const crossed = slotsCrossed(d.slotProgress, p, diffKey);
+      for (const slot of crossed) fireSlot(slot);
+      d.slotProgress = p;
+      return crossed.length > 0;
+    }
+    return false;
+  }
+
+  let slotRetryT = 0;
   function update(dt) {
     d.time += dt;
     d.heat = Math.max(0, d.heat - dt * 0.012);
+    if (!d.surge) {
+      const fired = updateRouteSlots();
+      slotRetryT -= dt;
+      if (fired || slotRetryT <= 0) {
+        slotRetryT = 0.5;
+        runSlotQueue();
+      }
+    }
     d.tickT -= dt;
     if (d.tickT <= 0) {
       const t = threat();
@@ -342,6 +439,10 @@ export function createDirector(enemyMgr, playerHelpers, opts = {}) {
     d.budget = 1.5;
     d.spawned = {};
     d.holdProgress = 0;
+    d.slotProgress = 0;
+    d.slotQueue = [];
+    d.slotsFired = [];
+    slotRetryT = 0;
   }
 
   return {

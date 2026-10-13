@@ -49,6 +49,9 @@ export function createSim({ scene, camera, effects, ui = {} }) {
     // north" instead of "deleted from offscreen" - fired once per surge
     // squad purchase, browser-only (HUD/audio), no-op headlessly
     onSurgeWave: ui.onSurgeWave || noop,
+    // authored route cue (game/routeEncounters.js): the apex is foreshadowed
+    // before the drowned stair - browser-only (audio/HUD), no-op headlessly
+    onForeshadow: ui.onForeshadow || noop,
   };
 
   const game = {
@@ -228,6 +231,7 @@ export function createSim({ scene, camera, effects, ui = {} }) {
   });
   const director = createDirector(enemyMgr, { furthestNorthPlayer, nearestPlayer }, {
     onWave: (bearing, squadLabel) => U.onSurgeWave(bearing, squadLabel),
+    onForeshadow: (what) => U.onForeshadow(what),
   });
   const weather = createWeather(U);
   director.setWeather(weather);

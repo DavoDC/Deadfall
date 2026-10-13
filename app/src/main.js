@@ -375,6 +375,13 @@ const ui = {
       postTelemetrySession();
     }
   },
+  onForeshadow: () => {
+    // the apex is cued from afar before the drowned stair: a low call over
+    // the water and a line of text, so her lair is never a surprise
+    sfxCreature('miremother', { x: WORLD.maw.x, y: 0, z: WORLD.maw.z }, 0.9);
+    hud && hud.toast('SOMETHING HUGE STIRS IN THE WATER AHEAD', 3.5);
+    telemetry.recordEvent('boss', 'foreshadowed');
+  },
   onBoss: () => {
     sfxCreature('miremother', { x: WORLD.maw.x, y: 0, z: WORLD.maw.z }, 1.8);
     telemetry.recordEvent('boss', 'spawned');
