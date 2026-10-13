@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { writeSession, writeFrame, writeCapture } from '../src/server/telemetryStore.js';
 
-// Project root is the repo root (this file lives in config/).
+// Project root is app/ (this file lives in app/config/).
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 // TELEMETRY V2 (the playtest flight recorder, docs/References/TelemetryV2Spec.md).

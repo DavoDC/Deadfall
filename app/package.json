@@ -14,7 +14,7 @@
     "three": "^0.185.1"
   },
   "devDependencies": {
-    "vite --config config/vite.config.js": "^8.1.4",
+    "vite": "^8.1.4",
     "vitest": "^4.1.10"
   }
 }

@@ -1,9 +1,9 @@
-node_modules/
-dist/
+app/node_modules/
+app/dist/
 .vite/
 *.log
 .DS_Store
 TEMP/
 
 # Throwaway capture artifacts (screenshots, video, probe output) - never committed
-captures/
+app/captures/

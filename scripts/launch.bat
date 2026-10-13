@@ -1,10 +1,10 @@
 @echo off
 REM Starts the Vite dev server and opens the browser to it.
-REM Port is fixed in config/vite.config.js.
+REM Runs from app/ (the npm project). Port is fixed in app/config/vite.config.js.
 set START_TIME=%TIME%
 set PORT=5199
 set LAUNCH_URL=http://localhost:%PORT%
-cd /d "%~dp0.."
+cd /d "%~dp0..\app"
 
 where npm >nul 2>nul
 if errorlevel 1 (
