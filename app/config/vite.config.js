@@ -105,15 +105,11 @@ function telemetryPlugin() {
 function lifecyclePlugin() {
   const capturesDir = path.join(ROOT, 'captures');
   const pidFile = path.join(capturesDir, 'server.pid');
-  const logFile = path.join(capturesDir, 'launcher.log');
 
+  // Lifecycle events go to stdout: launch.bat redirects stdout to captures/launcher.log, and a second
+  // writer appending to that file would be overwritten by the redirected handle.
   function log(line) {
-    try {
-      fs.mkdirSync(capturesDir, { recursive: true });
-      fs.appendFileSync(logFile, `[${new Date().toISOString()}] ${line}\n`);
-    } catch {
-      // logging must never take the server down
-    }
+    console.log(`[${new Date().toISOString()}] ${line}`);
   }
 
   function removePid() {
