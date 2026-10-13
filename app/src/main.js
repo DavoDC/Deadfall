@@ -16,7 +16,8 @@ import { colliderCount } from './world/colliders.js';
 import { createInput } from './player/input.js';
 import { startPing, quitGame } from './game/serverLink.js';
 import { loadVersion } from './game/versionInfo.js';
-import { shouldShowMenu, resumeButtonLabel, shouldStepSim, shouldRecordTelemetry } from './player/pauseState.js';
+import { resultView } from './player/resultScreen.js';
+import { shouldShowMenu, shouldShowEndScreen, resumeButtonLabel, shouldStepSim, shouldRecordTelemetry } from './player/pauseState.js';
 import { createViewmodel } from './weapons/viewmodel.js';
 import { createEffects } from './weapons/effects.js';
 import { createHud } from './game/hud.js';
@@ -446,6 +447,8 @@ if (!DIFFICULTIES[difficultyKey]) difficultyKey = DEFAULT_DIFFICULTY;
 sim.setDifficulty(difficultyKey);
 
 const diffButtons = {};
+const diffChips = {};
+const endDiffWrap = document.getElementById('end-difficulty');
 const diffWrap = document.getElementById('difficulty');
 for (const key of Object.keys(DIFFICULTIES)) {
   const d = DIFFICULTIES[key];
@@ -455,6 +458,13 @@ for (const key of Object.keys(DIFFICULTIES)) {
   btn.addEventListener('click', () => selectDifficulty(key));
   diffWrap.appendChild(btn);
   diffButtons[key] = btn;
+  // compact selector on the result panel (same selection state)
+  const chip = document.createElement('button');
+  chip.className = 'diff-chip';
+  chip.textContent = d.label;
+  chip.addEventListener('click', () => selectDifficulty(key));
+  endDiffWrap.appendChild(chip);
+  diffChips[key] = chip;
 }
 function selectDifficulty(key) {
   difficultyKey = key;
@@ -462,6 +472,9 @@ function selectDifficulty(key) {
   sim.setDifficulty(key);
   for (const [k, btn] of Object.entries(diffButtons)) {
     btn.classList.toggle('selected', k === key);
+  }
+  for (const [k, chip] of Object.entries(diffChips)) {
+    chip.classList.toggle('selected', k === key);
   }
 }
 selectDifficulty(difficultyKey);
@@ -500,16 +513,36 @@ function endRun(extracted) {
   postTelemetrySession();
   postFrame();
   const isRecord = saveBest(extracted);
+  renderResult(resultView({
+    extracted,
+    difficultyLabel: DIFFICULTIES[difficultyKey].label,
+    time: game.time,
+    kills: game.kills,
+    shots: game.shotsFired,
+    damage: game.damageTaken,
+    isRecord,
+  }));
+}
+
+function renderResult(view) {
   const title = document.getElementById('end-title');
-  title.textContent = extracted ? 'EXTRACTED' : 'K.I.A.';
-  title.className = 'title ' + (extracted ? 'extracted' : 'died');
-  const mm = Math.floor(game.time / 60);
-  const ss = String(Math.floor(game.time % 60)).padStart(2, '0');
-  document.getElementById('end-stats').innerHTML =
-    `${DIFFICULTIES[difficultyKey].label} &nbsp;·&nbsp; TIME <b>${mm}:${ss}</b> &nbsp;·&nbsp; KILLS <b>${game.kills}</b>`
-    + ` &nbsp;·&nbsp; SHOTS <b>${game.shotsFired}</b> &nbsp;·&nbsp; DAMAGE TAKEN <b>${Math.round(game.damageTaken)}</b>`
-    + (isRecord ? '<br/><span style="color:var(--accent)">NEW RECORD</span>' : '')
-    + (extracted ? '' : '<br/>The jungle keeps what it kills.');
+  title.textContent = view.title;
+  title.className = 'title ' + view.titleClass;
+  document.getElementById('end-diff').textContent = view.difficultyLabel;
+  const statsEl = document.getElementById('end-stats');
+  statsEl.textContent = '';
+  for (const [label, value] of view.stats) {
+    const stat = document.createElement('div');
+    stat.className = 'result-stat';
+    const l = document.createElement('span');
+    l.textContent = label;
+    const v = document.createElement('b');
+    v.textContent = value;
+    stat.append(l, v);
+    statsEl.appendChild(stat);
+  }
+  document.getElementById('end-record').classList.toggle('hidden', !view.record);
+  document.getElementById('end-flavor').textContent = view.flavor;
 }
 
 const menuEl = document.getElementById('menu');
@@ -559,11 +592,13 @@ btnStart.addEventListener('click', () => {
 });
 document.getElementById('btn-again').addEventListener('click', startRun);
 // Quit stops the hidden local game server (launch.bat starts it with no window).
-document.getElementById('btn-quit').addEventListener('click', () => {
+function quitFromMenu() {
   // QUIT from the pause menu mid-run: save the ending BEFORE the server stops
   if (telemetry.recording) telemetry.stop('quit');
   sessionFlusher.drain().then(() => quitGame(fetch, document));
-});
+}
+document.getElementById('btn-quit').addEventListener('click', quitFromMenu);
+document.getElementById('btn-end-quit').addEventListener('click', quitFromMenu);
 startPing(fetch);
 // Build version: console line + title-screen footer; kept for the telemetry session header.
 let gameVersion = null;
@@ -572,6 +607,7 @@ loadVersion(fetch, document).then((v) => { gameVersion = v ? { sha: v.sha, date:
 function syncPauseMenu() {
   const show = shouldShowMenu(game.state, input.state.locked);
   menuEl.classList.toggle('hidden', !show);
+  endEl.classList.toggle('hidden', !shouldShowEndScreen(game.state));
   btnStart.textContent = resumeButtonLabel(game.state);
 }
 

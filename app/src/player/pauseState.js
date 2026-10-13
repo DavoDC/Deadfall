@@ -11,8 +11,20 @@
 // watchdog - even if an event was dropped, the next frame corrects it.
 
 export function shouldShowMenu(gameState, locked) {
-  if (gameState !== 'RUNNING') return true; // menu, end screen, etc.
+  // the result panel (#endscreen) owns WIN and DEAD: showing the brief and
+  // difficulty cards underneath it overlapped the result text
+  if (isResultState(gameState)) return false;
+  if (gameState !== 'RUNNING') return true; // title menu
   return !locked; // running but not locked = paused (blur/alt-tab/ESC/etc.)
+}
+
+// A finished run: the result panel shows, the title menu does not.
+export function isResultState(gameState) {
+  return gameState === 'WIN' || gameState === 'DEAD';
+}
+
+export function shouldShowEndScreen(gameState) {
+  return isResultState(gameState);
 }
 
 export function resumeButtonLabel(gameState) {

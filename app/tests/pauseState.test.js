@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  shouldShowMenu, resumeButtonLabel, shouldStepSim, shouldRecordTelemetry,
+  shouldShowMenu, shouldShowEndScreen, isResultState, resumeButtonLabel, shouldStepSim, shouldRecordTelemetry,
 } from '../src/player/pauseState.js';
 
 describe('pauseState (freeze regression - 2026-07-19 playtest)', () => {
@@ -16,9 +16,16 @@ describe('pauseState (freeze regression - 2026-07-19 playtest)', () => {
     expect(shouldShowMenu('RUNNING', false)).toBe(true);
   });
 
-  it('shows the menu on the end screen regardless of lock state', () => {
-    expect(shouldShowMenu('WIN', true)).toBe(true);
-    expect(shouldShowMenu('LOSE', false)).toBe(true);
+  it('hides the title menu behind the result panel in WIN and DEAD, locked or not', () => {
+    for (const state of ['WIN', 'DEAD']) {
+      for (const locked of [true, false]) {
+        expect(shouldShowMenu(state, locked)).toBe(false);
+        expect(shouldShowEndScreen(state)).toBe(true);
+        expect(isResultState(state)).toBe(true);
+      }
+    }
+    expect(shouldShowEndScreen('RUNNING')).toBe(false);
+    expect(shouldShowEndScreen('MENU')).toBe(false);
   });
 
   it('recovers from a stuck-frozen state: running + unlocked always resolves to menu-visible', () => {
