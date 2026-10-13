@@ -252,7 +252,7 @@ describe('launch.bat keeps tool noise off the console', () => {
     expect(text).toContain('setup-tools.log');
   });
   it('prints Done. after first-time setup and names the log when npm fails', () => {
-    expect(text).toMatch(/echo {8}Done\./);
+    expect(text).toMatch(/echo {9}Done\./);
     expect(text).toMatch(/The details are in: %TOOLLOG%/);
   });
 });
