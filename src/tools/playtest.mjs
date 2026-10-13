@@ -6,23 +6,23 @@
 // follow-up sessions verify changes without ever opening Chrome.
 //
 // Usage:
-//   node scripts/playtest.mjs                            # normal, all routes
-//   node scripts/playtest.mjs --route ridge --runs 3
-//   node scripts/playtest.mjs --difficulty hard --route river
-//   node scripts/playtest.mjs --matrix                   # routes x difficulties
-//   node scripts/playtest.mjs --matrix --runs 2 --out TEMP/balance.json
+//   node src/tools/playtest.mjs                            # normal, all routes
+//   node src/tools/playtest.mjs --route ridge --runs 3
+//   node src/tools/playtest.mjs --difficulty hard --route river
+//   node src/tools/playtest.mjs --matrix                   # routes x difficulties
+//   node src/tools/playtest.mjs --matrix --runs 2 --out TEMP/balance.json
 //
 // Output: one line per run + a summary table + optional JSON dump.
 
 import * as THREE from 'three';
-import { WORLD } from '../src/world/heightmap.js';
-import { buildVegetation } from '../src/world/vegetation.js';
-import { buildProps } from '../src/world/props.js';
-import { buildRoosts } from '../src/world/roosts.js';
-import { colliderCount } from '../src/world/colliders.js';
-import { createSim } from '../src/game/sim.js';
-import { createBot, createCoopSync } from '../src/game/autotest.js';
-import { DIFFICULTIES } from '../src/game/difficulty.js';
+import { WORLD } from '../world/heightmap.js';
+import { buildVegetation } from '../world/vegetation.js';
+import { buildProps } from '../world/props.js';
+import { buildRoosts } from '../world/roosts.js';
+import { colliderCount } from '../world/colliders.js';
+import { createSim } from '../game/sim.js';
+import { createBot, createCoopSync } from '../game/autotest.js';
+import { DIFFICULTIES } from '../game/difficulty.js';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 

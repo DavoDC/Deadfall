@@ -1,6 +1,6 @@
 // Probe the drowned stair: heights + step grades from the Maw floor up the
 // ramp centreline to the mesa top, and around the blocked point.
-import { WORLD, terrainHeight, blockedStep, MAX_GRADE } from '../src/world/heightmap.js';
+import { WORLD, terrainHeight, blockedStep, MAX_GRADE } from '../../world/heightmap.js';
 
 const ex = WORLD.extraction;
 const stairAz = Math.atan2(WORLD.maw.x - ex.x, WORLD.maw.z - ex.z);

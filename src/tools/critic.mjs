@@ -3,13 +3,13 @@
 // scores it (the design notes). Increment 3: the orchestrator.
 //
 // Runs a headless sweep of the bot across routes x difficulties x N (like
-// scripts/playtest.mjs), but wires src/game/critiqueRig.js into the sim's
+// src/tools/playtest.mjs), but wires src/game/critiqueRig.js into the sim's
 // existing ui.onHurt/onDeath hooks and autotest.js's existing debugHook so
 // every run comes back enriched with a fine-grained death record, damage
 // timeline, and threat/enemiesNear ticks - not just WIN/DEAD/kills/dmg.
 // Feeds the result to src/game/critique.js (pure, independently tested)
 // and writes:
-//   - docs/critic-report-<YYYY-MM-DD>.md   human-readable, ranked, evidence-backed
+//   - captures/critic/critic-report-<YYYY-MM-DD>.md   human-readable, ranked, evidence-backed
 //   - captures/critic/findings.json         machine-readable (gitignored)
 //
 // Legibility (checkLegibility()) needs a renderer, so it cannot run
@@ -20,23 +20,23 @@
 // notes legibility was not re-measured this round.
 //
 // Usage:
-//   node scripts/critic.mjs                                  # all routes x all difficulties, 5 runs each
-//   node scripts/critic.mjs --runs 8
-//   node scripts/critic.mjs --route river --difficulty hard --runs 10
-//   node scripts/critic.mjs --legibility-json TEMP/legibility.json
-//   node scripts/critic.mjs --out-dir docs --findings-out captures/critic/findings.json
+//   node src/tools/critic.mjs                                  # all routes x all difficulties, 5 runs each
+//   node src/tools/critic.mjs --runs 8
+//   node src/tools/critic.mjs --route river --difficulty hard --runs 10
+//   node src/tools/critic.mjs --legibility-json TEMP/legibility.json
+//   node src/tools/critic.mjs --out-dir captures/critic --findings-out captures/critic/findings.json
 
 import * as THREE from 'three';
-import { WORLD } from '../src/world/heightmap.js';
-import { buildVegetation } from '../src/world/vegetation.js';
-import { buildProps } from '../src/world/props.js';
-import { buildRoosts } from '../src/world/roosts.js';
-import { colliderCount, hasLOS } from '../src/world/colliders.js';
-import { createSim } from '../src/game/sim.js';
-import { createBot } from '../src/game/autotest.js';
-import { createRig } from '../src/game/critiqueRig.js';
-import { critique, SEVERITY_LABEL } from '../src/game/critique.js';
-import { DIFFICULTIES } from '../src/game/difficulty.js';
+import { WORLD } from '../world/heightmap.js';
+import { buildVegetation } from '../world/vegetation.js';
+import { buildProps } from '../world/props.js';
+import { buildRoosts } from '../world/roosts.js';
+import { colliderCount, hasLOS } from '../world/colliders.js';
+import { createSim } from '../game/sim.js';
+import { createBot } from '../game/autotest.js';
+import { createRig } from '../game/critiqueRig.js';
+import { critique, SEVERITY_LABEL } from '../game/critique.js';
+import { DIFFICULTIES } from '../game/difficulty.js';
 import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs';
 import { dirname } from 'node:path';
 
@@ -49,7 +49,7 @@ function arg(name, fallback = null) {
 const routes = arg('route') ? [arg('route')] : ['river', 'ridge', 'swamp'];
 const difficulties = arg('difficulty') ? [arg('difficulty')] : Object.keys(DIFFICULTIES);
 const runsPer = parseInt(arg('runs', '5'), 10);
-const outDir = arg('out-dir', 'docs');
+const outDir = arg('out-dir', 'captures/critic');
 const findingsOut = arg('findings-out', 'captures/critic/findings.json');
 const legibilityJsonPath = arg('legibility-json');
 const today = new Date().toISOString().slice(0, 10);

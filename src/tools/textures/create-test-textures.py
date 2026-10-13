@@ -53,7 +53,7 @@ def crc32(data):
 
 
 def main():
-    textures_dir = Path(__file__).parent.parent / 'public' / 'textures'
+    textures_dir = Path(__file__).resolve().parents[3] / 'assets' / 'textures'
 
     # Create test texture sets with simple colors
     sets = [

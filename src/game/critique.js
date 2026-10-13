@@ -4,7 +4,7 @@
 // merged with critiqueRig.js's damageEvents/deathRecord/ticks. No sim, no
 // THREE, no DOM: every function here takes plain objects and returns plain
 // objects, so it is unit-tested with synthetic fixtures (tests/critique.
-// test.js) independently of the game ever running. scripts/critic.mjs is
+// test.js) independently of the game ever running. src/tools/critic.mjs is
 // the only caller that feeds it real data.
 //
 // THE HARD PART - encoding taste as heuristics, argued here because a

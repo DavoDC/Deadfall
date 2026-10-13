@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 import * as THREE from 'three';
-import { WORLD } from '../src/world/heightmap.js';
-import { buildVegetation } from '../src/world/vegetation.js';
-import { buildProps } from '../src/world/props.js';
-import { createSim } from '../src/game/sim.js';
-import { createBot } from '../src/game/autotest.js';
+import { WORLD } from '../../world/heightmap.js';
+import { buildVegetation } from '../../world/vegetation.js';
+import { buildProps } from '../../world/props.js';
+import { createSim } from '../../game/sim.js';
+import { createBot } from '../../game/autotest.js';
 
 const scene = new THREE.Scene();
 const veg = buildVegetation(scene, { collidersOnly: true });

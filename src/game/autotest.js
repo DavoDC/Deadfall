@@ -1,7 +1,7 @@
 // Automated playtest bot. Plays a complete run - insert, route north,
 // cross the gorge at the route's sill, fight what the director sends,
 // loot what it passes, hold the beacon, extract or die - using only the
-// public sim (no cheats). Drives balance work headlessly (scripts/
+// public sim (no cheats). Drives balance work headlessly (src/tools/
 // playtest.mjs) and in-browser via window.__deadfall.runBot(route).
 //
 // The bot plays like a competent human: aims down sights at range, swaps

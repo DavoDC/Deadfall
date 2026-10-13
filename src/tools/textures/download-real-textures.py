@@ -3,7 +3,7 @@
 Download real CC0 PBR textures from Poly Haven using direct CDN URLs.
 Targets 1K resolution to stay well under 25 MB budget.
 
-Usage: python scripts/download-real-textures.py
+Usage: python src/tools/textures/download-real-textures.py
 """
 
 import urllib.request
@@ -81,8 +81,8 @@ def download_texture_set(slug, local_dir):
     return success
 
 def main():
-    deadfall_root = Path(__file__).parent.parent
-    textures_dir = deadfall_root / "public" / "textures"
+    deadfall_root = Path(__file__).resolve().parents[3]
+    textures_dir = deadfall_root / "assets" / "textures"
 
     print("Downloading real CC0 textures from Poly Haven (1K resolution)")
     print()

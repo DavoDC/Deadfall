@@ -12,7 +12,7 @@
 // uses. No change to src/game/telemetry.js or the stored log schema.
 
 import { describe, it, expect } from 'vitest';
-import { computePausedSeconds, formatDigest } from '../scripts/analyse-telemetry.mjs';
+import { computePausedSeconds, formatDigest } from '../src/tools/analyse-telemetry.mjs';
 
 function baseLog(overrides = {}) {
   return {

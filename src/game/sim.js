@@ -3,7 +3,7 @@
 // director + pickups + extraction + hazards behind a presentation-free
 // interface, so the same code drives:
 //   - the browser game (main.js adds rendering, HUD, audio, input)
-//   - the headless playtest runner (scripts/playtest.mjs, plain Node)
+//   - the headless playtest runner (src/tools/playtest.mjs, plain Node)
 //   - the in-page bot (window.__deadfall.runBot)
 //
 // Presentation subscribes through `ui` hooks (all optional):
@@ -252,7 +252,7 @@ export function createSim({ scene, camera, effects, ui = {} }) {
 
   // Add another player to the sim: own camera, own weapons + grenades,
   // sharing every world/enemy/director/pickup/extraction system. Used by
-  // the headless coop bot runner (scripts/playtest.mjs --coop).
+  // the headless coop bot runner (src/tools/playtest.mjs --coop).
   function addPlayer(cam) {
     const p = createPlayer(cam);
     players.push(p);

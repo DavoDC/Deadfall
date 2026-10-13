@@ -2,7 +2,7 @@
 // so wall/ramp constants can be tuned against numbers, not guesses.
 import {
   WORLD, terrainHeight, fractureZ, gorgeZ, palisadeZ, blockedStep, isThicket, MAX_GRADE,
-} from '../src/world/heightmap.js';
+} from '../../world/heightmap.js';
 
 function probe(label, ax, az, bx, bz, step = 0.65) {
   const dist = Math.hypot(bx - ax, bz - az);

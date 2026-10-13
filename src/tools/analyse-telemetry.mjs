@@ -16,8 +16,8 @@
 // are never silently read as comparable.
 //
 // Usage:
-//   node scripts/analyse-telemetry.mjs                 # reads captures/telemetry
-//   node scripts/analyse-telemetry.mjs <dir>           # reads a specific dir
+//   node src/tools/analyse-telemetry.mjs                 # reads captures/telemetry
+//   node src/tools/analyse-telemetry.mjs <dir>           # reads a specific dir
 import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { pathToFileURL } from 'url';

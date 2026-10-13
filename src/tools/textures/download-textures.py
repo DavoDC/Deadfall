@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
 Download CC0 PBR textures from Poly Haven for Deadfall.
-Saves to public/textures/
+Saves to assets/textures/
 
 This script requires an internet connection and Python 3.
 Texture files are PNG format at 2K resolution from Poly Haven (polyhaven.com).
 
-Run: python scripts/download-textures.py
+Run: python src/tools/textures/download-textures.py
 """
 
 import os
@@ -57,8 +57,8 @@ def download_poly_haven_texture(slug, local_dir, maps_to_copy):
 
 def main():
     script_dir = Path(__file__).parent
-    deadfall_root = script_dir.parent
-    textures_dir = deadfall_root / 'public' / 'textures'
+    deadfall_root = script_dir.parents[2]
+    textures_dir = deadfall_root / 'assets' / 'textures'
 
     textures_dir.mkdir(parents=True, exist_ok=True)
     print(f"Downloading textures to {textures_dir}")
@@ -82,9 +82,9 @@ def main():
         print("1. Visit https://polyhaven.com/textures in your browser")
         print("2. Search for each texture name (e.g., 'bark_001')")
         print("3. Download the 2K PBR zip")
-        print("4. Extract to public/textures/<local-name>/")
+        print("4. Extract to assets/textures/<local-name>/")
         print()
-        print("See public/textures/CREDITS.md for details.")
+        print("See assets/textures/CREDITS.md for details.")
 
 if __name__ == '__main__':
     main()

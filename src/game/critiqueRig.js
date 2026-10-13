@@ -15,7 +15,7 @@
 //     no-op unless the caller supplies one.
 //
 // Because both hooks are opt-in and only the critic orchestrator wires
-// them, this file changes ZERO behaviour for scripts/playtest.mjs, the
+// them, this file changes ZERO behaviour for src/tools/playtest.mjs, the
 // human game (main.js never calls runBot), or the existing 159 tests.
 //
 // Two halves, deliberately separated so the judgment-adjacent math is
@@ -30,7 +30,7 @@
 // Tick sampling cadence for debugHook: every 15 frames = 0.25s at 60fps.
 // Far finer than autotest.js's own 300-frame (5s) hpTimeline/posTrail, but
 // still cheap - debugHook only runs at all when the critic supplies it, so
-// this costs the human game and scripts/playtest.mjs's normal runs nothing.
+// this costs the human game and src/tools/playtest.mjs's normal runs nothing.
 const TICK_SAMPLE_FRAMES = 15;
 
 // Rough FPS half-FOV for "could the player plausibly have seen this coming
