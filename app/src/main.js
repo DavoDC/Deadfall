@@ -14,6 +14,7 @@ import { buildProps } from './world/props.js';
 import { buildRoosts } from './world/roosts.js';
 import { colliderCount } from './world/colliders.js';
 import { createInput } from './player/input.js';
+import { startPing, quitGame } from './game/serverLink.js';
 import { shouldShowMenu, resumeButtonLabel, shouldStepSim, shouldRecordTelemetry } from './player/pauseState.js';
 import { createViewmodel } from './weapons/viewmodel.js';
 import { createEffects } from './weapons/effects.js';
@@ -491,6 +492,9 @@ btnStart.addEventListener('click', () => {
   }
 });
 document.getElementById('btn-again').addEventListener('click', startRun);
+// Quit stops the hidden local game server (launch.bat starts it with no window).
+document.getElementById('btn-quit').addEventListener('click', () => quitGame(fetch, document));
+startPing(fetch);
 
 function syncPauseMenu() {
   const show = shouldShowMenu(game.state, input.state.locked);

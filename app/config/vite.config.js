@@ -1,6 +1,8 @@
 import { defineConfig } from 'vite';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import fs from 'node:fs';
+import { idleMinutesFromEnv, createIdleWatch, isLocalRequest } from '../src/server/lifecycle.js';
 import { writeSession, writeFrame, writeCapture } from '../src/server/telemetryStore.js';
 
 // Project root is app/ (this file lives in app/config/).
@@ -93,10 +95,103 @@ function telemetryPlugin() {
   };
 }
 
+// HIDDEN SERVER LIFECYCLE (docs/Guides/LaunchAndUpdate.md). launch.bat starts
+// this server with no window, so the page must be able to stop it:
+//   GET  /api/ping  - the open page says "still here" every ~30 s (not logged)
+//   POST /api/quit  - the Quit button; answers 204, then the process exits
+// If no page pings for DEADFALL_IDLE_MINUTES (default 10) the server exits by
+// itself so a closed tab never leaves an orphan. captures/server.pid holds the
+// node PID while it runs; captures/launcher.log gets one line per lifecycle event.
+function lifecyclePlugin() {
+  const capturesDir = path.join(ROOT, 'captures');
+  const pidFile = path.join(capturesDir, 'server.pid');
+  const logFile = path.join(capturesDir, 'launcher.log');
+
+  function log(line) {
+    try {
+      fs.mkdirSync(capturesDir, { recursive: true });
+      fs.appendFileSync(logFile, `[${new Date().toISOString()}] ${line}
+`);
+    } catch {
+      // logging must never take the server down
+    }
+  }
+
+  function removePid() {
+    try {
+      if (fs.readFileSync(pidFile, 'utf8').trim() === String(process.pid)) fs.rmSync(pidFile);
+    } catch {
+      // already gone
+    }
+  }
+
+  function shutdown(reason) {
+    log(reason);
+    removePid();
+    process.exit(0);
+  }
+
+  function attach(server) {
+    // vitest also builds a dev server from this config: never write a PID file or self-exit there
+    if (process.env.VITEST) return;
+    const idleMinutes = idleMinutesFromEnv(process.env);
+    const idle = createIdleWatch(idleMinutes * 60000);
+
+    server.middlewares.use((req, res, next) => {
+      if (req.url === '/api/ping' && req.method === 'GET') {
+        idle.ping();
+        res.statusCode = 204;
+        res.end();
+        return;
+      }
+      if (req.url === '/api/quit' && req.method === 'POST') {
+        const local = isLocalRequest({
+          remoteAddress: req.socket.remoteAddress,
+          host: req.headers.host,
+          origin: req.headers.origin,
+        });
+        if (!local) {
+          res.statusCode = 403;
+          res.end();
+          return;
+        }
+        res.statusCode = 204;
+        res.on('finish', () => shutdown('quit requested'));
+        res.end();
+        return;
+      }
+      next();
+    });
+
+    const start = () => {
+      try {
+        fs.mkdirSync(capturesDir, { recursive: true });
+        fs.writeFileSync(pidFile, String(process.pid));
+      } catch {
+        // the PID file is a convenience for update.bat; the server still works without it
+      }
+      log(`server listening (pid ${process.pid}, idle exit after ${idleMinutes} min)`);
+    };
+    if (server.httpServer) server.httpServer.once('listening', start);
+
+    const timer = setInterval(() => {
+      if (idle.expired()) shutdown(`idle exit: no page pinged for ${idleMinutes} min`);
+    }, Math.max(250, Math.min(5000, idleMinutes * 30000)));
+    timer.unref();
+    process.on('exit', removePid);
+  }
+
+  return {
+    name: 'deadfall-lifecycle',
+    configureServer: attach,
+    configurePreviewServer: attach,
+  };
+}
+
 export default defineConfig({
   root: ROOT,
   publicDir: path.join(ROOT, 'assets'),
-  plugins: [telemetryPlugin()],
+  plugins: [lifecyclePlugin(), telemetryPlugin()],
   server: {
     port: 5199,
     strictPort: true,
