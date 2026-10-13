@@ -12,7 +12,7 @@
 // browser). main.js wires this into the sim's ui hooks and the render
 // loop's tick(), src/tools/playtest.mjs never touches it.
 //
-// v2 (docs/References/TelemetryV2Spec.md) adds three channels on top of v1's
+// v2 (docs/References/Telemetry.md) adds three channels on top of v1's
 // deaths/damage/shots/waypoints/events/fps/path, all still pure logic fed
 // by ctx objects main.js assembles every frame (enemyMgr/director/weapons
 // state never leaks in here - that would break the headless-safe contract):
@@ -102,7 +102,7 @@ export function createTelemetry() {
       events: [],                // {time, kind, detail}
       fps: [],                   // {time, fps, frameMs} - sampled every 2s
       path: [],                  // {time, x, z} - sampled every 2s
-      // v2 channels (docs/References/TelemetryV2Spec.md):
+      // v2 channels (docs/References/Telemetry.md):
       inputEdges: [],            // {t, action, on} - full fidelity
       inputAggregates: [],       // 1s: {t, distance, pctSprint, aimSeconds, lookSpeedMeanDegPerSec, lookSpeedPeakDegPerSec, shots}
       state: [],                 // 1s: {t, pos, yaw, hp, stamina, ammo, weapon, speedMps, slopeDeg, verticalVel, grounded, enemiesNear, threat, fps, frameMs}

@@ -1,4 +1,4 @@
-// TELEMETRY V2 transport: coalescing sender (docs/References/TelemetryV2Spec.md).
+// TELEMETRY V2 transport: coalescing sender (docs/References/Telemetry.md).
 // Caught during end-to-end browser verification: naive fire-and-forget
 // POSTs of "the current state" can land out of order (fetch does not
 // guarantee completion order), so a stale mid-run snapshot can overwrite

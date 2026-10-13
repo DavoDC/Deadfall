@@ -1,4 +1,4 @@
-// TELEMETRY V2 disk persistence tests (docs/References/TelemetryV2Spec.md). Real fs,
+// TELEMETRY V2 disk persistence tests (docs/References/Telemetry.md). Real fs,
 // a throwaway temp directory per test - this is the part of the flight
 // recorder that actually has to prove files land on disk with real content.
 

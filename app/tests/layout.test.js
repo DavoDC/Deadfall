@@ -131,3 +131,15 @@ describe('CI workflow', () => {
     expect(existsSync(join(ROOT, '.githooks'))).toBe(false);
   });
 });
+
+describe('renamed telemetry doc', () => {
+  it('docs/References/Telemetry.md exists and no file still names the old spec file', () => {
+    expect(existsSync(join(ROOT, 'docs', 'References', 'Telemetry.md'))).toBe(true);
+    const old = 'TelemetryV2' + 'Spec';
+    const files = [...walk(join(APP, 'src')), ...walk(join(APP, 'tests')), ...walk(join(APP, 'config')), ...walk(docsDir), join(ROOT, 'CLAUDE.md'), join(ROOT, 'README.md')];
+    for (const f of files) {
+      if (!/\.(js|mjs|md|json|ps1)$/.test(f)) continue;
+      expect(readFileSync(f, 'utf8').includes(old), f).toBe(false);
+    }
+  });
+});

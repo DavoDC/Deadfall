@@ -34,7 +34,7 @@ Scripts are idempotent: safe to rerun; keep it that way, changes must be re-veri
 - The level is one seeded analytic height function; unit tests pin the no-straight-line rules.
 - `app/tests/layout.test.js` pins the layout and doc naming conventions.
 - Docs: capitalised single-word folders, PascalCase file names, no em or en dashes, one paragraph per line.
-- Generated images, video and telemetry go in gitignored `app/captures/` (captures is for video and images; telemetry session JSON stays there too, see TelemetryV2Spec). ALL other text (script logs, server log, PID) goes in gitignored `app/logs/`.
+- Generated images, video and telemetry go in gitignored `app/captures/` (captures is for video and images; telemetry session JSON stays there too, see Telemetry). ALL other text (script logs, server log, PID) goes in gitignored `app/logs/`.
 - Change code, tests and docs together in one commit.
 
 *Built with Claude: round 1 (2026-07-11) was one autonomous session; later rounds answered human playtests with real challenge, FPS feel, the fever-dream look, the headless tooling, physical geography, the Miremother, live weather, the deception layer and the trip.*

@@ -12,7 +12,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // The game's port. DEADFALL_PORT overrides it (for tests on a machine whose 5199 is busy); players never set it.
 const PORT = Number(process.env.DEADFALL_PORT) || 5199;
 
-// TELEMETRY V2 (the playtest flight recorder, docs/References/TelemetryV2Spec.md).
+// TELEMETRY V2 (the playtest flight recorder, docs/References/Telemetry.md).
 // David plays -> the client fire-and-forget POSTs here -> files land in
 // gitignored captures/telemetry/ -> Claude reads them off disk. No MCP, no
 // browser, no interrupting the player. The actual write/decode logic lives

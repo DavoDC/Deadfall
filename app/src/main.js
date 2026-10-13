@@ -188,7 +188,7 @@ let lastHurt = null; // {amount, srcPos, source} - reused as the death cause
 let telemetryStartPerf = 0;
 let telemetryWasLocked = null;
 
-// --- TELEMETRY V2 TRANSPORT (docs/References/TelemetryV2Spec.md) ---
+// --- TELEMETRY V2 TRANSPORT (docs/References/Telemetry.md) ---
 // David plays -> the disk endpoint (config/vite.config.js -> src/server/
 // telemetryStore.js) is where it actually lands. Everything here is
 // fire-and-forget: never await, never block the render loop, swallow every
@@ -580,7 +580,7 @@ function tick(now) {
     const telemetryElapsedT = telemetryStartPerf ? (now - telemetryStartPerf) / 1000 : 0;
     // telemetry v2 game-state ctx: everything main.js can see that the
     // spec's diagnosis fields need (stamina, uphill speed vs slope, jump
-    // arcs, nearby-threat pressure) - see docs/References/TelemetryV2Spec.md
+    // arcs, nearby-threat pressure) - see docs/References/Telemetry.md
     terrainNormal(player.p.pos.x, player.p.pos.z, _slopeNormal);
     const slopeDeg = Math.acos(Math.min(1, Math.max(-1, _slopeNormal.y))) * RAD2DEG;
     const wst = weapons.state;

@@ -10,7 +10,7 @@ Orientation for anyone working on Deadfall: where things live, how to run them, 
 | [../../CLAUDE.md](../../CLAUDE.md) | Short developer orientation for AI coding assistants |
 | [GameFeatures.md](GameFeatures.md) | The full tour of what is in the jungle: geography, boss, weather, hunters, director, arsenal |
 | [Engineering.md](Engineering.md) | How the game is built: height function, sim/presentation split, instancing, audio |
-| [TelemetryV2Spec.md](TelemetryV2Spec.md) | Spec of the playtest flight recorder (input, game state, visual channels) |
+| [Telemetry.md](Telemetry.md) | The playtest flight recorder as built (input, game state, visual channels) |
 | [DevContext.md](DevContext.md) | This file: doc index, folder map, commands, invariants |
 | [../Guides/HeadlessPlaytest.md](../Guides/HeadlessPlaytest.md) | Running the bot headlessly and the `window.__deadfall` API |
 | [../Guides/ScreenshotRig.md](../Guides/ScreenshotRig.md) | Deterministic screenshots for before/after art grading |

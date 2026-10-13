@@ -37,7 +37,7 @@ export function createHud(playerRef, weapons, game, director, grenades, sim) {
   };
 
   // world-coordinate readout (telemetry v2 channel 4, docs/References/
-  // TelemetryV2Spec.md): so David can call out "it happened at 120,-40" and Claude can
+  // Telemetry.md): so David can call out "it happened at 120,-40" and Claude can
   // find that exact moment in the session log. Landmark positions resolved
   // once - landmarkPos() is deterministic, no need to recompute every frame
   // (same pattern main.js uses for TELEMETRY_LANDMARKS).
