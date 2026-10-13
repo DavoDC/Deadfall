@@ -3,7 +3,7 @@
 // human-readable digest (outcome, damage-by-source, deaths, waypoints, events,
 // which v2 channels actually have data, and hp/stamina/speed/fps ranges).
 // Built 2026-07-19 to analyse David's real human playtests; graduated from
-// workspace TEMP into the repo 2026-07-21.
+// a scratch folder into the repo 2026-07-21.
 //
 // TWO CLOCKS (broken-telemetry P0 follow-up, f158c0f, 2026-08-20): that fix
 // moved telemetry.tick() onto a wall-clock time base so log.state/path/

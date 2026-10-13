@@ -41,7 +41,7 @@ const WATER_Y = WORLD.waterLevel;
 
 // Round 5B storyboard pass: several shots below use plain world-space
 // numbers instead of gy() offsets. Those keys were graded on captured
-// stills (docs/trailer-storyboard-2026-07-18.jpg) and the buried-camera
+// stills (the design notes) and the buried-camera
 // unit test guards them against future heightmap tweaks.
 
 // ---------------------------------------------------------------------------

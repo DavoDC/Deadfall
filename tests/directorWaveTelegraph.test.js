@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { createDirector, compassBearing } from '../src/enemies/director.js';
 import { WORLD } from '../src/world/heightmap.js';
 
-// Root cause 4 (docs/fable-brief-extraction.md): every spawn is forced out
+// Root cause 4 (extraction-hold design notes): every spawn is forced out
 // of the player's LOS, so first contact was always "deleted from
 // offscreen." The fix is not to make spawns visible - it is to tell the
 // player which way a wave is coming from, so it reads as "brace, incoming"

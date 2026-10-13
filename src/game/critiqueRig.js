@@ -1,4 +1,4 @@
-// Observation rig for the autonomous game critic (docs/fable-brief-critic.md).
+// Observation rig for the autonomous game critic (the design notes).
 //
 // The bot's report (autotest.js) tells you WHAT happened (WIN/DEAD/STUCK,
 // kills, dmgTaken) but not WHY - no death cause with position/source, no

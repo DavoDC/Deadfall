@@ -162,7 +162,7 @@ export function createSim({ scene, camera, effects, ui = {} }) {
     // Scoped to the extraction hold (extraction.committed) ON PURPOSE: an
     // early build applied this everywhere and it measurably softened the
     // whole run, not just the climax (critic: normal win-rate 33% -> ~90%,
-    // hard 13% -> 47% - see docs/critic-report-inc4-normal-check.md). All
+    // hard 13% -> 47% - see the design notes). All
     // seven root causes in the brief are specifically about the extraction
     // hold; the rest of the map's tuned difficulty curve is not this
     // round's target and should not move.

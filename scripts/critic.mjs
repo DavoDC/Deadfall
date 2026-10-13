@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // THE GAME CRITIC - autonomous playtester that judges the game, not just
-// scores it (docs/fable-brief-critic.md). Increment 3: the orchestrator.
+// scores it (the design notes). Increment 3: the orchestrator.
 //
 // Runs a headless sweep of the bot across routes x difficulties x N (like
 // scripts/playtest.mjs), but wires src/game/critiqueRig.js into the sim's
@@ -171,7 +171,7 @@ function renderReport({ runs, findings, summary, routes, difficulties, runsPer, 
   const lines = [];
   lines.push(`# Deadfall Critic Report - ${today}`);
   lines.push('');
-  lines.push('Autonomous headless critique (docs/fable-brief-critic.md). The bot plays the '
+  lines.push('Autonomous headless critique (the design notes). The bot plays the '
     + 'real simulation (no cheats, no rendering) dozens of times; this report ranks what went '
     + 'wrong by how much it costs the player - blocks-fun first, then unfair, then dull, then cosmetic.');
   lines.push('');
@@ -208,7 +208,7 @@ function renderReport({ runs, findings, summary, routes, difficulties, runsPer, 
     lines.push('## Legibility');
     lines.push('');
     lines.push('Not re-measured this round (checkLegibility() needs a renderer - browser-only). '
-      + 'Gates from docs/round4-visual-baseline.md: minContrast >= 17.5, meanContrast >= 47.0. '
+      + 'Gates from the design notes: minContrast >= 17.5, meanContrast >= 47.0. '
       + 'Re-run with `--legibility-json <path>` (a saved window.__deadfall.checkLegibility() result) to fold it in.');
     lines.push('');
   }

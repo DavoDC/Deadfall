@@ -55,7 +55,7 @@ export const DIFFICULTIES = {
     // nerfing any single mechanism (round-2 lesson: fix the economy).
     // First pass overcorrected to 9/15 (60% win) - split back toward
     // round-2's numbers; second pass landed 4/15 (see difficulty.js log
-    // in HISTORY.md for the full tuning trail).
+    // in the project history for the full tuning trail).
     playerDamageTaken: 1.12,
     enemyHp: 1.08,
     budgetRate: 1.18,

@@ -65,7 +65,7 @@ describe('damagePlayer: anti-burst grace wiring (root cause 5)', () => {
   });
 
   it('the recorded F6-shaped burst chain survives instead of dying outright', () => {
-    // reconstructs docs/critic-report-inc1-after2.md's F2 finding (an
+    // reconstructs the design notes's F2 finding (an
     // extraction-hold death): hp56, three 14dmg prowler hits at
     // t=321.15/321.75/321.95, then a 30dmg juggernaut finisher at
     // t=322.15 - killed the player outright before this fix

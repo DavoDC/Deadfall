@@ -3,7 +3,7 @@
 // timestamps to a session file -> Claude reads it straight off disk
 // (captures/telemetry/, see src/server/telemetryStore.js + vite.config.js)
 // and finds issues (difficulty spikes, bugs, unfair deaths, bad frames).
-// This is the observation harness for data-driven tuning - the workspace's
+// This is the observation harness for data-driven tuning - the
 // "build the harness before you iterate" principle applied to a human
 // playtester instead of a bot.
 //
@@ -348,7 +348,7 @@ export function createTelemetry() {
 
   // HUMAN-ONLY. Triggers a browser download, which lands in the OS Downloads
   // folder. Automation / Claude / subagents MUST NOT call this - it violates the
-  // no-Downloads workspace rule. To capture a session programmatically, read the
+  // no-Downloads rule. To capture a session programmatically, read the
   // `.log` getter (the full session object, below) and write it to the repo's
   // gitignored `captures/` folder with file tools instead. See toJSON().
   function download(filename) {

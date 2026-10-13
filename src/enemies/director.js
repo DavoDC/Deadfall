@@ -81,8 +81,8 @@ export function createDirector(enemyMgr, playerHelpers, opts = {}) {
     diff: null,       // difficulty object, set via setDifficulty
     // 0..1, how far through the extraction hold the player has survived -
     // fed by sim.js (updateExtraction) every frame while committed. This is
-    // the in-hold escalation ramp (root cause 2/3, docs/fable-brief-
-    // extraction.md): the final stand BUILDS across the hold instead of
+    // the in-hold escalation ramp (extraction-hold design notes,
+    // root cause 2/3): the final stand BUILDS across the hold instead of
     // slamming to its ceiling the instant the player commits.
     holdProgress: 0,
   };

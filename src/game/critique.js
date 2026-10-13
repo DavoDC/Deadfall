@@ -1,4 +1,4 @@
-// THE CRITIQUE ENGINE (docs/fable-brief-critic.md, increment 2).
+// THE CRITIQUE ENGINE (the design notes, increment 2).
 //
 // Pure functions over an array of "run records" - autotest.js's report
 // merged with critiqueRig.js's damageEvents/deathRecord/ticks. No sim, no
@@ -51,7 +51,7 @@
 // same spot is a real snag a human would also hit (high confidence).
 //
 // LEGIBILITY DEFECT - a pass-through of checkLegibility()'s own gates
-// (docs/round4-visual-baseline.md: minContrast >= 17.5, meanContrast >=
+// (the design notes: minContrast >= 17.5, meanContrast >=
 // 47.0) into the same ranked-finding shape as everything else, so a
 // visual regression shows up next to a design regression, ranked by how
 // much it actually costs the player (cosmetic, not blocks-fun).
@@ -406,7 +406,7 @@ export function findLegibilityDefects(legibilityResult, opts = {}) {
       confidence: 'high',
       evidence: { ...legibilityResult },
       fixHypothesis: `${legibilityResult.worstArchetype} is under the legibility floor - brighten its rim/emissive `
-        + `or reduce the vegetation density it is tested against (docs/round4-visual-baseline.md).`,
+        + `or reduce the vegetation density it is tested against (the design notes).`,
     });
   }
   if (legibilityResult.meanContrast !== null && legibilityResult.meanContrast < meanContrastGate) {
@@ -427,7 +427,7 @@ export function findLegibilityDefects(legibilityResult, opts = {}) {
         title: `${a.type} contrast ${a.contrast} is below the ${minContrastGate} floor`,
         confidence: 'medium',
         evidence: { archetype: a.type, contrast: a.contrast, maskPixels: a.maskPixels },
-        fixHypothesis: `${a.type} needs more contrast against dense vegetation - see checkLegibility() and docs/round4-visual-baseline.md.`,
+        fixHypothesis: `${a.type} needs more contrast against dense vegetation - see checkLegibility() and the design notes.`,
       });
     }
   }

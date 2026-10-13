@@ -2,13 +2,13 @@ import { describe, it, expect } from 'vitest';
 import { createDirector } from '../src/enemies/director.js';
 import { WORLD } from '../src/world/heightmap.js';
 
-// Root causes 2/3 (docs/fable-brief-extraction.md): threat() used to hit
+// Root causes 2/3 (extraction-hold design notes): threat() used to hit
 // its own ceiling the instant the player reached the beacon
 // (progressNorth()*0.82), and startSurge() dumped +6 budget with a 0.1s
 // first tick - the "final stand" started already at its climax instead of
 // building to one. These tests exercise the pure ramp math directly; the
-// emergent spawn-mix effect is what the critic (docs/fable-brief-
-// extraction.md's judge) verifies at the integration level.
+// emergent spawn-mix effect is what the critic (the extraction-hold
+// design notes' judge) verifies at the integration level.
 
 function makeDirector(atBeacon = true) {
   const enemyMgr = { aliveCount: () => 0, aliveList: () => [] };

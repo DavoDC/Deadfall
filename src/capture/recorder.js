@@ -1,6 +1,5 @@
 // Drift-proof in-engine video capture (ported from SoundScape round 4's
-// MediaRecorder / canvas.captureStream() export, see
-// SoundScape main.js for the source pattern).
+// MediaRecorder / canvas.captureStream() export).
 //
 // This is plumbing only, wired onto window.__deadfall.recorder - no camera
 // choreography. A later session drives the camera and calls start()/stop()
