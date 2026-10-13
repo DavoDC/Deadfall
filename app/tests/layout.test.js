@@ -18,7 +18,7 @@ const ALLOWED_APP_FILES = ['package.json', 'package-lock.json', 'index.html', 'V
 const ALLOWED_APP_DIRS = [
   'assets', 'config', 'src', 'tests',
   // local, gitignored
-  '.vite', 'node_modules', 'dist', 'captures',
+  '.vite', 'node_modules', 'dist', 'captures', 'logs',
 ];
 // en dash (8211) and em dash (8212), built from char codes so this file stays dash-free
 const DASHES = new RegExp(`[${String.fromCharCode(8211, 8212)}]`);

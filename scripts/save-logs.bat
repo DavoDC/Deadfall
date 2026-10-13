@@ -7,7 +7,7 @@ REM Flags: --no-pause (do not wait at the end). Env for tests only: DEADFALL_NO_
 REM Clean-machine rule: only built-in Windows tools plus Node. Never assume git, bash or python.
 REM The Windows folders go first on PATH so a same-named tool elsewhere can never shadow them.
 set "PATH=%SystemRoot%\System32;%SystemRoot%;%SystemRoot%\System32\WindowsPowerShell\v1.0;%PATH%"
-REM Logging: the first run wraps itself so everything printed is also saved to app\captures\logs\<name>-<date>.log (docs\Guides\LaunchAndUpdate.md).
+REM Logging: the first run wraps itself so everything printed is also saved to app\logs\<name>-<date>.log (docs\Guides\LaunchAndUpdate.md).
 if defined DF_LOGGED goto :logging_ready
 if not exist "%~dp0..\app\src\tools\runlog.ps1" goto :logging_ready
 set "DF_ARGS=%*"

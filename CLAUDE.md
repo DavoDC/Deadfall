@@ -7,7 +7,7 @@ Browser first-person PVE extraction shooter. Vanilla JS, Three.js, Vite, vitest.
 The npm project lives in `app/`; run everything from there.
 
 - Any platform: `cd app`, `npm install` once, then `npm run dev` (opens http://localhost:5199), `npm run build`, `npm test` (the unit suite)
-- Windows: double-click `scripts\launch.bat` (idempotent: installs Node.js via winget and npm packages only when needed). `scripts\update.bat` fetches the latest (git pull for a clone, ZIP download otherwise). The server runs hidden (logs in app\captures\logs: server.log plus a dated launch/update/save-logs log per script via app\src\tools\runlog.ps1, PID app\captures\server.pid); the in-game Quit button (POST /api/quit) stops it, and it exits itself after 10 idle minutes. update.bat stops it first. Players use the ZIP route; git clone is a developer route. `scripts\save-logs.bat` zips a scrubbed log bundle to the Desktop for playtesters to send back. The build version is the commit sha: `app/VERSION` (export-subst in `.gitattributes`, stamped by GitHub's ZIP, git fallback for clones), served at `/api/version`.
+- Windows: double-click `scripts\launch.bat` (idempotent: installs Node.js via winget and npm packages only when needed). `scripts\update.bat` fetches the latest (git pull for a clone, ZIP download otherwise). The server runs hidden (logs in app\logs: server.log plus a dated launch/update/save-logs log per script via app\src\tools\runlog.ps1, PID app\logs\server.pid); the in-game Quit button (POST /api/quit) stops it, and it exits itself after 10 idle minutes. update.bat stops it first. Players use the ZIP route; git clone is a developer route. `scripts\save-logs.bat` zips a scrubbed log bundle to the Desktop for playtesters to send back. The build version is the commit sha: `app/VERSION` (export-subst in `.gitattributes`, stamped by GitHub's ZIP, git fallback for clones), served at `/api/version`.
 - Headless bot: `node src/tools/playtest.mjs --runs 1`
 - Critic sweep: `node src/tools/critic.mjs` (reports land in gitignored `app/captures/critic/`)
 
@@ -34,7 +34,7 @@ Scripts are idempotent: safe to rerun; keep it that way, changes must be re-veri
 - The level is one seeded analytic height function; unit tests pin the no-straight-line rules.
 - `app/tests/layout.test.js` pins the layout and doc naming conventions.
 - Docs: capitalised single-word folders, PascalCase file names, no em or en dashes, one paragraph per line.
-- Generated output goes in gitignored `app/captures/`.
+- Generated images, video and telemetry go in gitignored `app/captures/` (captures is for video and images; telemetry session JSON stays there too, see TelemetryV2Spec). ALL other text (script logs, server log, PID) goes in gitignored `app/logs/`.
 - Change code, tests and docs together in one commit.
 
 *Built with Claude: round 1 (2026-07-11) was one autonomous session; later rounds answered human playtests with real challenge, FPS feel, the fever-dream look, the headless tooling, physical geography, the Miremother, live weather, the deception layer and the trip.*

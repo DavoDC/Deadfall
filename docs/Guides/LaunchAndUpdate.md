@@ -25,13 +25,13 @@ Safe to run repeatedly. Steps, in order:
 
 1. Node.js: needs version 18 or newer. If `node`/`npm` is missing or too old it runs `winget install --id OpenJS.NodeJS.LTS`, then refreshes `PATH` from the registry (and probes `%ProgramFiles%\nodejs`). If Node is still invisible it tells the player to close the window and double-click again. With no winget it points to https://nodejs.org.
 2. Packages: `npm install` runs only when `app\node_modules` is missing, the stamp file is missing, or `app\package-lock.json` is newer than the stamp. The stamp is `app\node_modules\.deadfall-install-stamp`, written after a successful install. Fast path (already set up) skips all of this.
-3. Server and browser: if something already listens on port 5199 the server is not started a second time; otherwise the Vite server is started fully hidden (`powershell Start-Process` of a hidden `cmd /c node node_modules\vite\bin\vite.js ...`, stdout and stderr appended to `app\captures\launcher.log`), it polls up to 30 s for the port, opens the browser (Brave if present, else the default) and closes its own window. If the server never answers it stays open with a plain-English message and the log path.
+3. Server and browser: if something already listens on port 5199 the server is not started a second time; otherwise the Vite server is started fully hidden (`powershell Start-Process` of a hidden `cmd /c node node_modules\vite\bin\vite.js ...`, stdout and stderr appended to `app\logs\server.log`), it polls up to 30 s for the port, opens the browser (Brave if present, else the default) and closes its own window. If the server never answers it stays open with a plain-English message and the log path.
 
 Flags: `--no-pause` (no waiting for a key) and `--dry-run` (if Node is missing, print the winget command instead of running it).
 
 ## Hidden server, Quit and idle exit
 
-- The server writes its own PID to `app\captures\server.pid` (node process, removed on exit) and lifecycle lines (listening, quit requested, idle exit) to stdout, which the launcher redirects to `app\captures\logs\server.log`. Both are gitignored.
+- The server writes its own PID to `app\logs\server.pid` (node process, removed on exit) and lifecycle lines (listening, quit requested, idle exit) to stdout, which the launcher redirects to `app\logs\server.log`. Both are gitignored.
 - The page pings GET /api/ping every 30 s (not logged). POST /api/quit (the Quit button) answers 204 and then the process exits; it only accepts loopback sockets with a localhost Host and Origin (403 otherwise). Both endpoints are in the lifecycle plugin in app/config/vite.config.js, for the dev and the preview server, and are skipped under vitest.
 - Idle exit: if no page pings for DEADFALL_IDLE_MINUTES (default 10, fractions allowed) the server exits itself, so a closed tab never leaves an orphan. A developer running npm run dev gets the same behaviour.
 - Stuck server by hand: run `curl.exe -X POST http://localhost:5199/api/quit`, or kill the node process whose id is in server.pid (`taskkill /F /PID <id>`).
@@ -42,7 +42,7 @@ Flags: `--no-pause` (no waiting for a key) and `--dry-run` (if Node is missing, 
 Runs from a temp copy of itself so overwriting `scripts\update.bat` mid-run is safe.
 
 - Git clone (repo has `.git` and `git` exists): `git pull --ff-only`. If git is missing (the normal case for players) it goes straight to the ZIP path, never asking to install anything. If the pull is blocked (local edits, no network) it explains in plain English and uses the ZIP path only after an explicit Y.
-- Downloaded ZIP (no `.git`): downloads `https://github.com/DavoDC/Deadfall/archive/refs/heads/main.zip` with PowerShell (TLS 1.2), extracts to a temp folder, and copies over the repo root with `robocopy /E`. Nothing is deleted, and `node_modules`, `captures`, `dist` and `.git` are never touched. The temp folder is removed afterwards.
+- Downloaded ZIP (no `.git`): downloads `https://github.com/DavoDC/Deadfall/archive/refs/heads/main.zip` with PowerShell (TLS 1.2), extracts to a temp folder, and copies over the repo root with `robocopy /E`. Nothing is deleted, and `node_modules`, `captures`, `logs`, `dist` and `.git` are never touched. The temp folder is removed afterwards.
 - If `app\package-lock.json` changed, the install stamp is deleted so the next `launch.bat` reinstalls packages.
 - Flags: `--no-pause` (questions default to No, nothing is started), `--source "<folder>"` or the `DEADFALL_UPDATE_SOURCE` environment variable (copy from a local folder instead of GitHub, for testing).
 
@@ -65,7 +65,7 @@ What is in the ZIP:
 
 - `VERSION.txt`: commit sha and date, or "unknown (not a release copy)".
 - `system.txt`: Windows version and build, CPU, RAM, GPU name(s) with driver and resolution, screens, default browser id, Node.js version, locale, time zone. No user name, machine name, IP, MAC, serial or paths.
-- `logs\`: every `*.log` in `app\captures\logs\` (see "Central logs" below), the last 5000 lines of each, scrubbed.
+- `logs\`: every `*.log` in `app\logs\` (see "Central logs" below), the last 5000 lines of each, scrubbed.
 - `telemetry\session-*.json` and `telemetry\frames\<startedAt>\*.jpg`: at most the newest 10 sessions, newest first, with their screenshots, until the size cap (default 25 MB) is reached. Older sessions and extra frames are skipped and the counts are written to `README.txt`. `latest.json` is a duplicate and is left out.
 - `README.txt`: explains each file.
 
@@ -73,7 +73,7 @@ Privacy scrubbing is done on copies in a temp folder (removed afterwards), never
 
 ### Central logs
 
-`launch.bat`, `update.bat` and `save-logs.bat` each wrap themselves in `app\src\tools\runlog.ps1` (the first run only; `DF_LOGGED=1` stops a second wrap), which shows the output live and also appends it to `app\captures\logs\<script>-<yyyy-MM-dd>.log`. Every run starts with a timestamped header (script, arguments, version, Windows, PowerShell, Node.js) and ends with `exit code N`; on a non-zero exit the window prints `The details were saved to: <path>`. Any log in the folder over about 1 MB is trimmed to its newest half at the start of the next run. The hidden game server writes `server.log` in the same folder. Only built-in tools are used, nothing touches the network, and the folder is gitignored (it lives under `captures`). If PowerShell cannot start the wrapper the scripts still run, just unlogged.
+`launch.bat`, `update.bat` and `save-logs.bat` each wrap themselves in `app\src\tools\runlog.ps1` (the first run only; `DF_LOGGED=1` stops a second wrap), which shows the output live and also appends it to `app\logs\<script>-<yyyy-MM-dd>.log`. Every run starts with a timestamped header (script, arguments, version, Windows, PowerShell, Node.js) and ends with `exit code N`; on a non-zero exit the window prints `The details were saved to: <path>`. Any log in the folder over about 1 MB is trimmed to its newest half at the start of the next run. The hidden game server writes `server.log` in the same folder. Only built-in tools are used, nothing touches the network, and the folder is gitignored (it lives under `captures`). If PowerShell cannot start the wrapper the scripts still run, just unlogged.
 
 ### Version stamping
 
@@ -83,11 +83,11 @@ It shows up in: the `Version: <short sha> (<date>)` line under the launch.bat ba
 
 ### How the owner reads a zip
 
-Unzip it and read `VERSION.txt` first (does the sha match the build you expect?), then `system.txt` for hardware, `launcher.log` for start-up trouble, and the session JSON with `app/src/tools/analyse-telemetry.mjs` (copy the files into `app/captures/telemetry/` of a scratch checkout). The screenshots sit next to the session id they belong to.
+Unzip it and read `VERSION.txt` first (does the sha match the build you expect?), then `system.txt` for hardware, the `logs` folder for start-up trouble, and the session JSON with `app/src/tools/analyse-telemetry.mjs` (copy the files into `app/captures/telemetry/` of a scratch checkout). The screenshots sit next to the session id they belong to.
 
 ## Manual test checklist
 
 1. Fresh clone: run `scripts\launch.bat --no-pause`; confirm packages install, the stamp appears, `http://localhost:5199` answers. Run it again: no install, no second server. Stop the server afterwards.
-2. ZIP folder (no `.git`): run `scripts\update.bat --no-pause --source <folder>`, then once without `--source` in a throwaway scripts-only copy; confirm `node_modules` and `captures` survive.
+2. ZIP folder (no `.git`): run `scripts\update.bat --no-pause --source <folder>`, then once without `--source` in a throwaway scripts-only copy; confirm `node_modules`, `captures` and `logs` survive.
 3. Clone: run `scripts\update.bat --no-pause`; confirm a friendly "newest version" or "Updated" line.
 4. Missing Node: with `PATH` reduced to the Windows folders, run `scripts\launch.bat --no-pause --dry-run`; it should print the winget command.

@@ -3,13 +3,13 @@ setlocal EnableDelayedExpansion
 REM Deadfall launcher: double-click to play. Safe to run again and again.
 REM It installs Node.js and the game's packages only when they are missing,
 REM starts the game server (once, fully hidden, no extra window) and opens the game in your browser.
-REM The game has a Quit button that stops the server. Logs: app\captures\logs (launch-<date>.log = this script, server.log = the game server), process id: app\captures\server.pid.
+REM The game has a Quit button that stops the server. Logs: app\logs (launch-<date>.log = this script, server.log = the game server), process id: app\logs\server.pid.
 REM Flags: --no-pause (do not wait at the end), --dry-run (print what
 REM would be installed, change nothing). The port is fixed in app\config\vite.config.js.
 REM Clean-machine rule: only built-in Windows tools plus Node. Never assume git, bash or python.
 REM The Windows folders go first on PATH so a same-named tool elsewhere can never shadow them.
 set "PATH=%SystemRoot%\System32;%SystemRoot%;%SystemRoot%\System32\WindowsPowerShell\v1.0;%PATH%"
-REM Logging: the first run wraps itself so everything printed is also saved to app\captures\logs\<name>-<date>.log (docs\Guides\LaunchAndUpdate.md).
+REM Logging: the first run wraps itself so everything printed is also saved to app\logs\<name>-<date>.log (docs\Guides\LaunchAndUpdate.md).
 if defined DF_LOGGED goto :logging_ready
 if not exist "%~dp0..\app\src\tools\runlog.ps1" goto :logging_ready
 set "DF_ARGS=%*"
@@ -127,9 +127,9 @@ REM The server runs completely hidden (no black window) and stops with the Quit 
 echo   [3/3] Starting the game...
 call :server_up
 if "%SERVER_UP%"=="1" goto :already_running
-if not exist "%APP%\captures\logs" mkdir "%APP%\captures\logs" >nul 2>nul
->> "%APP%\captures\logs\server.log" echo [%DATE% %TIME%] launch.bat starting the game server, version !DF_SHA! !DF_DATE!
-set "DF_SERVER_ARGS=/c node node_modules\vite\bin\vite.js --config config\vite.config.js >> captures\logs\server.log 2>&1"
+if not exist "%APP%\logs" mkdir "%APP%\logs" >nul 2>nul
+>> "%APP%\logs\server.log" echo [%DATE% %TIME%] launch.bat starting the game server, version !DF_SHA! !DF_DATE!
+set "DF_SERVER_ARGS=/c node node_modules\vite\bin\vite.js --config config\vite.config.js >> logs\server.log 2>&1"
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath $env:ComSpec -ArgumentList $env:DF_SERVER_ARGS -WorkingDirectory $env:APP -WindowStyle Hidden" >nul 2>nul
 set "WAITED=0"
 :wait_loop
@@ -144,7 +144,7 @@ goto :wait_loop
 echo.
 echo   [PROBLEM] The game did not start within 30 seconds.
 echo             Please double-click launch.bat again. If it keeps happening, the details are in:
-echo             %APP%\captures\logs\server.log
+echo             %APP%\logs\server.log
 goto :fail
 :already_running
 echo         Already running; opening it.

@@ -102,16 +102,16 @@ function telemetryPlugin() {
 //   POST /api/quit  - the Quit button; answers 204, then the process exits
 //   GET  /api/version - the build version {sha, date, short, label}, read once at server start (app/VERSION or git)
 // If no page pings for DEADFALL_IDLE_MINUTES (default 10) the server exits by
-// itself so a closed tab never leaves an orphan. captures/server.pid holds the
-// node PID while it runs; captures/logs/server.log gets one line per lifecycle event.
+// itself so a closed tab never leaves an orphan. logs/server.pid holds the
+// node PID while it runs; logs/server.log gets one line per lifecycle event.
 function lifecyclePlugin() {
-  const capturesDir = path.join(ROOT, 'captures');
-  const pidFile = path.join(capturesDir, 'server.pid');
+  const logsDir = path.join(ROOT, 'logs');
+  const pidFile = path.join(logsDir, 'server.pid');
   // computed once at start: never spawn git per request
   const version = readVersion(path.resolve(ROOT, '..'));
   const versionJson = JSON.stringify(version);
 
-  // Lifecycle events go to stdout: launch.bat redirects stdout to captures/logs/server.log, and a second
+  // Lifecycle events go to stdout: launch.bat redirects stdout to logs/server.log, and a second
   // writer appending to that file would be overwritten by the redirected handle.
   function log(line) {
     console.log(`[${new Date().toISOString()}] ${line}`);
@@ -174,7 +174,7 @@ function lifecyclePlugin() {
 
     const start = () => {
       try {
-        fs.mkdirSync(capturesDir, { recursive: true });
+        fs.mkdirSync(logsDir, { recursive: true });
         fs.writeFileSync(pidFile, String(process.pid));
       } catch {
         // the PID file is a convenience for update.bat; the server still works without it

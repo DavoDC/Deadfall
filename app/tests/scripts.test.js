@@ -95,8 +95,9 @@ describe('launch.bat hidden server', () => {
     expect(text).not.toMatch(/npm run dev/);
   });
 
-  it('sends the server output to app\\captures\\logs\\server.log and closes its own window (no cmd /k)', () => {
-    expect(text).toContain('captures\\logs\\server.log');
+  it('sends the server output to app\\logs\\server.log and closes its own window (no cmd /k)', () => {
+    expect(text).toContain('logs\\server.log');
+    expect(text).not.toContain('captures\\logs');
     expect(text).not.toContain('launcher.log');
     expect(text).not.toMatch(/cmd \/k/i);
     expect(text).toMatch(/:end_ok[\s\S]*exit \/b 0/);
@@ -218,16 +219,16 @@ describe('version display in the scripts', () => {
 
 describe('central logs folder', () => {
   const tool = (n) => readFileSync(join(ROOT, 'app', 'src', 'tools', n), 'utf8');
-  it.each(['launch', 'update', 'save-logs'])('%s.bat logs through runlog.ps1 into app/captures/logs', (n) => {
+  it.each(['launch', 'update', 'save-logs'])('%s.bat logs through runlog.ps1 into app/logs', (n) => {
     const text = read(n + '.bat');
     expect(text).toContain('runlog.ps1');
     expect(text).toContain('-Name ' + n + ' ');
     expect(text).toContain('DF_LOGGED');
-    expect(text).toMatch(/captures.logs.<name>/);
+    expect(text).toMatch(/app.logs.<name>/);
   });
   it('runlog.ps1 appends dated logs, caps their size, and prints the path on failure', () => {
     const ps = tool('runlog.ps1');
-    expect(ps).toMatch(/captures.logs/);
+    expect(ps).toMatch(/app.logs/);
     expect(ps).toContain('yyyy-MM-dd');
     expect(ps).toContain('FileMode]::Append');
     expect(ps).toContain('1MB');

@@ -1,4 +1,4 @@
-# Runs one of the user-facing .bat scripts and keeps a copy of everything it prints in app\captures\logs\<name>-<yyyy-MM-dd>.log.
+# Runs one of the user-facing .bat scripts and keeps a copy of everything it prints in app\logs\<name>-<yyyy-MM-dd>.log.
 # Local only, built-in tools only. The script's output still appears live in the window (prompts included).
 # The log is appended with a timestamped run header (Windows, PowerShell, Node, version) and the exit code at the end,
 # and any log in that folder over about 1 MB is trimmed to its newest half. On failure the log path is printed.
@@ -6,7 +6,7 @@
 param([string]$Name, [string]$Script, [string]$Root)
 $ErrorActionPreference = 'Continue'
 $Root = [IO.Path]::GetFullPath($Root)
-$logs = Join-Path $Root 'app\captures\logs'
+$logs = Join-Path $Root 'app\logs'
 New-Item -ItemType Directory -Path $logs -Force | Out-Null
 $logFile = Join-Path $logs ("$Name-" + (Get-Date -Format 'yyyy-MM-dd') + '.log')
 

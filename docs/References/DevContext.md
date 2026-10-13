@@ -27,12 +27,13 @@ Orientation for anyone working on Deadfall: where things live, how to run them, 
 | `app/assets/` | Static files served at the site root (Vite `publicDir`), currently the CC0 textures |
 | `scripts/` | End-user scripts only: `launch.bat` (idempotent setup + start), `update.bat` (git pull or ZIP download) and `save-logs.bat` (scrubbed log ZIP on the Desktop, version stamping: see "Saving logs and versions"); all idempotent, see the Idempotency section of the LaunchAndUpdate guide |
 | `app/src/` | Game code: `audio`, `capture`, `core`, `enemies`, `game`, `player`, `render`, `server`, `weapons`, `world` |
-| `app/src/tools/` | Developer tools: `runlog.ps1` (per-script logging into captures/logs), `save-logs.ps1` and `version.ps1` (workers for the .bat scripts), `playtest.mjs`, `critic.mjs`, `analyse-telemetry.mjs`; `once_off/` debug scripts; `textures/` Python texture helpers |
+| `app/src/tools/` | Developer tools: `runlog.ps1` (per-script logging into app/logs), `save-logs.ps1` and `version.ps1` (workers for the .bat scripts), `playtest.mjs`, `critic.mjs`, `analyse-telemetry.mjs`; `once_off/` debug scripts; `textures/` Python texture helpers |
 | `app/tests/` | Vitest suite, including `layout.test.js` which pins the repo conventions |
 | `docs/Guides/` | Procedures a person follows |
 | `docs/References/` | Facts and reasoning |
 | `docs/Images/` | Images used by the docs and README |
-| `app/captures/` | Gitignored output of playtests, telemetry and screenshots |
+| `app/captures/` | Gitignored images, video and telemetry of playtests and screenshots (telemetry session JSON stays here with its frames) |
+| `app/logs/` | Gitignored text logs: per-script logs, server.log, server.pid |
 
 ## Commands
 
@@ -56,7 +57,7 @@ node src/tools/analyse-telemetry.mjs         # digest of app/captures/telemetry
 - The repo root holds only `.gitignore`, `.gitattributes` (CRLF for .bat, export-subst for app/VERSION), `LICENSE`, `README.md`, `CLAUDE.md`, `docs/`, `scripts/` and `app/`. Keep `scripts/` to `launch.bat`, `update.bat` and `save-logs.bat` only; tools go under `src/tools/`.
 - Doc folders are single capitalised words, doc files are PascalCase with acronyms fully capitalised. `app/tests/layout.test.js` enforces this.
 - No em or en dashes and no absolute user paths in docs.
-- Generated output goes in gitignored `app/captures/`, never in the repo root.
+- Generated images, video and telemetry go in gitignored `app/captures/`, all other text in `app/logs/`, never in the repo root.
 - Change code, tests and docs in the same commit.
 
 ## Running on any platform

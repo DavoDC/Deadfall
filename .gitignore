@@ -7,3 +7,4 @@ TEMP/
 
 # Throwaway capture artifacts (screenshots, video, probe output) - never committed
 app/captures/
+app/logs/

@@ -81,8 +81,8 @@ try {
     [IO.File]::WriteAllText((Join-Path $stage 'system.txt'), (Protect-Text (($sys -join "`r`n") + "`r`n")), $utf8)
     Write-Host '  System info .... included'
 
-    # ---- logs folder: every .bat log and the game server log (app\captures\logs), scrubbed, last 5000 lines each ----
-    $logsDir = Join-Path $captures 'logs'
+    # ---- logs folder: every .bat log and the game server log (app\logs), scrubbed, last 5000 lines each ----
+    $logsDir = Join-Path (Join-Path $Root 'app') 'logs'
     $logFiles = @()
     if (Test-Path -LiteralPath $logsDir) { $logFiles = @(Get-ChildItem -LiteralPath $logsDir -Filter '*.log' -File | Sort-Object Name) }
     $oldLog = Join-Path $captures 'launcher.log'

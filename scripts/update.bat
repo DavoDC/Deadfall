@@ -9,7 +9,7 @@ REM Flags: --no-pause (never wait for a key; questions default to No)
 REM        --source "<folder>" (testing: copy the update from a local folder instead of GitHub; env DEADFALL_UPDATE_SOURCE does the same)
 REM Safe self-update: this file copies itself to the temp folder and runs the copy, so it can be overwritten while "running".
 set "PATH=%SystemRoot%\System32;%SystemRoot%;%SystemRoot%\System32\WindowsPowerShell\v1.0;%PATH%"
-REM Logging: the first run wraps itself so everything printed is also saved to app\captures\logs\<name>-<date>.log (docs\Guides\LaunchAndUpdate.md).
+REM Logging: the first run wraps itself so everything printed is also saved to app\logs\<name>-<date>.log (docs\Guides\LaunchAndUpdate.md).
 if defined DF_LOGGED goto :logging_ready
 if not exist "%~dp0..\app\src\tools\runlog.ps1" goto :logging_ready
 set "DF_ARGS=%*"
@@ -202,7 +202,7 @@ exit /b 0
 REM A running (hidden) game server would keep its files locked: close it first.
 set "STOP_FAILED=0"
 set "PORT=5199"
-set "PIDFILE=%ROOT%\app\captures\server.pid"
+set "PIDFILE=%ROOT%\app\logs\server.pid"
 call :port_busy
 if "%BUSY%"=="0" exit /b 0
 echo   Deadfall is running, so I am closing it first. Your progress is saved in the browser.
