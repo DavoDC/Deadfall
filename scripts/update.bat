@@ -57,7 +57,7 @@ if defined SRC goto :zip_mode
 if not exist "%ROOT%\.git" goto :zip_mode
 
 REM ---------- git clone path ----------
-echo [1/3] Your copy came from GitHub with git; asking GitHub for the newest version...
+echo [1/3] Checking GitHub for the newest version...
 where git >nul 2>nul
 if errorlevel 1 (
     echo       Git is not installed on this computer.
@@ -102,7 +102,7 @@ if "%OLD_HEAD%"=="%NEW_HEAD%" (
     for /f "delims=" %%s in ('git -C "%ROOT%" diff --shortstat %OLD_HEAD% %NEW_HEAD% 2^>nul') do set "CHANGED_LINE=Updated:%%s."
     if not defined CHANGED_LINE set "CHANGED_LINE=Updated to the newest version."
 )
-echo [2/3] Downloaded the newest version with git.
+echo [2/3] Got the newest version.
 goto :after_update
 
 REM ---------- zip path ----------
@@ -119,7 +119,7 @@ if defined SRC (
     set "NEWDIR=%SRC%"
     goto :zip_copy
 )
-echo [1/3] Downloading the newest version from GitHub...
+echo [1/3] Downloading the newest version...
 powershell -NoProfile -Command "try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -UseBasicParsing -Uri $env:ZIPURL -OutFile ($env:WORK + '\main.zip'); Expand-Archive -LiteralPath ($env:WORK + '\main.zip') -DestinationPath ($env:WORK + '\extract') -Force } catch { Write-Host $_.Exception.Message; exit 1 }"
 if errorlevel 1 (
     echo.
@@ -144,7 +144,7 @@ set "LOCK=%NEWDIR%\app\package-lock.json"
 call :lock_hash
 set "LOCK=%KEEP_LOCK%"
 if not "%LOCK_HASH%"=="%HASH_BEFORE%" del "%STAMP%" >nul 2>nul
-echo [2/3] Copying the new files in ^(your other files and installed packages are left alone^)...
+echo [2/3] Updating your files (your installed game stays put)...
 robocopy "%NEWDIR%" "%ROOT%" /E /XD node_modules captures dist .git /NJH /NJS /NDL /NP /NC /NS /R:1 /W:1 > "%WORK%\robocopy.txt"
 set "ROBO_RC=%errorlevel%"
 if %ROBO_RC% GEQ 8 (
@@ -155,7 +155,7 @@ if %ROBO_RC% GEQ 8 (
 )
 set "COUNT=0"
 for /f %%n in ('findstr /R /C:"[A-Za-z0-9]" "%WORK%\robocopy.txt" ^| find /c /v ""') do set "COUNT=%%n"
-set "CHANGED_LINE=Updated: %COUNT% game files refreshed from the newest version."
+set "CHANGED_LINE=Updated to the newest version."
 if "%COUNT%"=="0" set "CHANGED_LINE=You are already up to date."
 rmdir /s /q "%WORK%" >nul 2>nul
 
@@ -164,11 +164,11 @@ echo [3/3] Finishing up...
 call :lock_hash
 if not "%HASH_BEFORE%"=="%LOCK_HASH%" (
     del "%STAMP%" >nul 2>nul
-    echo       The game's packages changed; launch.bat will refresh them on its next start.
+    echo       launch.bat will refresh the game files next time.
 )
 echo.
 echo ============================================================
-echo [DONE] %CHANGED_LINE%
+echo %CHANGED_LINE%
 echo ============================================================
 echo.
 if defined NOPAUSE exit /b 0

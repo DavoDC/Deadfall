@@ -30,7 +30,7 @@ if not exist "%APP%\package.json" (
 )
 
 REM ---------- Step 1: Node.js ----------
-echo [1/3] Checking Node.js ^(the engine that runs the game^)...
+echo [1/3] Checking Node.js...
 call :check_node
 if "%NODE_OK%"=="1" goto :node_ready
 
@@ -49,8 +49,7 @@ if errorlevel 1 (
     goto :fail
 )
 
-echo       Node.js is missing or too old, so I am installing it now.
-echo       Windows may ask for permission; please click Yes. This takes a minute or two...
+echo       Installing Node.js (Windows may ask permission; click Yes).
 winget install --id OpenJS.NodeJS.LTS -e --silent --accept-package-agreements --accept-source-agreements
 call :refresh_path
 call :check_node
@@ -63,10 +62,10 @@ if not "%NODE_OK%"=="1" (
 echo       Node.js installed.
 
 :node_ready
-echo       OK: Node.js %NODE_VER% is ready.
+echo       Node.js %NODE_VER% OK.
 
 REM ---------- Step 2: game packages ----------
-echo [2/3] Checking the game's packages...
+echo [2/3] Checking game files...
 set "NEED_INSTALL="
 if not exist "%APP%\node_modules" set "NEED_INSTALL=1"
 if not exist "%STAMP%" set "NEED_INSTALL=1"
@@ -75,11 +74,11 @@ if not defined NEED_INSTALL (
     if errorlevel 1 set "NEED_INSTALL=1"
 )
 if defined NEED_INSTALL (
-    echo       Setting up the game for the first time. This can take a few minutes...
+    echo       First-time setup, a minute or two...
     REM Remove the stamp first so an interrupted install is always redone on the next run.
     del "%STAMP%" >nul 2>nul
     pushd "%APP%"
-    call npm install --no-audit --no-fund
+    call npm install --no-audit --no-fund --loglevel=error
     set "NPM_RC=!errorlevel!"
     popd
     if not "!NPM_RC!"=="0" (
@@ -88,9 +87,8 @@ if defined NEED_INSTALL (
         goto :fail
     )
     echo installed %DATE% %TIME%> "%STAMP%"
-    echo       Packages installed.
 ) else (
-    echo       OK: already set up.
+    echo       Already set up.
 )
 
 REM ---------- Step 3: start the game ----------
@@ -107,10 +105,10 @@ if %WAITED% GEQ 40 goto :server_slow
 set /a WAITED+=1
 goto :wait_loop
 :server_slow
-echo       The game is slow to start; opening your browser anyway.
+echo       Slow start; opening your browser anyway.
 goto :open_browser
 :already_running
-echo       The game is already running, so I will just open it.
+echo       Already running; opening it.
 
 :open_browser
 REM Prefer Brave; falls back to the system default browser when Brave isn't found.
@@ -127,9 +125,8 @@ if defined BRAVE_EXE (
 :end_ok
 echo.
 echo ============================================================
-echo [DONE] Deadfall is ready. Start: %START_TIME%  End: %TIME%
-echo   Game address: %LAUNCH_URL%
-echo   Keep the "Deadfall Dev Server" window open while you play; close it to stop the game.
+echo Deadfall is ready at %LAUNCH_URL%
+echo Close the black "Deadfall Dev Server" window to quit.
 echo ============================================================
 echo.
 if not defined NOPAUSE pause
