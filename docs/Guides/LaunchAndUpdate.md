@@ -31,7 +31,7 @@ Flags: `--no-pause` (no waiting for a key) and `--dry-run` (if Node is missing, 
 
 ## Hidden server, Quit and idle exit
 
-- The server writes its own PID to `app\captures\server.pid` (node process, removed on exit) and lifecycle lines (listening, quit requested, idle exit) to stdout, which the launcher redirects to `app\captures\launcher.log`. Both are gitignored.
+- The server writes its own PID to `app\captures\server.pid` (node process, removed on exit) and lifecycle lines (listening, quit requested, idle exit) to stdout, which the launcher redirects to `app\captures\logs\server.log`. Both are gitignored.
 - The page pings GET /api/ping every 30 s (not logged). POST /api/quit (the Quit button) answers 204 and then the process exits; it only accepts loopback sockets with a localhost Host and Origin (403 otherwise). Both endpoints are in the lifecycle plugin in app/config/vite.config.js, for the dev and the preview server, and are skipped under vitest.
 - Idle exit: if no page pings for DEADFALL_IDLE_MINUTES (default 10, fractions allowed) the server exits itself, so a closed tab never leaves an orphan. A developer running npm run dev gets the same behaviour.
 - Stuck server by hand: run `curl.exe -X POST http://localhost:5199/api/quit`, or kill the node process whose id is in server.pid (`taskkill /F /PID <id>`).
@@ -65,17 +65,21 @@ What is in the ZIP:
 
 - `VERSION.txt`: commit sha and date, or "unknown (not a release copy)".
 - `system.txt`: Windows version and build, CPU, RAM, GPU name(s) with driver and resolution, screens, default browser id, Node.js version, locale, time zone. No user name, machine name, IP, MAC, serial or paths.
-- `launcher.log`: the last 5000 lines of `app\captures\launcher.log`. The hidden server writes its output into this same file, so there is no separate server log (a `server.log` is included only if one ever exists).
+- `logs\`: every `*.log` in `app\captures\logs\` (see "Central logs" below), the last 5000 lines of each, scrubbed.
 - `telemetry\session-*.json` and `telemetry\frames\<startedAt>\*.jpg`: at most the newest 10 sessions, newest first, with their screenshots, until the size cap (default 25 MB) is reached. Older sessions and extra frames are skipped and the counts are written to `README.txt`. `latest.json` is a duplicate and is left out.
 - `README.txt`: explains each file.
 
 Privacy scrubbing is done on copies in a temp folder (removed afterwards), never on the originals: a case-insensitive replace of the user profile path (backslash, slash and JSON-escaped forms) with `%USERPROFILE%`, then of the user name and computer name with `<removed>`. Names shorter than 3 characters are not replaced on their own (they would shred ordinary words); the profile path replacement still covers them inside paths.
 
+### Central logs
+
+`launch.bat`, `update.bat` and `save-logs.bat` each wrap themselves in `app\src\tools\runlog.ps1` (the first run only; `DF_LOGGED=1` stops a second wrap), which shows the output live and also appends it to `app\captures\logs\<script>-<yyyy-MM-dd>.log`. Every run starts with a timestamped header (script, arguments, version, Windows, PowerShell, Node.js) and ends with `exit code N`; on a non-zero exit the window prints `The details were saved to: <path>`. Any log in the folder over about 1 MB is trimmed to its newest half at the start of the next run. The hidden game server writes `server.log` in the same folder. Only built-in tools are used, nothing touches the network, and the folder is gitignored (it lives under `captures`). If PowerShell cannot start the wrapper the scripts still run, just unlogged.
+
 ### Version stamping
 
 The version is the commit sha. `app\VERSION` is tracked with the content `$Format:%H %cI$` and `.gitattributes` has `app/VERSION export-subst`, so GitHub's Download ZIP (which runs `git archive`) expands it to `<40-hex sha> <commit date>`. A git clone or dev checkout keeps the literal placeholder. The reader (`app/src/server/version.js` for the server, `app/src/tools/version.ps1` for the .bat scripts, kept in step by tests) uses the stamped sha when present, otherwise `git rev-parse HEAD` and `git log -1 --format=%cI` if git exists, otherwise "unknown (not a release copy)".
 
-It shows up in: the `Version: <short sha> (<date>)` line under the launch.bat banner and a version line in `launcher.log`; the server's startup log line; `GET /api/version` (JSON `sha, date, short, label, source`, computed once at server start, on the dev and preview servers); the browser console line `[deadfall] version <sha> <date>`; a dim footer on the title screen; the `gameVersion` field of every telemetry session JSON (`version` there is already the schema number); and the "Now on version <short sha>" line at the end of update.bat. A ZIP-mode update on a git clone would overwrite the placeholder with a stamped file and show as a local change; use `git pull` there.
+It shows up in: the `Version: <short sha> (<date>)` line under the launch.bat banner and a version line in `server.log`; the server's startup log line; `GET /api/version` (JSON `sha, date, short, label, source`, computed once at server start, on the dev and preview servers); the browser console line `[deadfall] version <sha> <date>`; a dim footer on the title screen; the `gameVersion` field of every telemetry session JSON (`version` there is already the schema number); and the "Now on version <short sha>" line at the end of update.bat. A ZIP-mode update on a git clone would overwrite the placeholder with a stamped file and show as a local change; use `git pull` there.
 
 ### How the owner reads a zip
 

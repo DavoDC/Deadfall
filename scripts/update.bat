@@ -9,6 +9,13 @@ REM Flags: --no-pause (never wait for a key; questions default to No)
 REM        --source "<folder>" (testing: copy the update from a local folder instead of GitHub; env DEADFALL_UPDATE_SOURCE does the same)
 REM Safe self-update: this file copies itself to the temp folder and runs the copy, so it can be overwritten while "running".
 set "PATH=%SystemRoot%\System32;%SystemRoot%;%SystemRoot%\System32\WindowsPowerShell\v1.0;%PATH%"
+REM Logging: the first run wraps itself so everything printed is also saved to app\captures\logs\<name>-<date>.log (docs\Guides\LaunchAndUpdate.md).
+if defined DF_LOGGED goto :logging_ready
+if not exist "%~dp0..\app\src\tools\runlog.ps1" goto :logging_ready
+set "DF_ARGS=%*"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0..\app\src\tools\runlog.ps1" -Name update -Script "%~f0" -Root "%~dp0.."
+exit /b %errorlevel%
+:logging_ready
 
 if not "%DF_UPDATE_COPY%"=="1" (
     for %%I in ("%~dp0..") do set "DF_ROOT=%%~fI"

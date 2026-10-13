@@ -103,7 +103,7 @@ function telemetryPlugin() {
 //   GET  /api/version - the build version {sha, date, short, label}, read once at server start (app/VERSION or git)
 // If no page pings for DEADFALL_IDLE_MINUTES (default 10) the server exits by
 // itself so a closed tab never leaves an orphan. captures/server.pid holds the
-// node PID while it runs; captures/launcher.log gets one line per lifecycle event.
+// node PID while it runs; captures/logs/server.log gets one line per lifecycle event.
 function lifecyclePlugin() {
   const capturesDir = path.join(ROOT, 'captures');
   const pidFile = path.join(capturesDir, 'server.pid');
@@ -111,7 +111,7 @@ function lifecyclePlugin() {
   const version = readVersion(path.resolve(ROOT, '..'));
   const versionJson = JSON.stringify(version);
 
-  // Lifecycle events go to stdout: launch.bat redirects stdout to captures/launcher.log, and a second
+  // Lifecycle events go to stdout: launch.bat redirects stdout to captures/logs/server.log, and a second
   // writer appending to that file would be overwritten by the redirected handle.
   function log(line) {
     console.log(`[${new Date().toISOString()}] ${line}`);

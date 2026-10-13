@@ -95,15 +95,16 @@ describe('launch.bat hidden server', () => {
     expect(text).not.toMatch(/npm run dev/);
   });
 
-  it('logs to app\\captures\\launcher.log and closes its own window (no cmd /k)', () => {
-    expect(text).toContain('captures\\launcher.log');
+  it('sends the server output to app\\captures\\logs\\server.log and closes its own window (no cmd /k)', () => {
+    expect(text).toContain('captures\\logs\\server.log');
+    expect(text).not.toContain('launcher.log');
     expect(text).not.toMatch(/cmd \/k/i);
     expect(text).toMatch(/:end_ok[\s\S]*exit \/b 0/);
   });
 
   it('waits at most 30 seconds for the server and keeps the window open on failure', () => {
     expect(text).toContain('if %WAITED% GEQ 30 goto :server_slow');
-    expect(text).toMatch(/:server_slow[\s\S]*launcher\.log[\s\S]*goto :fail/);
+    expect(text).toMatch(/:server_slow[\s\S]*server\.log[\s\S]*goto :fail/);
   });
 
   it('tells the player to use the Quit button', () => {
@@ -208,9 +209,36 @@ describe('version display in the scripts', () => {
     const text = read('launch.bat');
     expect(text).toContain('Version: ');
     expect(text.indexOf('Version: ')).toBeLessThan(text.indexOf('[1/3]'));
-    expect(text).toMatch(/launcher[.]log" echo .*version !DF_SHA!/);
+    expect(text).toMatch(/server[.]log" echo .*version !DF_SHA!/);
   });
   it('update.bat reports the version it ended on', () => {
     expect(read('update.bat')).toContain('Now on version');
+  });
+});
+
+describe('central logs folder', () => {
+  const tool = (n) => readFileSync(join(ROOT, 'app', 'src', 'tools', n), 'utf8');
+  it.each(['launch', 'update', 'save-logs'])('%s.bat logs through runlog.ps1 into app/captures/logs', (n) => {
+    const text = read(n + '.bat');
+    expect(text).toContain('runlog.ps1');
+    expect(text).toContain('-Name ' + n + ' ');
+    expect(text).toContain('DF_LOGGED');
+    expect(text).toMatch(/captures.logs.<name>/);
+  });
+  it('runlog.ps1 appends dated logs, caps their size, and prints the path on failure', () => {
+    const ps = tool('runlog.ps1');
+    expect(ps).toMatch(/captures.logs/);
+    expect(ps).toContain('yyyy-MM-dd');
+    expect(ps).toContain('FileMode]::Append');
+    expect(ps).toContain('1MB');
+    expect(ps).toContain('The details were saved to');
+    expect(ps).not.toMatch(/https?:|Invoke-WebRequest|curl/i);
+    expect(ps).not.toMatch(DASHES);
+    expect(ps).not.toMatch(NON_ASCII);
+  });
+  it('save-logs.ps1 zips the whole logs folder', () => {
+    const ps = tool('save-logs.ps1');
+    expect(ps).toContain("'logs'");
+    expect(ps).toContain("-Filter '*.log'");
   });
 });

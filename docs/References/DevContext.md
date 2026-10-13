@@ -27,7 +27,7 @@ Orientation for anyone working on Deadfall: where things live, how to run them, 
 | `app/assets/` | Static files served at the site root (Vite `publicDir`), currently the CC0 textures |
 | `scripts/` | End-user scripts only: `launch.bat` (idempotent setup + start), `update.bat` (git pull or ZIP download) and `save-logs.bat` (scrubbed log ZIP on the Desktop, version stamping: see "Saving logs and versions"); all idempotent, see the Idempotency section of the LaunchAndUpdate guide |
 | `app/src/` | Game code: `audio`, `capture`, `core`, `enemies`, `game`, `player`, `render`, `server`, `weapons`, `world` |
-| `app/src/tools/` | Developer tools: `save-logs.ps1` and `version.ps1` (workers for the .bat scripts), `playtest.mjs`, `critic.mjs`, `analyse-telemetry.mjs`; `once_off/` debug scripts; `textures/` Python texture helpers |
+| `app/src/tools/` | Developer tools: `runlog.ps1` (per-script logging into captures/logs), `save-logs.ps1` and `version.ps1` (workers for the .bat scripts), `playtest.mjs`, `critic.mjs`, `analyse-telemetry.mjs`; `once_off/` debug scripts; `textures/` Python texture helpers |
 | `app/tests/` | Vitest suite, including `layout.test.js` which pins the repo conventions |
 | `docs/Guides/` | Procedures a person follows |
 | `docs/References/` | Facts and reasoning |

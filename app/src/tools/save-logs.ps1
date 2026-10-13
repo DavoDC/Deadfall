@@ -81,19 +81,24 @@ try {
     [IO.File]::WriteAllText((Join-Path $stage 'system.txt'), (Protect-Text (($sys -join "`r`n") + "`r`n")), $utf8)
     Write-Host '  System info .... included'
 
-    # ---- launcher.log (the game server writes its output there too) ----
-    $logFile = Join-Path $captures 'launcher.log'
+    # ---- logs folder: every .bat log and the game server log (app\captures\logs), scrubbed, last 5000 lines each ----
+    $logsDir = Join-Path $captures 'logs'
+    $logFiles = @()
+    if (Test-Path -LiteralPath $logsDir) { $logFiles = @(Get-ChildItem -LiteralPath $logsDir -Filter '*.log' -File | Sort-Object Name) }
+    $oldLog = Join-Path $captures 'launcher.log'
     $haveLog = $false
-    if (Test-Path -LiteralPath $logFile) {
-        $tail = @(Get-Content -LiteralPath $logFile -Tail 5000)
-        [IO.File]::WriteAllText((Join-Path $stage 'launcher.log'), (Protect-Text (($tail -join "`r`n") + "`r`n")), $utf8)
+    if ($logFiles.Count -gt 0 -or (Test-Path -LiteralPath $oldLog)) { New-Item -ItemType Directory -Path (Join-Path $stage 'logs') -Force | Out-Null }
+    foreach ($lf in $logFiles) {
+        $tail = @(Get-Content -LiteralPath $lf.FullName -Tail 5000)
+        [IO.File]::WriteAllText((Join-Path $stage ('logs\' + $lf.Name)), (Protect-Text (($tail -join "`r`n") + "`r`n")), $utf8)
         $haveLog = $true
     }
-    $serverLogFile = Join-Path $captures 'server.log'
-    if (Test-Path -LiteralPath $serverLogFile) {
-        Copy-Scrubbed $serverLogFile (Join-Path $stage 'server.log')
+    if (Test-Path -LiteralPath $oldLog) {
+        $tail = @(Get-Content -LiteralPath $oldLog -Tail 5000)
+        [IO.File]::WriteAllText((Join-Path $stage 'logs\launcher.log'), (Protect-Text (($tail -join "`r`n") + "`r`n")), $utf8)
+        $haveLog = $true
     }
-    if ($haveLog) { Write-Host '  Game log ....... included' } else { Write-Host '  Game log ....... none yet' }
+    if ($haveLog) { Write-Host '  Logs ........... included' } else { Write-Host '  Logs ........... none yet' }
 
     # ---- telemetry: newest sessions first, within the size cap ----
     $telDir = Join-Path $captures 'telemetry'
@@ -143,7 +148,7 @@ try {
         '',
         'VERSION.txt .................. which build of the game you have (commit id and date)',
         'system.txt ................... Windows version, CPU, RAM, graphics card(s), screen size, default browser, Node.js, language and time zone',
-        'launcher.log ................. what the launcher and the game server did (the server writes its output here too)',
+        'logs\ ....................... what launch.bat, update.bat, save-logs.bat and the game server did, one dated file each (launch-DATE.log, update-DATE.log, save-logs-DATE.log, server.log)',
         'telemetry\session-*.json ..... one file per play session: deaths, damage, frame rate, where you went',
         'telemetry\frames\ ............ small screenshots taken during play (newest first)',
         '',
