@@ -243,3 +243,16 @@ describe('central logs folder', () => {
     expect(ps).toContain("-Filter '*.log'");
   });
 });
+
+describe('launch.bat keeps tool noise off the console', () => {
+  const text = read('launch.bat');
+  it('sends npm and winget output to the tools log, not the screen', () => {
+    expect(text).toMatch(/npm install --no-fund --no-audit --loglevel=error --progress=false >> "%TOOLLOG%" 2>&1/);
+    expect(text).toMatch(/winget install .*>> "%TOOLLOG%" 2>&1/);
+    expect(text).toContain('setup-tools.log');
+  });
+  it('prints Done. after first-time setup and names the log when npm fails', () => {
+    expect(text).toMatch(/echo {8}Done\./);
+    expect(text).toMatch(/The details are in: %TOOLLOG%/);
+  });
+});

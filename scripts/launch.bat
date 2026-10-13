@@ -23,6 +23,8 @@ set "APP=%~dp0..\app"
 for %%I in ("%~dp0..") do set "ROOT=%%~fI"
 set "VERTOOL=%APP%\src\tools\version.ps1"
 set "STAMP=%APP%\node_modules\.deadfall-install-stamp"
+REM Output of npm and winget goes here, not on screen: the console shows short tidy lines only.
+set "TOOLLOG=%APP%\logs\setup-tools.log"
 set "NOPAUSE="
 set "DRYRUN="
 for %%A in (%*) do (
@@ -81,7 +83,9 @@ if errorlevel 1 (
 )
 
 echo         Installing Node.js (Windows may ask permission; click Yes).
-winget install --id OpenJS.NodeJS.LTS -e --silent --accept-package-agreements --accept-source-agreements
+if not exist "%APP%\logs" mkdir "%APP%\logs" >nul 2>nul
+>> "%TOOLLOG%" echo [%DATE% %TIME%] winget install Node.js
+winget install --id OpenJS.NodeJS.LTS -e --silent --accept-package-agreements --accept-source-agreements >> "%TOOLLOG%" 2>&1
 call :refresh_path
 call :check_node
 if not "%NODE_OK%"=="1" (
@@ -109,15 +113,20 @@ if defined NEED_INSTALL (
     REM Remove the stamp first so an interrupted install is always redone on the next run.
     del "%STAMP%" >nul 2>nul
     pushd "%APP%"
-    call npm install --no-audit --no-fund --loglevel=error
+    if not exist "%APP%\logs" mkdir "%APP%\logs" >nul 2>nul
+    >> "%TOOLLOG%" echo [%DATE% %TIME%] npm install ^(game packages^)
+    call npm install --no-fund --no-audit --loglevel=error --progress=false >> "%TOOLLOG%" 2>&1
     set "NPM_RC=!errorlevel!"
     popd
     if not "!NPM_RC!"=="0" (
         echo.
         echo   [PROBLEM] The game's packages did not install. Check your internet connection and try again.
+        echo             The details are in: %TOOLLOG%
         goto :fail
     )
     echo installed %DATE% %TIME%> "%STAMP%"
+    echo         Done.
+    echo.
 ) else (
     echo         Already set up.
 )
