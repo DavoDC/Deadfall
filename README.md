@@ -16,9 +16,18 @@ Find your way north to the beacon, and get out alive.
 
 ## Play
 
-Requirements: [Node.js](https://nodejs.org) 18 or newer, and a modern browser.
+Requirements: Windows 10 or 11, a modern browser (Brave, Chrome, Edge or Firefox), and Node.js 18 or newer (`launch.bat` installs Node for you if it is missing).
 
-On Windows, double-click `scripts\launch.bat`. It installs dependencies on the first run, starts the game and opens it in your browser.
+1. **Download this repo:** click the green `<> Code` button at the top of the GitHub page, then **Download ZIP**, and unzip it anywhere (right-click, Extract All).
+2. **Double-click `scripts\launch.bat`.** First run installs what the game needs (a minute or two), then it starts the game and opens it in your browser. Next time it starts straight away.
+
+Good to know: Windows may say "unknown publisher" the first time. Click **More info**, then **Run anyway**. The browser tab can stay blank for a few seconds while the game starts. To quit, close the black launcher window.
+
+**Updating:** download the ZIP again, or just double-click `scripts\update.bat`. Your game progress lives in your browser, so updating never loses it.
+
+On macOS or Linux: install [Node.js](https://nodejs.org) 18 or newer, then run `npm install` and `npm run dev` inside the `app` folder.
+
+Details: [docs/Guides/LaunchAndUpdate.md](docs/Guides/LaunchAndUpdate.md).
 
 ## Controls
 

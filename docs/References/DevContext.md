@@ -24,7 +24,7 @@ Orientation for anyone working on Deadfall: where things live, how to run them, 
 | `app/index.html` | Vite entry page |
 | `app/config/` | Vite and vitest configuration (`vite.config.js`) |
 | `app/assets/` | Static files served at the site root (Vite `publicDir`), currently the CC0 textures |
-| `scripts/` | End-user launcher only (`launch.bat`) |
+| `scripts/` | End-user launchers only: `launch.bat` (idempotent setup + start) and `update.bat` (git pull or ZIP download) |
 | `app/src/` | Game code: `audio`, `capture`, `core`, `enemies`, `game`, `player`, `render`, `server`, `weapons`, `world` |
 | `app/src/tools/` | Developer tools: `playtest.mjs`, `critic.mjs`, `analyse-telemetry.mjs`; `once_off/` debug scripts; `textures/` Python texture helpers |
 | `app/tests/` | Vitest suite, including `layout.test.js` which pins the repo conventions |
@@ -51,7 +51,7 @@ node src/tools/analyse-telemetry.mjs         # digest of app/captures/telemetry
 - (Paths below are relative to `app/`.) `src/game/sim.js` has zero DOM, GPU or audio dependencies. It must keep running in plain Node.
 - The level is one seeded analytic height function; the no-straight-line invariants are unit tests.
 - Simulation consumes input intents and entities are plain serializable state.
-- The repo root holds only `.gitignore`, `LICENSE`, `README.md`, `CLAUDE.md`, `docs/`, `scripts/` and `app/`. Keep `scripts/` to `launch.bat` only; tools go under `src/tools/`.
+- The repo root holds only `.gitignore`, `LICENSE`, `README.md`, `CLAUDE.md`, `docs/`, `scripts/` and `app/`. Keep `scripts/` to `launch.bat` and `update.bat` only; tools go under `src/tools/`.
 - Doc folders are single capitalised words, doc files are PascalCase with acronyms fully capitalised. `app/tests/layout.test.js` enforces this.
 - No em or en dashes and no absolute user paths in docs.
 - Generated output goes in gitignored `app/captures/`, never in the repo root.
@@ -67,7 +67,7 @@ npm install
 npm run dev        # opens on http://localhost:5199
 ```
 
-On Windows, double-clicking `scripts\launch.bat` does the same and opens the browser. `npm test` runs the unit suite.
+On Windows, double-clicking `scripts\launch.bat` does the same and opens the browser; it installs Node.js (winget) and packages only when needed, using the stamp `app\node_modules\.deadfall-install-stamp` compared with `app\package-lock.json`. `scripts\update.bat` fetches the latest version (see [../Guides/LaunchAndUpdate.md](../Guides/LaunchAndUpdate.md)). `npm test` runs the unit suite.
 
 ## Credits
 

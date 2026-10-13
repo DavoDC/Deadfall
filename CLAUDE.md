@@ -7,7 +7,7 @@ Browser first-person PVE extraction shooter. Vanilla JS, Three.js, Vite, vitest.
 The npm project lives in `app/`; run everything from there.
 
 - Any platform: `cd app`, `npm install` once, then `npm run dev` (opens http://localhost:5199), `npm run build`, `npm test` (the unit suite)
-- Windows: double-click `scripts\launch.bat`
+- Windows: double-click `scripts\launch.bat` (idempotent: installs Node.js via winget and npm packages only when needed). `scripts\update.bat` fetches the latest (git pull for a clone, ZIP download otherwise). Players use the ZIP route; git clone is a developer route.
 - Headless bot: `node src/tools/playtest.mjs --runs 1`
 - Critic sweep: `node src/tools/critic.mjs` (reports land in gitignored `app/captures/critic/`)
 
@@ -15,11 +15,12 @@ The npm project lives in `app/`; run everything from there.
 
 - Repo root: `.gitignore`, `LICENSE`, `README.md`, `CLAUDE.md`, `docs/`, `scripts/`, `app/` only
 - `app/`: `package.json`, `index.html`, `config/` (Vite and vitest config), `assets/` (Vite publicDir), `src/` (game code, `src/tools/` dev tools), `tests/`
-- `scripts/` end-user `launch.bat` only; `docs/Guides|References|Images` documentation
+- `scripts/` end-user `launch.bat` and `update.bat` only; `docs/Guides|References|Images` documentation
 
 ## Docs
 
 - [docs/References/DevContext.md](docs/References/DevContext.md): index of every doc, folder map, how to run tests, rules and invariants.
+- [docs/Guides/LaunchAndUpdate.md](docs/Guides/LaunchAndUpdate.md): how launch.bat and update.bat work and how to test them.
 - [docs/Guides/HeadlessPlaytest.md](docs/Guides/HeadlessPlaytest.md): the headless bot and the `window.__deadfall` API.
 - [docs/Guides/ScreenshotRig.md](docs/Guides/ScreenshotRig.md): deterministic before/after screenshots for art changes.
 - [docs/References/Engineering.md](docs/References/Engineering.md): how the game is built.

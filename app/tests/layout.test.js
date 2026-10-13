@@ -35,8 +35,8 @@ const docFiles = walk(docsDir);
 const mdFiles = docFiles.filter((f) => f.endsWith('.md'));
 
 describe('repo layout', () => {
-  it('scripts/ contains only launch.bat', () => {
-    expect(readdirSync(join(ROOT, 'scripts'))).toEqual(['launch.bat']);
+  it('scripts/ contains only the two user-facing launchers', () => {
+    expect(readdirSync(join(ROOT, 'scripts'))).toEqual(['launch.bat', 'update.bat']);
   });
 
   it('repo root contains only the allowed files and folders', () => {
