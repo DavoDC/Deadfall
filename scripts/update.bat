@@ -157,6 +157,8 @@ rmdir /s /q "%WORK%" >nul 2>nul
 
 :after_update
 echo   [3/3] Finishing up...
+REM Player mode serves a built bundle: drop its build stamp so the next launch rebuilds from the new files.
+if not "%CHANGED_LINE%"=="You are already up to date." del "%ROOT%\app\dist\.deadfall-build-stamp" >nul 2>nul
 call :show_version
 call :lock_hash
 if not "%HASH_BEFORE%"=="%LOCK_HASH%" (

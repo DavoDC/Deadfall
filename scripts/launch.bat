@@ -129,19 +129,29 @@ if defined NEED_INSTALL (
     )
     echo installed %DATE% %TIME%> "%STAMP%"
     echo         Done.
-    echo.
 ) else (
     echo         Already set up.
 )
 
+REM Player mode (the default, app\config\launcher.json developerMode false) builds the game once and serves the built bundle;
+REM developer mode runs the Vite dev server with hot reload. See docs\Guides\LaunchAndUpdate.md.
+set "DEVMODE="
+findstr /r /c:"\"developerMode\" *: *true" "%APP%\config\launcher.json" >nul 2>nul
+if not errorlevel 1 set "DEVMODE=1"
+if not defined DEVMODE call :ensure_build
+if "%BUILD_FAILED%"=="1" goto :fail
+
 REM ---------- Step 3: start the game ----------
 REM The server runs completely hidden (no black window) and stops with the Quit button in the game.
+echo.
 echo   [3/3] Starting the game...
 call :server_up
 if "%SERVER_UP%"=="1" goto :already_running
 if not exist "%APP%\logs" mkdir "%APP%\logs" >nul 2>nul
 >> "%APP%\logs\server.log" echo [%DATE% %TIME%] launch.bat starting the game server, version !DF_SHA! !DF_DATE!
-set "DF_SERVER_ARGS=/c node node_modules\vite\bin\vite.js --config config\vite.config.js >> logs\server.log 2>&1"
+set "VITE_CMD=preview"
+if defined DEVMODE set "VITE_CMD="
+set "DF_SERVER_ARGS=/c node node_modules\vite\bin\vite.js !VITE_CMD! --config config\vite.config.js >> logs\server.log 2>&1"
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath $env:ComSpec -ArgumentList $env:DF_SERVER_ARGS -WorkingDirectory $env:APP -WindowStyle Hidden" >nul 2>nul
 set "WAITED=0"
 :wait_loop
@@ -196,6 +206,37 @@ if not defined NOPAUSE (
 exit /b 1
 
 REM ---------- helpers ----------
+:ensure_build
+REM Player mode: build the game only when there is no build yet or the sources are newer than the build stamp (update.bat deletes the stamp).
+set "BUILD_FAILED=0"
+set "BUILD_STAMP=%APP%\dist\.deadfall-build-stamp"
+set "NEED_BUILD="
+if not exist "%APP%\dist\index.html" set "NEED_BUILD=1"
+if not exist "%BUILD_STAMP%" set "NEED_BUILD=1"
+if not defined NEED_BUILD (
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "$s = (Get-Item -LiteralPath $env:BUILD_STAMP).LastWriteTime; $n = @('index.html','package-lock.json','VERSION') | ForEach-Object { Get-Item -LiteralPath (Join-Path $env:APP $_) -ErrorAction SilentlyContinue }; $n += Get-ChildItem -LiteralPath (Join-Path $env:APP 'src'), (Join-Path $env:APP 'assets'), (Join-Path $env:APP 'config') -Recurse -File -ErrorAction SilentlyContinue; if (($n | Where-Object { $_.LastWriteTime -gt $s }).Count -gt 0) { exit 1 }" >nul 2>nul
+    if errorlevel 1 set "NEED_BUILD=1"
+)
+if not defined NEED_BUILD exit /b 0
+echo         Preparing the game, one moment...
+del "%BUILD_STAMP%" >nul 2>nul
+if not exist "%APP%\logs" mkdir "%APP%\logs" >nul 2>nul
+>> "%TOOLLOG%" echo [%DATE% %TIME%] vite build ^(player mode^)
+pushd "%APP%"
+node node_modules\vite\bin\vite.js build --config config\vite.config.js >> "%TOOLLOG%" 2>&1
+set "BUILD_RC=!errorlevel!"
+popd
+if not "!BUILD_RC!"=="0" (
+    echo.
+    echo   [PROBLEM] The game could not be prepared. Please run update.bat, then try again.
+    echo             The details are in: %TOOLLOG%
+    set "BUILD_FAILED=1"
+    exit /b 0
+)
+echo built %DATE% %TIME%> "%BUILD_STAMP%"
+echo         Done.
+exit /b 0
+
 :check_node
 set "NODE_OK=0"
 set "NODE_VER="

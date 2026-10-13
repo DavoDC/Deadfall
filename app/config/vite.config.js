@@ -41,7 +41,13 @@ function telemetryPlugin() {
 
   return {
     name: 'deadfall-telemetry',
-    configureServer(server) {
+    configureServer: attach,
+    // player mode serves the built bundle with 'vite preview': same endpoints, so telemetry stays on
+    configurePreviewServer: attach,
+  };
+
+  function attach(server) {
+    {
       server.middlewares.use(async (req, res, next) => {
         if (req.method !== 'POST') return next();
 
@@ -95,8 +101,8 @@ function telemetryPlugin() {
 
         next();
       });
-    },
-  };
+    }
+  }
 }
 
 // HIDDEN SERVER LIFECYCLE (docs/Guides/LaunchAndUpdate.md). launch.bat starts
@@ -215,6 +221,8 @@ export default defineConfig({
   },
   build: {
     target: 'es2022',
+    // three.js alone is over the default 500 kB warning; the game ships as one bundle on purpose
+    chunkSizeWarningLimit: 1500,
   },
   test: {
     environment: 'node',

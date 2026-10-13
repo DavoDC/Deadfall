@@ -264,3 +264,27 @@ describe('launch.bat --no-browser', () => {
     expect(text).toMatch(/:open_browser\r?\nif defined NOBROWSER goto :end_ok/);
   });
 });
+
+describe('player mode and developer mode', () => {
+  const text = read('launch.bat');
+  const cfg = JSON.parse(readFileSync(join(ROOT, 'app', 'config', 'launcher.json'), 'utf8'));
+  const vite = readFileSync(join(ROOT, 'app', 'config', 'vite.config.js'), 'utf8');
+  it('launcher.json defaults to player mode', () => {
+    expect(cfg).toEqual({ developerMode: false });
+  });
+  it('launch.bat reads the setting, builds when stale and serves the build with vite preview in player mode', () => {
+    expect(text).toContain('launcher.json');
+    expect(text).toMatch(/developerMode/);
+    expect(text).toContain('.deadfall-build-stamp');
+    expect(text).toMatch(/vite\.js build --config/);
+    expect(text).toMatch(/set "VITE_CMD=preview"\r?\nif defined DEVMODE set "VITE_CMD="/);
+    expect(text).toContain('vite.js !VITE_CMD! --config');
+  });
+  it('update.bat drops the build stamp so the next launch rebuilds', () => {
+    expect(read('update.bat')).toContain('.deadfall-build-stamp');
+  });
+  it('the preview server gets the lifecycle and telemetry plugins too', () => {
+    expect(vite.match(/configurePreviewServer/g).length).toBeGreaterThanOrEqual(2);
+    expect(vite).toMatch(/preview: \{\s*port: PORT/);
+  });
+});
