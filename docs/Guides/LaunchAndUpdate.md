@@ -27,7 +27,7 @@ Safe to run repeatedly. Steps, in order:
 2. Packages: `npm install` runs only when `app\node_modules` is missing, the stamp file is missing, or `app\package-lock.json` is newer than the stamp. The stamp is `app\node_modules\.deadfall-install-stamp`, written after a successful install. Fast path (already set up) skips all of this.
 3. Server and browser: if something already listens on port 5199 the server is not started a second time; otherwise the Vite server is started fully hidden (`powershell Start-Process` of a hidden `cmd /c node node_modules\vite\bin\vite.js ...`, stdout and stderr appended to `app\logs\server.log`), it polls up to 30 s for the port, opens the browser (Brave if present, else the default) and closes its own window. If the server never answers it stays open with a plain-English message and the log path.
 
-Flags: `--no-pause` (no waiting for a key) and `--dry-run` (if Node is missing, print the winget command instead of running it).
+Flags: `--no-pause` (no waiting for a key), `--no-browser` (start the server but do not open a browser; for tests) and `--dry-run` (if Node is missing, print the winget command instead of running it).
 
 ## Hidden server, Quit and idle exit
 

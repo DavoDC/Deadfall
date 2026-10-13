@@ -4,7 +4,7 @@ REM Deadfall launcher: double-click to play. Safe to run again and again.
 REM It installs Node.js and the game's packages only when they are missing,
 REM starts the game server (once, fully hidden, no extra window) and opens the game in your browser.
 REM The game has a Quit button that stops the server. Logs: app\logs (launch-<date>.log = this script, server.log = the game server), process id: app\logs\server.pid.
-REM Flags: --no-pause (do not wait at the end), --dry-run (print what
+REM Flags: --no-pause (do not wait at the end), --no-browser (start the server but do not open a browser; for tests), --dry-run (print what
 REM would be installed, change nothing). The port is fixed in app\config\vite.config.js.
 REM Clean-machine rule: only built-in Windows tools plus Node. Never assume git, bash or python.
 REM The Windows folders go first on PATH so a same-named tool elsewhere can never shadow them.
@@ -27,9 +27,11 @@ REM Output of npm and winget goes here, not on screen: the console shows short t
 set "TOOLLOG=%APP%\logs\setup-tools.log"
 set "NOPAUSE="
 set "DRYRUN="
+set "NOBROWSER="
 for %%A in (%*) do (
     if /i "%%A"=="--no-pause" set "NOPAUSE=1"
     if /i "%%A"=="--dry-run" set "DRYRUN=1"
+    if /i "%%A"=="--no-browser" set "NOBROWSER=1"
 )
 
 echo.
@@ -144,6 +146,7 @@ set "WAITED=0"
 :wait_loop
 call :server_up
 if "%SERVER_UP%"=="1" goto :open_browser
+if defined NOBROWSER goto :end_ok
 if %WAITED% GEQ 30 goto :server_slow
 REM ping is the wait: timeout.exe refuses to run when input is redirected.
 "%SystemRoot%\System32\ping.exe" -n 2 127.0.0.1 >nul

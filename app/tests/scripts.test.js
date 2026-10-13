@@ -256,3 +256,11 @@ describe('launch.bat keeps tool noise off the console', () => {
     expect(text).toMatch(/The details are in: %TOOLLOG%/);
   });
 });
+
+describe('launch.bat --no-browser', () => {
+  it('skips opening the browser when asked', () => {
+    const text = read('launch.bat');
+    expect(text).toContain('--no-browser');
+    expect(text).toMatch(/:open_browser\r?\nif defined NOBROWSER goto :end_ok/);
+  });
+});
