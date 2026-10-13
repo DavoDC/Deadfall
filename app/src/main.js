@@ -15,6 +15,7 @@ import { buildRoosts } from './world/roosts.js';
 import { colliderCount } from './world/colliders.js';
 import { createInput } from './player/input.js';
 import { startPing, quitGame } from './game/serverLink.js';
+import { loadVersion } from './game/versionInfo.js';
 import { shouldShowMenu, resumeButtonLabel, shouldStepSim, shouldRecordTelemetry } from './player/pauseState.js';
 import { createViewmodel } from './weapons/viewmodel.js';
 import { createEffects } from './weapons/effects.js';
@@ -468,7 +469,7 @@ function startRun() {
   lastHurt = null;
   telemetryWasLocked = null;
   telemetryStartPerf = performance.now();
-  telemetry.start({ difficulty: difficultyKey, seed: WORLD.seed });
+  telemetry.start({ difficulty: difficultyKey, seed: WORLD.seed, gameVersion });
   menuEl.classList.add('hidden');
   endEl.classList.add('hidden');
   hudEl.classList.remove('hidden');
@@ -495,6 +496,9 @@ document.getElementById('btn-again').addEventListener('click', startRun);
 // Quit stops the hidden local game server (launch.bat starts it with no window).
 document.getElementById('btn-quit').addEventListener('click', () => quitGame(fetch, document));
 startPing(fetch);
+// Build version: console line + title-screen footer; kept for the telemetry session header.
+let gameVersion = null;
+loadVersion(fetch, document).then((v) => { gameVersion = v ? { sha: v.sha, date: v.date } : null; });
 
 function syncPauseMenu() {
   const show = shouldShowMenu(game.state, input.state.locked);

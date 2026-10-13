@@ -13,6 +13,8 @@ set "START_TIME=%TIME%"
 set "PORT=5199"
 set "LAUNCH_URL=http://localhost:%PORT%"
 set "APP=%~dp0..\app"
+for %%I in ("%~dp0..") do set "ROOT=%%~fI"
+set "VERTOOL=%APP%\src\tools\version.ps1"
 set "STAMP=%APP%\node_modules\.deadfall-install-stamp"
 set "NOPAUSE="
 set "DRYRUN="
@@ -25,6 +27,22 @@ echo.
 echo   ========================================
 echo          DEADFALL  -  getting ready
 echo   ========================================
+echo.
+
+REM Version (commit id + date): see docs\Guides\LaunchAndUpdate.md. A ZIP copy has it stamped in app\VERSION.
+set "DF_SHA=unknown"
+set "DF_DATE="
+if exist "%VERTOOL%" (
+    for /f "tokens=1,2" %%a in ('powershell -NoProfile -ExecutionPolicy Bypass -File "%VERTOOL%" -Root "%ROOT%" 2^>nul') do (
+        set "DF_SHA=%%a"
+        set "DF_DATE=%%b"
+    )
+)
+if "!DF_SHA!"=="unknown" (
+    echo   Version: unknown ^(not a release copy^)
+) else (
+    echo   Version: !DF_SHA:~0,7! ^(!DF_DATE:~0,10!^)
+)
 echo.
 
 if not exist "%APP%\package.json" (
@@ -103,7 +121,7 @@ echo   [3/3] Starting the game...
 call :server_up
 if "%SERVER_UP%"=="1" goto :already_running
 if not exist "%APP%\captures" mkdir "%APP%\captures" >nul 2>nul
-echo [%DATE% %TIME%] launch.bat starting the game server>> "%APP%\captures\launcher.log"
+>> "%APP%\captures\launcher.log" echo [%DATE% %TIME%] launch.bat starting the game server, version !DF_SHA! !DF_DATE!
 set "DF_SERVER_ARGS=/c node node_modules\vite\bin\vite.js --config config\vite.config.js >> captures\launcher.log 2>&1"
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath $env:ComSpec -ArgumentList $env:DF_SERVER_ARGS -WorkingDirectory $env:APP -WindowStyle Hidden" >nul 2>nul
 set "WAITED=0"

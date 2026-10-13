@@ -150,6 +150,7 @@ rmdir /s /q "%WORK%" >nul 2>nul
 
 :after_update
 echo   [3/3] Finishing up...
+call :show_version
 call :lock_hash
 if not "%HASH_BEFORE%"=="%LOCK_HASH%" (
     del "%STAMP%" >nul 2>nul
@@ -158,6 +159,7 @@ if not "%HASH_BEFORE%"=="%LOCK_HASH%" (
 echo.
 echo   ========================================
 echo     %CHANGED_LINE%
+if defined NOW_LINE echo     !NOW_LINE!
 echo   ========================================
 echo.
 if defined NOPAUSE exit /b 0
@@ -175,6 +177,20 @@ if not defined NOPAUSE (
 exit /b 1
 
 REM ---------- helpers ----------
+:show_version
+REM Reads the version after the update: a ZIP copy has it stamped in the freshly copied app\VERSION, a clone asks git.
+set "NOW_LINE="
+set "VSHA=unknown"
+set "VDATE="
+if not exist "%ROOT%\app\src\tools\version.ps1" exit /b 0
+for /f "tokens=1,2" %%a in ('powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\app\src\tools\version.ps1" -Root "%ROOT%" 2^>nul') do (
+    set "VSHA=%%a"
+    set "VDATE=%%b"
+)
+if "!VSHA!"=="unknown" exit /b 0
+set "NOW_LINE=Now on version !VSHA:~0,7! (!VDATE:~0,10!)"
+exit /b 0
+
 :stop_server
 REM A running (hidden) game server would keep its files locked: close it first.
 set "STOP_FAILED=0"

@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import { idleMinutesFromEnv, createIdleWatch, isLocalRequest } from '../src/server/lifecycle.js';
 import { writeSession, writeFrame, writeCapture } from '../src/server/telemetryStore.js';
+import { readVersion } from '../src/server/version.js';
 
 // Project root is app/ (this file lives in app/config/).
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -99,12 +100,16 @@ function telemetryPlugin() {
 // this server with no window, so the page must be able to stop it:
 //   GET  /api/ping  - the open page says "still here" every ~30 s (not logged)
 //   POST /api/quit  - the Quit button; answers 204, then the process exits
+//   GET  /api/version - the build version {sha, date, short, label}, read once at server start (app/VERSION or git)
 // If no page pings for DEADFALL_IDLE_MINUTES (default 10) the server exits by
 // itself so a closed tab never leaves an orphan. captures/server.pid holds the
 // node PID while it runs; captures/launcher.log gets one line per lifecycle event.
 function lifecyclePlugin() {
   const capturesDir = path.join(ROOT, 'captures');
   const pidFile = path.join(capturesDir, 'server.pid');
+  // computed once at start: never spawn git per request
+  const version = readVersion(path.resolve(ROOT, '..'));
+  const versionJson = JSON.stringify(version);
 
   // Lifecycle events go to stdout: launch.bat redirects stdout to captures/launcher.log, and a second
   // writer appending to that file would be overwritten by the redirected handle.
@@ -127,6 +132,15 @@ function lifecyclePlugin() {
   }
 
   function attach(server) {
+    server.middlewares.use((req, res, next) => {
+      if (req.url === '/api/version' && req.method === 'GET') {
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Cache-Control', 'no-store');
+        res.end(versionJson);
+        return;
+      }
+      next();
+    });
     // vitest also builds a dev server from this config: never write a PID file or self-exit there
     if (process.env.VITEST) return;
     const idleMinutes = idleMinutesFromEnv(process.env);
@@ -166,6 +180,7 @@ function lifecyclePlugin() {
         // the PID file is a convenience for update.bat; the server still works without it
       }
       log(`server listening (pid ${process.pid}, idle exit after ${idleMinutes} min)`);
+      log(`version ${version.sha ?? version.label} ${version.date ?? ''}`.trimEnd());
     };
     if (server.httpServer) server.httpServer.once('listening', start);
 

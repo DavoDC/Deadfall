@@ -89,6 +89,7 @@ export function createTelemetry() {
       endedAt: null,
       difficulty: meta.difficulty ?? null,
       seed: meta.seed ?? null,
+      gameVersion: meta.gameVersion ?? null, // {sha, date} of the build that produced this run (the `version` field is the schema number)
       outcome: null,             // 'extracted' | 'died' | null (still running)
       kills: 0,
       deaths: [],                // {time, pos, cause, enemy, waypoint}

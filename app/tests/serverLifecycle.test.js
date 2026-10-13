@@ -79,3 +79,29 @@ describe('serverLink', () => {
     expect(f).toHaveBeenCalledWith('/api/quit', { method: 'POST' });
   });
 });
+
+describe('GET /api/version in the lifecycle plugin', () => {
+  async function call(method, url) {
+    const cfg = (await import('../config/vite.config.js')).default;
+    const plugin = cfg.plugins.find((p) => p.name === 'deadfall-lifecycle');
+    const stack = [];
+    plugin.configureServer({ middlewares: { use: (fn) => stack.push(fn) }, httpServer: null });
+    const res = { headers: {}, setHeader(k, v) { this.headers[k] = v; }, end(body) { this.body = body; } };
+    const next = vi.fn();
+    stack[0]({ url, method }, res, next);
+    return { res, next };
+  }
+  it('answers the build version as JSON, also on the preview server hook', async () => {
+    const { res, next } = await call('GET', '/api/version');
+    expect(next).not.toHaveBeenCalled();
+    expect(res.headers['Content-Type']).toBe('application/json');
+    const v = JSON.parse(res.body);
+    expect(Object.keys(v).sort()).toEqual(['date', 'label', 'sha', 'short', 'source']);
+    const cfg = (await import('../config/vite.config.js')).default;
+    expect(typeof cfg.plugins.find((p) => p.name === 'deadfall-lifecycle').configurePreviewServer).toBe('function');
+  });
+  it('passes every other request on', async () => {
+    const { next } = await call('GET', '/api/ping');
+    expect(next).toHaveBeenCalled();
+  });
+});
