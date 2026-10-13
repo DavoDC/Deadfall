@@ -124,7 +124,7 @@ if defined NEED_INSTALL (
     if not "!NPM_RC!"=="0" (
         echo.
         echo   [PROBLEM] The game's packages did not install. Check your internet connection and try again.
-        echo             The details are in: %TOOLLOG%
+        echo             The details are in: !TOOLLOG!
         goto :fail
     )
     echo installed %DATE% %TIME%> "%STAMP%"
@@ -229,7 +229,7 @@ popd
 if not "!BUILD_RC!"=="0" (
     echo.
     echo   [PROBLEM] The game could not be prepared. Please run update.bat, then try again.
-    echo             The details are in: %TOOLLOG%
+    echo             The details are in: !TOOLLOG!
     set "BUILD_FAILED=1"
     exit /b 0
 )

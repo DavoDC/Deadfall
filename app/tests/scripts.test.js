@@ -25,6 +25,13 @@ describe.each(['launch.bat', 'update.bat', 'save-logs.bat'])('scripts/%s', (name
   it('supports --no-pause', () => {
     expect(text).toContain('--no-pause');
   });
+
+  // A folder like "Deadfall-main (2)" breaks any %VAR% expanded inside an if ( ... ) block.
+  it('never expands %VAR% in an indented echo (use !VAR! inside blocks)', () => {
+    const bad = text.split(/\r?\n/).filter((l) => /^\s{4,}echo\b/i.test(l)
+      && /%(?!DATE%|TIME%|~)[A-Za-z_]+%/.test(l.replace(/"[^"]*"/g, "")));
+    expect(bad).toEqual([]);
+  });
 });
 
 describe('launch.bat', () => {
@@ -253,7 +260,7 @@ describe('launch.bat keeps tool noise off the console', () => {
   });
   it('prints Done. after first-time setup and names the log when npm fails', () => {
     expect(text).toMatch(/echo {9}Done\./);
-    expect(text).toMatch(/The details are in: %TOOLLOG%/);
+    expect(text).toMatch(/The details are in: !TOOLLOG!/);
   });
 });
 
