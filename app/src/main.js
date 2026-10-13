@@ -40,7 +40,7 @@ import { createRecorderAPI } from './capture/recorder.js';
 import { createCinematic } from './game/cinematic.js';
 import { createPipeline } from './render/pipeline.js';
 import { createTelemetry, DAMAGE_SPIKE_THRESHOLD } from './game/telemetry.js';
-import { createCoalescedSender } from './game/telemetrySender.js';
+import { createSessionFlusher } from './game/telemetrySender.js';
 
 const app = document.getElementById('app');
 
@@ -201,16 +201,31 @@ let telemetryWasLocked = null;
 // can clobber endRun()'s final state on disk (caught during end-to-end
 // verification). Frame posts do not need this: each frame is written to
 // its own uniquely-timestamped file, so there is nothing to overwrite.
-const sessionSender = createCoalescedSender(() => {
-  const body = telemetry.toJSON();
-  if (!body) return null;
-  return fetch('/telemetry', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true,
-  });
+// Flush policy (docs/References/Telemetry.md): the session is saved on a
+// ~3 s timer while playing, immediately on every notable moment (kill,
+// damage, waypoint, death, extraction, pause/resume, quit, start) and on
+// visibilitychange / pagehide / beforeunload. Each flush sends only what the
+// server does not have yet (telemetryDelta.js), one request at a time with a
+// timeout, so a slow or failed request can never wedge the stream.
+const sessionFlusher = createSessionFlusher({
+  telemetry,
+  post: async (body, { keepalive }) => {
+    const res = await fetch('/telemetry', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive,
+      signal: AbortSignal.timeout(7000),
+    });
+    let json = null;
+    try { json = await res.json(); } catch { /* no body */ }
+    return { ok: res.ok, status: res.status, json };
+  },
 });
 function postTelemetrySession() {
-  sessionSender.trigger();
+  sessionFlusher.flush();
 }
+telemetry.setNotifier((reason) => {
+  if (reason === 'kill' || reason === 'damage') sessionFlusher.soft();
+  else sessionFlusher.flush();
+});
 
 // Downscaled (~640px wide) JPEG of the current frame, via an offscreen
 // canvas so the full-res render target is never touched. Returns null
@@ -240,24 +255,31 @@ function postFrame() {
   const t = Math.round(game.time * 100) / 100;
   fetch('/telemetry/frame', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ startedAt, t, dataURL }), keepalive: true,
+    body: JSON.stringify({ startedAt, t, dataURL }),
   }).catch(() => {});
 }
 
-// last-gasp flush on tab close/refresh - sendBeacon survives page unload
-// where a plain fetch can get cancelled mid-flight
-window.addEventListener('pagehide', () => {
-  if (!telemetry.log || !navigator.sendBeacon) return;
-  const body = telemetry.toJSON();
-  if (!body) return;
-  try {
-    navigator.sendBeacon('/telemetry', new Blob([body], { type: 'application/json' }));
-  } catch { /* best-effort only */ }
+// last-gasp flush when the page goes away - sendBeacon survives unload where
+// a plain fetch can get cancelled. A run still in progress is closed as
+// abandoned / tab-closed so the file says how it ended.
+function lastGasp() {
+  if (!telemetry.log) return;
+  if (telemetry.recording) telemetry.stop('tab-closed');
+  sessionFlusher.beacon((body) => navigator.sendBeacon
+    && navigator.sendBeacon('/telemetry', new Blob([body], { type: 'application/json' })));
+}
+window.addEventListener('pagehide', lastGasp);
+window.addEventListener('beforeunload', lastGasp);
+document.addEventListener('visibilitychange', () => {
+  if (!telemetry.recording) return;
+  telemetry.recordEvent(document.hidden ? 'tab-hidden' : 'tab-visible');
+  if (document.hidden) sessionFlusher.beacon((body) => navigator.sendBeacon
+    && navigator.sendBeacon('/telemetry', new Blob([body], { type: 'application/json' })));
 });
 
-// periodic drip - covers everything that is not an explicit event (path,
+// periodic save - covers everything that is not an explicit event (path,
 // state samples, input aggregates accumulating during ordinary play)
-setInterval(() => { if (telemetry.recording) postTelemetrySession(); }, 1000);
+setInterval(() => { if (telemetry.recording) postTelemetrySession(); }, 3000);
 setInterval(() => { if (telemetry.recording) postFrame(); }, 10000);
 
 const ui = {
@@ -277,7 +299,6 @@ const ui = {
       time: game.time, amount, source,
       pos: srcPos ? { x: srcPos.x, y: srcPos.y, z: srcPos.z } : null,
     });
-    postTelemetrySession();
     if (amount >= DAMAGE_SPIKE_THRESHOLD) postFrame();
   },
   onDeath() {
@@ -428,7 +449,7 @@ function endRun(extracted) {
   hudEl.classList.add('hidden');
   endEl.classList.remove('hidden');
   if (telemetry.recording) {
-    telemetry.stop();
+    telemetry.stop(extracted ? 'extracted' : 'death');
     console.log(telemetry.summaryLine());
   }
   // guardrail: a died/extracted run always leaves its FINAL state (endedAt,
@@ -494,7 +515,11 @@ btnStart.addEventListener('click', () => {
 });
 document.getElementById('btn-again').addEventListener('click', startRun);
 // Quit stops the hidden local game server (launch.bat starts it with no window).
-document.getElementById('btn-quit').addEventListener('click', () => quitGame(fetch, document));
+document.getElementById('btn-quit').addEventListener('click', () => {
+  // QUIT from the pause menu mid-run: save the ending BEFORE the server stops
+  if (telemetry.recording) telemetry.stop('quit');
+  sessionFlusher.drain().then(() => quitGame(fetch, document));
+});
 startPing(fetch);
 // Build version: console line + title-screen footer; kept for the telemetry session header.
 let gameVersion = null;
@@ -907,6 +932,8 @@ window.__deadfall = {
   // the session JSON, .summaryLine() for the one-line console readout,
   // .log for the live object (readable mid-run without stopping).
   telemetry,
+  // save stats (sent, failed, bytes, ms) for measuring flush cost
+  telemetryFlusher: sessionFlusher,
 };
 console.log('[deadfall] ready (round 2)');
 

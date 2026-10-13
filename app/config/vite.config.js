@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import { idleMinutesFromEnv, createIdleWatch, isLocalRequest } from '../src/server/lifecycle.js';
-import { writeSession, writeFrame, writeCapture } from '../src/server/telemetryStore.js';
+import { createSessionStore, writeFrame, writeCapture } from '../src/server/telemetryStore.js';
 import { readVersion } from '../src/server/version.js';
 
 // Project root is app/ (this file lives in app/config/).
@@ -21,6 +21,7 @@ const PORT = Number(process.env.DEADFALL_PORT) || 5199;
 // into the dev server.
 function telemetryPlugin() {
   const telemetryDir = path.join(ROOT, 'captures', 'telemetry');
+  const sessionStore = createSessionStore(telemetryDir);
 
   function readBody(req) {
     return new Promise((resolve, reject) => {
@@ -55,9 +56,11 @@ function telemetryPlugin() {
           try {
             const body = await readBody(req);
             const payload = JSON.parse(body);
-            writeSession(telemetryDir, payload);
-            res.statusCode = 204;
-            res.end();
+            // delta or legacy full snapshot; resolves once the file is durably written
+            const result = await sessionStore.apply(payload);
+            res.statusCode = result.ok ? 200 : 409;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ lens: result.lens }));
           } catch (err) {
             console.error('[telemetry] /telemetry write failed:', err.message);
             res.statusCode = 500;

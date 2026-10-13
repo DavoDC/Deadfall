@@ -20,7 +20,7 @@ describe('telemetry: recording lifecycle', () => {
     expect(t.log.difficulty).toBe('hunter');
     expect(t.log.seed).toBe(1337);
     expect(t.log.startedAt).toBeGreaterThan(0);
-    expect(t.log.outcome).toBe(null);
+    expect(t.log.outcome).toBe('in-progress');
   });
 
   it('start() while already recording resets to a fresh log (new run = new session)', () => {

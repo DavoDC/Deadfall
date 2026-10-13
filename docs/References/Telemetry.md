@@ -6,16 +6,30 @@ What the game records during a human playtest, how it reaches disk, and how to r
 
 The page posts fire-and-forget (never blocks a frame, failures are silent) to the local server. The same endpoints exist in both launcher modes (the Vite dev server and the `vite preview` server used in player mode), defined in `app/config/vite.config.js`; the write logic is `app/src/server/telemetryStore.js`.
 
-- `POST /telemetry`: JSON session. Written to `app/captures/telemetry/session-<startedAt>.json` and mirrored to `latest.json`, overwritten as the session updates. Posted about every second, after notable events and at run end, through a coalescing sender so a stale snapshot never overwrites the final state. A last-gasp `sendBeacon` runs on tab close.
+- `POST /telemetry`: the session, as a delta (see Flush behaviour). The server holds the session in memory, merges each delta, stamps `lastSavedAt`, and writes `app/captures/telemetry/session-<startedAt>.json` plus the mirror `latest.json` atomically (temp file, then rename), so a crash can never leave a half-written file. The answer is `{lens}`, the array lengths the server now holds; HTTP 409 means the server lacks data the client believes it sent, and the client resends from the lengths in the answer. A full legacy snapshot (an older client) is still accepted and stored whole.
 - `POST /telemetry/frame`: `{startedAt, t, dataURL}`. A JPEG about 640 px wide (quality 0.6) written to `app/captures/telemetry/frames/<startedAt>/<t>.jpg`. Sent every 10 s while recording, plus on a damage spike, death, run end and the flood surge.
 - `POST /telemetry/capture`: `{subdir, filename, dataURL}`. Named captures from the recorder and screenshot rig, written to `app/captures/telemetry/<subdir>/<filename>`.
 
 Telemetry text (session JSON) stays under `app/captures/telemetry/` next to its frames; script and server logs live in `app/logs/`. Both folders are gitignored.
 
+## Flush behaviour
+
+The session is saved, never held until the end:
+
+- On a 3 s timer while a run is recording.
+- Immediately on every notable moment: run start, waypoint, death, extraction, pause and resume, tab hidden or visible, run end. Kills and damage taken are throttled to one save per 0.5 s with a trailing save, so a firefight cannot flood the server.
+- On `visibilitychange` (hidden), `pagehide` and `beforeunload`, with `navigator.sendBeacon`. Closing the tab ends the session as `outcome: "abandoned"`, `endReason: "tab-closed"`.
+- QUIT from the pause menu records `endReason: "quit"` and waits for the save before stopping the server.
+
+Each save sends only what the server does not hold yet: every scalar field in full (small), and for each array the entries from the last length the server confirmed (`{delta, startedAt, seq, scalars, arrays: {name: {from, items}}}`, built by `app/src/game/telemetryDelta.js`). Writing entries at fixed indices makes a repeated or reordered request harmless, and scalars from an older `seq` are ignored, so a late stale request cannot undo the final state. Only one request is in flight; it has a timeout, so a hung request cannot stall later saves. The body stays far below the 64 KiB limit browsers put on keepalive and beacon requests; the earlier design posted the whole pretty-printed session with keepalive, the first snapshot over 64 KiB was rejected silently, and a real playtest froze on disk at its first 78 s. Entries that change after being sent (the encounter log) are resent from their first changed index.
+
+Every file on disk is valid and complete so far. While a run is going, `outcome` is `"in-progress"` and `endedAt` is null; `lastSavedAt` (server clock, ms) moves on every write. A file that stays `in-progress` with an old `lastSavedAt` means the game or browser died: the run was abandoned or crashed. Files from before this change have `outcome: null`, no `endReason` and no `lastSavedAt`, and read the same way.
+
 ## Session JSON fields
 
-- Run metadata, `startedAt`, `endedAt`, `outcome`, difficulty, seed.
-- `deaths`, `damageTaken`, `damageTakenBySource`, `damageDealt`, `damageDealtByTarget`, `shots` (fired, hits), `waypoints` (first arrival), `events`, `fps` and `path` (sampled every 2 s).
+- Run metadata: `startedAt`, `endedAt`, `lastSavedAt`, `outcome` (`in-progress`, `extracted`, `died`, `abandoned`), `endReason` (`extracted`, `death`, `quit`, `tab-closed`, `unknown`), difficulty, seed, `gameVersion`.
+- `deaths`, `damageTaken`, `damageTakenBySource`, `damageDealt`, `damageDealtByTarget`, `shots` (fired, hits), `waypoints` (first arrival), `events`, `fps` (sampled every 2 s).
+- `path`: the route, one point per second `{time, x, z, y, yaw}`. About 60 bytes a point, so a 5 minute run adds roughly 18 KB.
 - `inputEdges`: `{t, action, on}` at full fidelity for key and button presses (jump, reload, weapon 1/2/3, swap, grenade throw, fire and aim start and stop).
 - `inputAggregates`: once per second `{t, distance, pctSprint, aimSeconds, lookSpeedMeanDegPerSec, lookSpeedPeakDegPerSec, shots}`.
 - `state`: once per second `{t, pos, yaw, hp, stamina, ammo, weapon, speedMps, slopeDeg, verticalVel, grounded, enemiesNear, threat, fps, frameMs}`.

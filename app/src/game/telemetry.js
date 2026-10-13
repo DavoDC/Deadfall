@@ -31,8 +31,10 @@
 // channels (1s / 10Hz, never per-frame).
 
 import { downloadBlob } from '../capture/recorder.js';
+import { buildDelta } from './telemetryDelta.js';
 
-const SAMPLE_INTERVAL = 2;   // seconds between v1 path/fps samples
+const SAMPLE_INTERVAL = 2;   // seconds between fps samples
+export const PATH_INTERVAL = 1; // seconds between route samples (the player path is the key playtest signal)
 const STATE_INTERVAL = 1;    // seconds between game-state baseline samples
 const INPUT_AGG_INTERVAL = 1; // seconds between human-input aggregate flushes
 
@@ -69,6 +71,7 @@ export function createTelemetry() {
   // v2: independent sample-interval trackers (each channel samples on its
   // own cadence, unlike v1 which read the interval back off log.path).
   let lastPathSampleT = -Infinity;
+  let lastFpsSampleT = -Infinity;
   let lastStateSampleT = -Infinity;
   let lastBurstSampleT = -Infinity;
   let lastInputAggT = -Infinity;
@@ -82,15 +85,27 @@ export function createTelemetry() {
   let prevSustain = {};
   let agg = null;
 
+  // Incremental persistence: notify() tells main.js "something worth saving
+  // just happened" (reason: kill, damage, waypoint, death, event, end, ...);
+  // mods tracks in-place edits to already-sent array entries (see touch()).
+  let notifier = null;
+  let mods = {};
+  let modCounter = 0;
+  function notify(reason) {
+    if (notifier) { try { notifier(reason); } catch { /* never break the game for a save */ } }
+  }
+
   function blankLog(meta) {
     return {
       version: 2,
       startedAt: Date.now(),
       endedAt: null,
+      lastSavedAt: null,         // stamped by the server on every write
+      endReason: null,           // 'extracted' | 'death' | 'quit' | 'tab-closed' | 'unknown' (null while running)
       difficulty: meta.difficulty ?? null,
       seed: meta.seed ?? null,
       gameVersion: meta.gameVersion ?? null, // {sha, date} of the build that produced this run (the `version` field is the schema number)
-      outcome: null,             // 'extracted' | 'died' | null (still running)
+      outcome: 'in-progress',    // 'in-progress' | 'extracted' | 'died' | 'abandoned'
       kills: 0,
       deaths: [],                // {time, pos, cause, enemy, waypoint}
       damageTaken: [],           // {time, amount, source, pos}
@@ -101,7 +116,7 @@ export function createTelemetry() {
       waypoints: [],             // {name, time, pos} - first arrival only
       events: [],                // {time, kind, detail}
       fps: [],                   // {time, fps, frameMs} - sampled every 2s
-      path: [],                  // {time, x, z} - sampled every 2s
+      path: [],                  // {time, x, z, y, yaw} - sampled every 1s
       // v2 channels (docs/References/Telemetry.md):
       inputEdges: [],            // {t, action, on} - full fidelity
       inputAggregates: [],       // 1s: {t, distance, pctSprint, aimSeconds, lookSpeedMeanDegPerSec, lookSpeedPeakDegPerSec, shots}
@@ -114,6 +129,7 @@ export function createTelemetry() {
     log = blankLog(meta);
     lastSampleT = -Infinity;
     lastPathSampleT = -Infinity;
+    lastFpsSampleT = -Infinity;
     lastStateSampleT = -Infinity;
     lastBurstSampleT = -Infinity;
     lastInputAggT = -Infinity;
@@ -122,10 +138,15 @@ export function createTelemetry() {
     prevSustain = {};
     agg = null;
     visitedWaypoints = new Set();
+    mods = {};
+    modCounter = 0;
     recording = true;
+    notify('start');
   }
 
-  function stop() {
+  // reason: why the session ended, stored as log.endReason. A run that ends
+  // without an outcome (quit, tab closed) becomes outcome 'abandoned'.
+  function stop(reason = 'unknown') {
     if (!recording || !log) return null;
     // a died/partial run must leave COMPLETE data on disk - flush whatever
     // is mid-window rather than discarding it (both 2026-07-18 runs lost
@@ -136,7 +157,10 @@ export function createTelemetry() {
     }
     if (agg) flushInputAgg(nowT());
     log.endedAt = Date.now();
+    log.endReason = reason;
+    if (log.outcome === 'in-progress') log.outcome = 'abandoned';
     recording = false;
+    notify('end');
     return log;
   }
 
@@ -178,6 +202,7 @@ export function createTelemetry() {
     const t = time ?? nowT();
     log.deaths.push({ time: t, pos, cause: cause ?? 'unknown', enemy: enemy ?? null, waypoint: waypoint ?? null });
     beginBurst('death', t);
+    notify('death');
   }
 
   function recordDamageTaken({ time, amount, source, pos } = {}) {
@@ -186,6 +211,7 @@ export function createTelemetry() {
     log.damageTaken.push({ time: t, amount, source: source ?? 'unknown', pos: pos ?? null });
     log.damageTakenBySource[source ?? 'unknown'] = (log.damageTakenBySource[source ?? 'unknown'] || 0) + amount;
     if (amount >= DAMAGE_SPIKE_THRESHOLD) beginBurst('damageSpike', t);
+    notify('damage');
   }
 
   function recordDamageDealt({ time, amount, target, headshot, crit } = {}) {
@@ -207,11 +233,13 @@ export function createTelemetry() {
   function recordKill() {
     if (!recording || !log) return;
     log.kills += 1;
+    notify('kill');
   }
 
   function recordEvent(kind, detail = null) {
     if (!recording || !log) return;
     log.events.push({ time: nowT(), kind, detail });
+    notify('event');
   }
 
   // Builds one game-state sample from a ctx object main.js assembles every
@@ -246,9 +274,15 @@ export function createTelemetry() {
     const { time, pos, fps, frameMs, landmarks } = ctx;
     lastSampleT = time;
 
-    if (time - lastPathSampleT >= SAMPLE_INTERVAL) {
+    if (time - lastPathSampleT >= PATH_INTERVAL) {
       lastPathSampleT = time;
-      log.path.push({ time: round2(time), x: round2(pos.x), z: round2(pos.z) });
+      const pt = { time: round2(time), x: round2(pos.x), z: round2(pos.z) };
+      if (pos.y != null) pt.y = round2(pos.y);
+      if (ctx.yaw != null) pt.yaw = round2(ctx.yaw);
+      log.path.push(pt);
+    }
+    if (time - lastFpsSampleT >= SAMPLE_INTERVAL) {
+      lastFpsSampleT = time;
       log.fps.push({ time: round2(time), fps: Math.round(fps), frameMs: round2(frameMs) });
     }
 
@@ -260,6 +294,7 @@ export function createTelemetry() {
         if (dx * dx + dz * dz <= lm.r * lm.r) {
           visitedWaypoints.add(lm.name);
           log.waypoints.push({ name: lm.name, time: round2(time), pos: { x: round2(pos.x), z: round2(pos.z) } });
+          notify('waypoint');
         }
       }
     }
@@ -347,6 +382,19 @@ export function createTelemetry() {
     }
   }
 
+  // The next delta for the server: only what is new since ack (see
+  // telemetryDelta.js). counter is stored by the caller as the new ack.mod
+  // once the server confirms.
+  function delta(ack, seq) {
+    if (!log) return null;
+    return { delta: buildDelta(log, ack, mods, seq), counter: modCounter };
+  }
+
+  // Marks an already-sent array entry as changed so the next delta resends it.
+  function touch(name, index) {
+    (mods[name] || (mods[name] = []))[index] = ++modCounter;
+  }
+
   // HUMAN-ONLY. Triggers a browser download, which lands in the OS Downloads
   // folder. Automation / Claude / subagents MUST NOT call this - it violates the
   // no-Downloads rule. To capture a session programmatically, read the
@@ -382,11 +430,12 @@ export function createTelemetry() {
   }
 
   return {
-    start, stop, setOutcome, download, toJSON, summaryLine,
+    start, stop, setOutcome, delta, touch, download, toJSON, summaryLine,
     recordDeath, recordDamageTaken, recordDamageDealt,
     recordShotFired, recordShotHit, recordKill, recordEvent,
     recordInput,
     tick,
+    setNotifier(fn) { notifier = fn; },
     get recording() { return recording; },
     get log() { return log; },
   };
