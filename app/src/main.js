@@ -41,6 +41,7 @@ import { createCinematic } from './game/cinematic.js';
 import { createPipeline } from './render/pipeline.js';
 import { createTelemetry, DAMAGE_SPIKE_THRESHOLD } from './game/telemetry.js';
 import { createSessionFlusher } from './game/telemetrySender.js';
+import { createEncounterTracker } from './game/encounters.js';
 
 const app = document.getElementById('app');
 
@@ -174,6 +175,39 @@ function applyXray(on) {
 // tick() call below for sampled fps/path/waypoints. See window.__deadfall
 // .telemetry for the console API (start/stop/download/summaryLine).
 const telemetry = createTelemetry();
+const encounters = createEncounterTracker(telemetry);
+
+// Browser / GPU / screen / quality, collected once per run for the session header.
+function collectEnv() {
+  let gpu = null;
+  try {
+    const gl = renderer.getContext();
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    gpu = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+  } catch { /* GPU string unavailable */ }
+  return {
+    userAgent: navigator.userAgent,
+    platform: navigator.platform || null,
+    gpu,
+    screen: { w: screen.width, h: screen.height },
+    viewport: { w: window.innerWidth, h: window.innerHeight },
+    devicePixelRatio: window.devicePixelRatio,
+    renderPixelRatio: renderer.getPixelRatio(),
+    antialias: !!renderer.getContextAttributes()?.antialias,
+    shadows: !!renderer.shadowMap.enabled,
+    cpuThreads: navigator.hardwareConcurrency ?? null,
+    memoryGB: navigator.deviceMemory ?? null,
+    language: navigator.language || null,
+  };
+}
+
+// Uncaught errors and rejected promises, capped inside telemetry.
+window.addEventListener('error', (ev) => {
+  telemetry.recordError({ kind: 'error', message: ev.message, source: ev.filename, line: ev.lineno });
+});
+window.addEventListener('unhandledrejection', (ev) => {
+  telemetry.recordError({ kind: 'unhandledrejection', message: ev.reason && ev.reason.message ? ev.reason.message : ev.reason });
+});
 // landmark positions are resolved once (gates/crossings sit on analytic
 // centre-lines - landmarkPos() is deterministic, no need to recompute
 // every frame) and reused for both the HUD reveal system and telemetry.
@@ -295,6 +329,7 @@ const ui = {
     sfxHurt();
     vignette = 1;
     lastHurt = { amount, srcPos, source };
+    encounters.noteHurt(source, srcPos, amount);
     telemetry.recordDamageTaken({
       time: game.time, amount, source,
       pos: srcPos ? { x: srcPos.x, y: srcPos.y, z: srcPos.z } : null,
@@ -383,6 +418,7 @@ const { game, player, weapons, grenades, enemyMgr, director, pickups, extraction
   const origOnEnemyHit = sim.weaponHooks.onEnemyHit;
   sim.weaponHooks.onEnemyHit = (enemy, dmg, headshot, point, crit) => {
     const res = origOnEnemyHit(enemy, dmg, headshot, point, crit);
+    encounters.noteHit(enemy, weapons.state.current, res === 'kill');
     telemetry.recordDamageDealt({ time: game.time, amount: dmg, target: enemy.type, headshot, crit });
     return res;
   };
@@ -490,7 +526,8 @@ function startRun() {
   lastHurt = null;
   telemetryWasLocked = null;
   telemetryStartPerf = performance.now();
-  telemetry.start({ difficulty: difficultyKey, seed: WORLD.seed, gameVersion });
+  encounters.reset();
+  telemetry.start({ difficulty: difficultyKey, seed: WORLD.seed, gameVersion, env: collectEnv() });
   menuEl.classList.add('hidden');
   endEl.classList.add('hidden');
   hudEl.classList.remove('hidden');
@@ -617,7 +654,9 @@ function tick(now) {
       weapon: wst.current, speedMps: player.p.speedNow,
       slopeDeg, verticalVel: player.p.vel.y, grounded: player.p.grounded,
       enemiesNear: computeEnemiesNear(player.p.pos), threat: director.threat(),
+      extract: extraction.committed ? extraction.progress : null,
     });
+    if (encounters.due(telemetryElapsedT)) encounters.update(telemetryElapsedT, enemyMgr.aliveList(), { x: player.p.pos.x, z: player.p.pos.z, yaw: player.p.yaw });
   }
 
   // Sim advances only under pointer lock: ESC is a real pause, and the

@@ -49,6 +49,7 @@ const BURST_RING_CAP = Math.ceil(BURST_PRE_SEC / BURST_INTERVAL); // 50 samples
 // always trigger, but above routine chip damage (stingerwing touches,
 // prowler pokes) so normal combat does not flood log.bursts.
 export const DAMAGE_SPIKE_THRESHOLD = 15;
+export const MAX_ERRORS = 20;
 
 // Discrete input actions worth full-fidelity edges. Pulse actions are
 // already one-frame-true pulses from input.sample() (jump/reload/weapon
@@ -106,7 +107,11 @@ export function createTelemetry() {
       seed: meta.seed ?? null,
       gameVersion: meta.gameVersion ?? null, // {sha, date} of the build that produced this run (the `version` field is the schema number)
       outcome: 'in-progress',    // 'in-progress' | 'extracted' | 'died' | 'abandoned'
+      env: meta.env ?? null,     // browser, GPU, screen, quality settings (collected once by main.js)
       kills: 0,
+      spawned: {},               // enemy type -> number spawned this run
+      encounters: [],            // one per enemy spawn, see encounters.js (entries are updated in place)
+      errors: [],                // uncaught errors / unhandled rejections, capped at MAX_ERRORS
       deaths: [],                // {time, pos, cause, enemy, waypoint}
       damageTaken: [],           // {time, amount, source, pos}
       damageTakenBySource: {},   // source -> total
@@ -120,7 +125,7 @@ export function createTelemetry() {
       // v2 channels (docs/References/Telemetry.md):
       inputEdges: [],            // {t, action, on} - full fidelity
       inputAggregates: [],       // 1s: {t, distance, pctSprint, aimSeconds, lookSpeedMeanDegPerSec, lookSpeedPeakDegPerSec, shots}
-      state: [],                 // 1s: {t, pos, yaw, hp, stamina, ammo, weapon, speedMps, slopeDeg, verticalVel, grounded, enemiesNear, threat, fps, frameMs}
+      state: [],                 // 1s: {t, pos, yaw, hp, stamina, ammo, weapon, speedMps, slopeDeg, verticalVel, grounded, enemiesNear, threat, extract, fps, frameMs}
       bursts: [],                // [{trigger, triggerT, samples: [...10Hz state samples, 5s before/2s after]}]
     };
   }
@@ -236,6 +241,38 @@ export function createTelemetry() {
     notify('kill');
   }
 
+  // Encounter log (encounters.js): entries are appended once and then updated
+  // in place, so every update marks the entry changed for the next delta.
+  function addEncounter(entry) {
+    if (!recording || !log) return -1;
+    log.encounters.push(entry);
+    touch('encounters', log.encounters.length - 1);
+    return log.encounters.length - 1;
+  }
+
+  function updateEncounter(index, patch) {
+    if (!recording || !log || !log.encounters[index]) return;
+    Object.assign(log.encounters[index], patch);
+    touch('encounters', index);
+  }
+
+  function setSpawned(counts) {
+    if (!recording || !log) return;
+    log.spawned = { ...counts };
+  }
+
+  // Uncaught error or unhandled rejection; the first MAX_ERRORS are kept.
+  function recordError({ kind, message, source, line } = {}) {
+    if (!log || log.errors.length >= MAX_ERRORS) return;
+    log.errors.push({
+      t: round2(nowT()), kind: kind || 'error',
+      message: String(message ?? '').slice(0, 300),
+      source: source ? String(source).slice(0, 200) : null,
+      line: line ?? null,
+    });
+    notify('error');
+  }
+
   function recordEvent(kind, detail = null) {
     if (!recording || !log) return;
     log.events.push({ time: nowT(), kind, detail });
@@ -261,6 +298,7 @@ export function createTelemetry() {
       grounded: ctx.grounded ?? null,
       enemiesNear: ctx.enemiesNear ?? null,
       threat: ctx.threat != null ? round2(ctx.threat) : null,
+      extract: ctx.extract != null ? round2(ctx.extract) : null,
       fps: ctx.fps != null ? Math.round(ctx.fps) : null,
       frameMs: ctx.frameMs != null ? round2(ctx.frameMs) : null,
     };
@@ -433,6 +471,7 @@ export function createTelemetry() {
     start, stop, setOutcome, delta, touch, download, toJSON, summaryLine,
     recordDeath, recordDamageTaken, recordDamageDealt,
     recordShotFired, recordShotHit, recordKill, recordEvent,
+    addEncounter, updateEncounter, setSpawned, recordError,
     recordInput,
     tick,
     setNotifier(fn) { notifier = fn; },
