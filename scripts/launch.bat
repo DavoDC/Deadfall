@@ -76,6 +76,8 @@ if not defined NEED_INSTALL (
 )
 if defined NEED_INSTALL (
     echo       Setting up the game for the first time. This can take a few minutes...
+    REM Remove the stamp first so an interrupted install is always redone on the next run.
+    del "%STAMP%" >nul 2>nul
     pushd "%APP%"
     call npm install --no-audit --no-fund
     set "NPM_RC=!errorlevel!"
@@ -101,7 +103,7 @@ set "WAITED=0"
 call :server_up
 if "%SERVER_UP%"=="1" goto :open_browser
 if %WAITED% GEQ 40 goto :server_slow
-timeout /t 1 /nobreak >nul
+"%SystemRoot%\System32\timeout.exe" /t 1 /nobreak >nul
 set /a WAITED+=1
 goto :wait_loop
 :server_slow

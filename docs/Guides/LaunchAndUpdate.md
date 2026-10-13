@@ -11,7 +11,7 @@ Requirements: Windows 10 or 11, a modern browser (Brave, Chrome, Edge or Firefox
 
 Windows may show an "unknown publisher" warning on a downloaded `.bat`: click **More info**, then **Run anyway**. The browser tab can stay blank for a few seconds while the server starts. To quit, close the black launcher window.
 
-Updating: download the ZIP again, or double-click `scripts\update.bat`. Game progress lives in the browser, so updating never loses it. Players are never asked to install git or clone; a git clone is a developer route only.
+Updating: to get the latest version, double-click `scripts\update.bat` in the same folder. Game progress lives in the browser, so updating never loses it. Players are never asked to install git or clone; a git clone is a developer route only.
 How the two Windows launchers in `scripts/` work, and how to test them by hand. Both are written for non-technical players: double-click, read friendly status lines, done.
 
 ## launch.bat
@@ -32,6 +32,15 @@ Runs from a temp copy of itself so overwriting `scripts\update.bat` mid-run is s
 - Downloaded ZIP (no `.git`): downloads `https://github.com/DavoDC/Deadfall/archive/refs/heads/main.zip` with PowerShell (TLS 1.2), extracts to a temp folder, and copies over the repo root with `robocopy /E`. Nothing is deleted, and `node_modules`, `captures`, `dist` and `.git` are never touched. The temp folder is removed afterwards.
 - If `app\package-lock.json` changed, the install stamp is deleted so the next `launch.bat` reinstalls packages.
 - Flags: `--no-pause` (questions default to No, nothing is started), `--source "<folder>"` or the `DEADFALL_UPDATE_SOURCE` environment variable (copy from a local folder instead of GitHub, for testing).
+
+## Idempotency
+
+Both scripts are safe to run any number of times. A rerun when nothing needs doing changes nothing and ends cleanly.
+
+- `launch.bat` checks: Node.js 18 or newer is on `PATH` (installs only if not); `app\node_modules` and the stamp exist and the stamp is newer than `app\package-lock.json` (runs `npm install` only if not); something already listens on port 5199 (starts a server only if not). A rerun therefore just opens the browser.
+- The stamp `app\node_modules\.deadfall-install-stamp` is deleted before `npm install` and written only after it succeeds, so a killed install leaves no stamp and the next run redoes it.
+- `update.bat` is a no-op when already current: git says "Already up to date", and the ZIP path copies only files that differ (robocopy skips same size and time). It then prints "You are already up to date." If the incoming `package-lock.json` differs, the stamp is deleted before copying, so an interrupted copy is completed by a rerun and packages are reinstalled by the next `launch.bat`.
+- Rule for changes: keep this contract, and re-verify any script change by running it twice and comparing `git status` plus a file-hash listing.
 
 ## Manual test checklist
 

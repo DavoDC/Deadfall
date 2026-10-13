@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const APP = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const ROOT = resolve(APP, '..');
 
-const ALLOWED_ROOT_FILES = ['.gitignore', 'LICENSE', 'README.md', 'CLAUDE.md'];
+const ALLOWED_ROOT_FILES = ['.gitignore', '.gitattributes', 'LICENSE', 'README.md', 'CLAUDE.md'];
 const ALLOWED_ROOT_DIRS = [
   'app', 'docs', 'scripts',
   // local, gitignored or tool-owned

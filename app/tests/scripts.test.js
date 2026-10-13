@@ -40,6 +40,16 @@ describe('launch.bat', () => {
     expect(text).toContain('--dry-run');
   });
 
+  it('clears the stamp before npm install and writes it only after success', () => {
+    const del = text.indexOf('del "%STAMP%"');
+    const install = text.indexOf('call npm install');
+    const fail = text.indexOf('goto :fail', install);
+    const write = text.indexOf('> "%STAMP%"');
+    expect(del).toBeGreaterThan(-1);
+    expect(del).toBeLessThan(install);
+    expect(fail).toBeLessThan(write);
+  });
+
   it('checks the fixed dev port before starting a second server', () => {
     expect(text).toContain('set "PORT=5199"');
     expect(text).toContain('LISTENING');
@@ -56,6 +66,11 @@ describe('update.bat', () => {
 
   it('never overwrites installed packages, captures or the build output', () => {
     expect(text).toMatch(/robocopy .*\/XD node_modules captures dist/);
+  });
+
+  it('drops the install stamp before copying when the lock differs, and reports up to date', () => {
+    expect(text.indexOf('del "%STAMP%"')).toBeLessThan(text.indexOf('robocopy "%NEWDIR%"'));
+    expect(text).toContain('You are already up to date.');
   });
 
   it('resets the install stamp when the package lock changed and updates from a temp copy', () => {

@@ -97,7 +97,7 @@ if not "%PULL_RC%"=="0" (
 del "%TEMP%\deadfall-pull.txt" >nul 2>nul
 for /f "delims=" %%h in ('git -C "%ROOT%" rev-parse HEAD 2^>nul') do set "NEW_HEAD=%%h"
 if "%OLD_HEAD%"=="%NEW_HEAD%" (
-    set "CHANGED_LINE=You already have the newest version."
+    set "CHANGED_LINE=You are already up to date."
 ) else (
     for /f "delims=" %%s in ('git -C "%ROOT%" diff --shortstat %OLD_HEAD% %NEW_HEAD% 2^>nul') do set "CHANGED_LINE=Updated:%%s."
     if not defined CHANGED_LINE set "CHANGED_LINE=Updated to the newest version."
@@ -138,6 +138,12 @@ if not exist "%NEWDIR%\app\package.json" (
 )
 
 :zip_copy
+REM If the incoming package-lock differs, drop the install stamp BEFORE copying so an interrupted copy still triggers a reinstall.
+set "KEEP_LOCK=%LOCK%"
+set "LOCK=%NEWDIR%\app\package-lock.json"
+call :lock_hash
+set "LOCK=%KEEP_LOCK%"
+if not "%LOCK_HASH%"=="%HASH_BEFORE%" del "%STAMP%" >nul 2>nul
 echo [2/3] Copying the new files in ^(your other files and installed packages are left alone^)...
 robocopy "%NEWDIR%" "%ROOT%" /E /XD node_modules captures dist .git /NJH /NJS /NDL /NP /NC /NS /R:1 /W:1 > "%WORK%\robocopy.txt"
 set "ROBO_RC=%errorlevel%"
@@ -150,7 +156,7 @@ if %ROBO_RC% GEQ 8 (
 set "COUNT=0"
 for /f %%n in ('findstr /R /C:"[A-Za-z0-9]" "%WORK%\robocopy.txt" ^| find /c /v ""') do set "COUNT=%%n"
 set "CHANGED_LINE=Updated: %COUNT% game files refreshed from the newest version."
-if "%COUNT%"=="0" set "CHANGED_LINE=You already have the newest version."
+if "%COUNT%"=="0" set "CHANGED_LINE=You are already up to date."
 rmdir /s /q "%WORK%" >nul 2>nul
 
 :after_update

@@ -24,7 +24,7 @@ Orientation for anyone working on Deadfall: where things live, how to run them, 
 | `app/index.html` | Vite entry page |
 | `app/config/` | Vite and vitest configuration (`vite.config.js`) |
 | `app/assets/` | Static files served at the site root (Vite `publicDir`), currently the CC0 textures |
-| `scripts/` | End-user launchers only: `launch.bat` (idempotent setup + start) and `update.bat` (git pull or ZIP download) |
+| `scripts/` | End-user launchers only: `launch.bat` (idempotent setup + start) and `update.bat` (git pull or ZIP download); both idempotent, see the Idempotency section of the LaunchAndUpdate guide |
 | `app/src/` | Game code: `audio`, `capture`, `core`, `enemies`, `game`, `player`, `render`, `server`, `weapons`, `world` |
 | `app/src/tools/` | Developer tools: `playtest.mjs`, `critic.mjs`, `analyse-telemetry.mjs`; `once_off/` debug scripts; `textures/` Python texture helpers |
 | `app/tests/` | Vitest suite, including `layout.test.js` which pins the repo conventions |

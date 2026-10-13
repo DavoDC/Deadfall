@@ -23,7 +23,7 @@ Requirements: Windows 10 or 11, a modern browser (Brave, Chrome, Edge or Firefox
 
 Good to know: Windows may say "unknown publisher" the first time. Click **More info**, then **Run anyway**. The browser tab can stay blank for a few seconds while the game starts. To quit, close the black launcher window.
 
-**Updating:** download the ZIP again, or just double-click `scripts\update.bat`. Your game progress lives in your browser, so updating never loses it.
+**Updating:** to get the latest version, double-click `scripts\update.bat` in the same folder. Your game progress lives in your browser, so updating never loses it.
 
 On macOS or Linux: install [Node.js](https://nodejs.org) 18 or newer, then run `npm install` and `npm run dev` inside the `app` folder.
 

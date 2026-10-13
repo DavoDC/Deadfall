@@ -11,6 +11,8 @@ The npm project lives in `app/`; run everything from there.
 - Headless bot: `node src/tools/playtest.mjs --runs 1`
 - Critic sweep: `node src/tools/critic.mjs` (reports land in gitignored `app/captures/critic/`)
 
+Scripts are idempotent: safe to rerun; keep it that way, changes must be re-verified by running twice.
+
 ## Folder map
 
 - Repo root: `.gitignore`, `LICENSE`, `README.md`, `CLAUDE.md`, `docs/`, `scripts/`, `app/` only
