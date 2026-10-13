@@ -33,6 +33,10 @@ Safe to run repeatedly. Steps, in order:
 
 Flags: `--no-pause` (no waiting for a key), `--no-browser` (start the server but do not open a browser; for tests) and `--dry-run` (if Node is missing, print the winget command instead of running it).
 
+## Optional CI
+
+`.github/workflows/ci.yml` is an optional, on-demand guard: it runs on pull requests and when started by hand (Actions tab, Run workflow), never on a push, so pushing is never slowed down and no local git hook exists. One fast job on `windows-latest` (npm cache, superseded runs cancelled, 10 minute limit): `npm ci`, `npm test`, `npm run build` in `app`, then checks that `app/VERSION` still holds the export-subst placeholder, `.gitattributes` still has its rule, `scripts` holds exactly the three launchers and every `.bat` is plain ASCII (so no em or en dashes).
+
 ## Hidden server, Quit and idle exit
 
 - The server writes its own PID to `app\logs\server.pid` (node process, removed on exit) and lifecycle lines (listening, quit requested, idle exit) to stdout, which the launcher redirects to `app\logs\server.log`. Both are gitignored.

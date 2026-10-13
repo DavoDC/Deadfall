@@ -10,7 +10,7 @@ const ROOT = resolve(APP, '..');
 
 const ALLOWED_ROOT_FILES = ['.gitignore', '.gitattributes', 'LICENSE', 'README.md', 'CLAUDE.md'];
 const ALLOWED_ROOT_DIRS = [
-  'app', 'docs', 'scripts',
+  'app', 'docs', 'scripts', '.github',
   // local, gitignored or tool-owned
   '.git', '.claude', 'TEMP',
 ];
@@ -108,5 +108,26 @@ describe('docs conventions', () => {
         expect(existsSync(resolve(dirname(src), target)), `${src} -> ${m[1]}`).toBe(true);
       }
     }
+  });
+});
+
+describe('CI workflow', () => {
+  const ci = readFileSync(join(ROOT, '.github', 'workflows', 'ci.yml'), 'utf8');
+  it('runs on pull requests and by hand only, never on push', () => {
+    expect(ci).toMatch(/^on:\s*\r?\n\s+pull_request:/m);
+    expect(ci).toContain('workflow_dispatch:');
+    expect(ci).not.toMatch(/^\s+push:/m);
+  });
+  it('is one light job: no matrix, npm cache, superseded runs cancelled, short timeout', () => {
+    expect(ci).not.toContain('matrix');
+    expect(ci).toContain('cache: npm');
+    expect(ci).toContain('cancel-in-progress: true');
+    expect(ci).toMatch(/timeout-minutes: 10/);
+  });
+  it('pins every action to a major version', () => {
+    for (const m of ci.matchAll(/uses: (\S+)/g)) expect(m[1]).toMatch(/@v\d+$/);
+  });
+  it('the repo has no local git hooks tracked', () => {
+    expect(existsSync(join(ROOT, '.githooks'))).toBe(false);
   });
 });

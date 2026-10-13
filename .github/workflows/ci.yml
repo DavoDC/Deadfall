@@ -1,0 +1,55 @@
+# Optional, on-demand guard. It runs on the server after a pull request is opened or when started by hand
+# (Actions tab, "Run workflow"); it never runs on a push, so pushing is never slowed down.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install, test and build
+        working-directory: app
+        run: |
+          npm ci --no-fund --no-audit
+          npm test
+          npm run build
+
+      - name: Version stamp placeholder and export-subst rule
+        shell: pwsh
+        run: |
+          $v = (Get-Content -Raw app/VERSION).Trim()
+          if ($v -ne '$Format:%H %cI$') { throw "app/VERSION lost its export-subst placeholder: $v" }
+          if (-not (Select-String -Path .gitattributes -Pattern '^app/VERSION export-subst\s*$' -Quiet)) { throw '.gitattributes lost the app/VERSION export-subst rule' }
+
+      - name: Scripts folder holds exactly the three launchers
+        shell: pwsh
+        run: |
+          $names = (Get-ChildItem scripts -Name | Sort-Object) -join ','
+          if ($names -ne 'launch.bat,save-logs.bat,update.bat') { throw "scripts/ contains: $names" }
+
+      - name: Batch files are ASCII with no em or en dashes
+        shell: pwsh
+        run: |
+          foreach ($f in Get-ChildItem scripts -Filter *.bat) {
+            $bytes = [IO.File]::ReadAllBytes($f.FullName)
+            if ($bytes | Where-Object { $_ -gt 127 }) { throw "$($f.Name) has non-ASCII bytes (em and en dashes included)" }
+          }
