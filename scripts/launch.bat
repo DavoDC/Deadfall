@@ -125,7 +125,7 @@ if defined BRAVE_EXE (
 :end_ok
 echo.
 echo ============================================================
-echo Deadfall is ready at %LAUNCH_URL%
+echo Deadfall is opening in your browser (a few seconds): %LAUNCH_URL%
 echo Close the black "Deadfall Dev Server" window to quit.
 echo ============================================================
 echo.

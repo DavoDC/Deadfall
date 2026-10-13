@@ -4,15 +4,14 @@ How the two Windows launchers in `scripts/` work, and how to test them by hand. 
 
 ## Player steps
 
-Requirements: Windows 10 or 11, a modern browser (Brave, Chrome, Edge or Firefox), and Node.js 18 or newer (`launch.bat` installs Node for you if it is missing).
+Windows only (the launchers are `.bat` files). Requirements: Windows 10 or 11, a modern browser (Brave, Chrome, Edge or Firefox), and Node.js 18 or newer (`launch.bat` installs Node for you through winget if it is missing). The README deliberately says only "Windows 10 or 11 and a modern browser".
 
-1. Download this repo: click the green `<> Code` button at the top of the GitHub page, then **Download ZIP**, and unzip it anywhere (right-click, Extract All).
+1. Click the green Code button, choose Download ZIP, and unzip it anywhere.
 2. Double-click `scripts\launch.bat`. First run installs what the game needs (a minute or two), then it starts the game and opens it in your browser. Next time it starts straight away.
 
-Windows may show an "unknown publisher" warning on a downloaded `.bat`: click **More info**, then **Run anyway**. The browser tab can stay blank for a few seconds while the server starts. To quit, close the black launcher window.
+Windows may show an "unknown publisher" (SmartScreen) warning on a downloaded `.bat`: click More info, then Run anyway (the README keeps this one line). The browser tab can stay blank for a few seconds while the server starts, and closing the black "Deadfall Dev Server" window quits the game; `launch.bat` prints both hints on screen.
 
-Updating: to get the latest version, double-click `scripts\update.bat` in the same folder. Game progress lives in the browser, so updating never loses it. Players are never asked to install git or clone; a git clone is a developer route only.
-How the two Windows launchers in `scripts/` work, and how to test them by hand. Both are written for non-technical players: double-click, read friendly status lines, done.
+Updating: double-click `scripts\update.bat` in the same folder. Game progress lives in the browser (local storage), so do not update mid-round: the dev server reloads on file changes and could interrupt a run. Players are never asked to install git or clone; a git clone is a developer route only.
 
 ## launch.bat
 

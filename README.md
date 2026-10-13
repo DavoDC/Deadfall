@@ -21,7 +21,7 @@ Requirements: Windows 10 or 11 and a modern browser.
 1. Click the green Code button, choose Download ZIP, and unzip it.
 2. Double-click `scripts\launch.bat`.
 
-Good to know: if Windows warns about an unknown publisher, click More info, then Run anyway. The browser tab may stay blank for a few seconds. Close the black window to quit.
+If Windows warns about an unknown publisher, click More info, then Run anyway.
 
 **Updating:** double-click `scripts\update.bat`.
 
