@@ -18,10 +18,8 @@ Find your way north to the beacon, and get out alive.
 
 Requirements: Windows 10 or 11 and a modern browser.
 
-1. Click the green Code button, choose Download ZIP, and unzip it.
+1. [Click here to download the game as a ZIP](https://github.com/DavoDC/Deadfall/archive/refs/heads/main.zip), then unzip it.
 2. Double-click `scripts\launch.bat`.
-
-If Windows warns about an unknown publisher, click More info, then Run anyway.
 
 **Updating:** double-click `scripts\update.bat`.
 
