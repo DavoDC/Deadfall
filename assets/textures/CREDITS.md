@@ -62,7 +62,7 @@ publishes all assets as CC0 (public domain) - see https://ambientcg.com/faq
 ## Directory Structure
 
 ```
-public/textures/
+assets/textures/
   bark-01/
     diffuse.jpg
     normal.png
@@ -125,5 +125,5 @@ To swap any set for a different CC0 asset:
 1. Search https://ambientcg.com/list?q=<material> or https://polyhaven.com/textures
 2. Download the 1K JPG version (zip includes Color/NormalGL/Roughness/AmbientOcclusion)
 3. Rename to diffuse.jpg / normal.png (re-encode as PNG) / roughness.jpg / ao.jpg
-4. Check `du -sh public/textures/` stays under the 25 MB budget
+4. Check `du -sh assets/textures/` stays under the 25 MB budget
 5. Update the entry above with the real asset ID and URL you used

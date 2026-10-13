@@ -1,7 +1,7 @@
 // Telemetry v2 disk persistence - the Node-side half of the flight
 // recorder. Kept separate from vite.config.js's HTTP glue so the actual
 // write/decode logic is unit-testable without spinning up a dev server.
-// See docs/telemetry-v2-spec.md for the full design.
+// See docs/References/TelemetryV2Spec.md for the full design.
 //
 // David plays -> the browser POSTs here (via vite.config.js's
 // configureServer middleware) -> files land in captures/telemetry/ ->

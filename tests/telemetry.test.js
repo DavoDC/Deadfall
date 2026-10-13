@@ -223,7 +223,7 @@ describe('telemetry: summaryLine', () => {
 });
 
 // ---------------------------------------------------------------------
-// v2: HUMAN INPUT (docs/telemetry-v2-spec.md channel 1)
+// v2: HUMAN INPUT (docs/References/TelemetryV2Spec.md channel 1)
 // ---------------------------------------------------------------------
 describe('telemetry v2: recordInput edges', () => {
   it('pulse actions (jump/reload/weapon swap/grenade throw) log one edge per true frame', () => {
@@ -316,7 +316,7 @@ describe('telemetry v2: input aggregates (1s window)', () => {
 });
 
 // ---------------------------------------------------------------------
-// v2: GAME STATE (docs/telemetry-v2-spec.md channel 2)
+// v2: GAME STATE (docs/References/TelemetryV2Spec.md channel 2)
 // ---------------------------------------------------------------------
 describe('telemetry v2: state samples (1s baseline)', () => {
   const fullCtx = (time, overrides = {}) => ({

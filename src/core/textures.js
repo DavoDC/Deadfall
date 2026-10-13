@@ -1,6 +1,6 @@
 // Async texture loading system with fallbacks for headless/missing-file cases.
 // Textures are CC0 from Poly Haven (polyhaven.com) and ambientCG (ambientcg.com).
-// See public/textures/CREDITS.md for provenance.
+// See assets/textures/CREDITS.md for provenance.
 
 import * as THREE from 'three';
 

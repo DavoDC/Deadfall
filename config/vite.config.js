@@ -1,8 +1,12 @@
 import { defineConfig } from 'vite';
 import path from 'node:path';
-import { writeSession, writeFrame, writeCapture } from './src/server/telemetryStore.js';
+import { fileURLToPath } from 'node:url';
+import { writeSession, writeFrame, writeCapture } from '../src/server/telemetryStore.js';
 
-// TELEMETRY V2 (the playtest flight recorder, docs/telemetry-v2-spec.md).
+// Project root is the repo root (this file lives in config/).
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+// TELEMETRY V2 (the playtest flight recorder, docs/References/TelemetryV2Spec.md).
 // David plays -> the client fire-and-forget POSTs here -> files land in
 // gitignored captures/telemetry/ -> Claude reads them off disk. No MCP, no
 // browser, no interrupting the player. The actual write/decode logic lives
@@ -10,7 +14,7 @@ import { writeSession, writeFrame, writeCapture } from './src/server/telemetrySt
 // HTTP glue: read the body, hand it to the pure functions, never throw back
 // into the dev server.
 function telemetryPlugin() {
-  const telemetryDir = path.join(process.cwd(), 'captures', 'telemetry');
+  const telemetryDir = path.join(ROOT, 'captures', 'telemetry');
 
   function readBody(req) {
     return new Promise((resolve, reject) => {
@@ -90,6 +94,8 @@ function telemetryPlugin() {
 }
 
 export default defineConfig({
+  root: ROOT,
+  publicDir: path.join(ROOT, 'assets'),
   plugins: [telemetryPlugin()],
   server: {
     port: 5199,
