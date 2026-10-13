@@ -9,7 +9,7 @@ const read = (name) => readFileSync(join(ROOT, 'scripts', name), 'utf8');
 const DASHES = new RegExp(`[${String.fromCharCode(8211, 8212)}]`);
 const NON_ASCII = new RegExp(`[^${String.fromCharCode(0)}-${String.fromCharCode(127)}]`);
 
-describe.each(['launch.bat', 'update.bat'])('scripts/%s', (name) => {
+describe.each(['launch.bat', 'update.bat', 'save-logs.bat'])('scripts/%s', (name) => {
   const text = read(name);
 
   it('is plain ASCII with no em or en dashes', () => {
@@ -124,7 +124,7 @@ describe('update.bat stops a running server first', () => {
   });
 });
 
-describe.each(['launch.bat', 'update.bat'])('scripts/%s clean-machine rules', (name) => {
+describe.each(['launch.bat', 'update.bat', 'save-logs.bat'])('scripts/%s clean-machine rules', (name) => {
   const text = read(name);
 
   it('puts the built-in Windows folders first on PATH', () => {
@@ -165,5 +165,52 @@ describe.each(['launch.bat', 'update.bat'])('scripts/%s clean-machine rules', (n
       const m = l.match(/^\s*echo (\[\w[^\]]*\].*)$/);
       if (m) expect(l).toMatch(/^\s*echo {3}\[/);
     }
+  });
+});
+
+describe('save-logs.bat', () => {
+  const bat = read('save-logs.bat');
+  const ps = readFileSync(join(ROOT, 'app', 'src', 'tools', 'save-logs.ps1'), 'utf8');
+
+  it('never touches the network (bat and PowerShell worker)', () => {
+    for (const text of [bat, ps]) {
+      expect(text).not.toMatch(/curl|Invoke-WebRequest|Invoke-RestMethod|WebClient|upload|https?:[/][/]/i);
+    }
+  });
+
+  it('ends with the reassurance text and supports a no-Explorer test switch', () => {
+    expect(bat).toContain('Saved to your Desktop. Nothing was');
+    expect(bat).toContain('sent anywhere. Please send me this file.');
+    expect(ps).toContain('DEADFALL_NO_EXPLORER');
+    expect(ps).toContain('explorer.exe');
+  });
+
+  it('resolves the real Desktop, scrubs the user name and profile path on copies, and always makes a new zip', () => {
+    expect(ps).toContain("GetFolderPath('Desktop')");
+    expect(ps).toContain('USERPROFILE');
+    expect(ps).toContain('USERNAME');
+    expect(ps).toContain('IgnoreCase');
+    expect(ps).toContain('Deadfall-logs-');
+    expect(ps).toMatch(/while [(]Test-Path -LiteralPath [$]zipPath[)]/);
+  });
+
+  it('is plain ASCII with no dashes in the PowerShell workers too', () => {
+    for (const f of ['save-logs.ps1', 'version.ps1']) {
+      const text = readFileSync(join(ROOT, 'app', 'src', 'tools', f), 'utf8');
+      expect(NON_ASCII.test(text), f).toBe(false);
+      expect(DASHES.test(text), f).toBe(false);
+    }
+  });
+});
+
+describe('version display in the scripts', () => {
+  it('launch.bat prints the version under the banner and logs the full sha', () => {
+    const text = read('launch.bat');
+    expect(text).toContain('Version: ');
+    expect(text.indexOf('Version: ')).toBeLessThan(text.indexOf('[1/3]'));
+    expect(text).toMatch(/launcher[.]log" echo .*version !DF_SHA!/);
+  });
+  it('update.bat reports the version it ended on', () => {
+    expect(read('update.bat')).toContain('Now on version');
   });
 });

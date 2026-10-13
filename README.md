@@ -23,6 +23,8 @@ Requirements: Windows 10 or 11 and a modern browser.
 
 **Updating:** double-click `scripts\update.bat`.
 
+**Having problems?** Double-click `scripts\save-logs.bat` and send me the ZIP it puts on your Desktop.
+
 ## Controls
 
 WASD move · mouse look · **RMB aim down sights** · Shift sprint · LMB fire · R reload · 1/2/3/Q weapons · G grenade (hold to arc, release to throw) · V machete · Space jump · ESC pause

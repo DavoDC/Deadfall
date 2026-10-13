@@ -22,11 +22,12 @@ Orientation for anyone working on Deadfall: where things live, how to run them, 
 |---|---|
 | `app/` | The npm project: everything below except `docs/` and `scripts/` lives inside it (run every command from here) |
 | `app/index.html` | Vite entry page |
+| `app/VERSION` | Build version: the placeholder `$Format:%H %cI$` in git, expanded to the commit sha and date by GitHub's Download ZIP (export-subst) |
 | `app/config/` | Vite and vitest configuration (`vite.config.js`) |
 | `app/assets/` | Static files served at the site root (Vite `publicDir`), currently the CC0 textures |
-| `scripts/` | End-user launchers only: `launch.bat` (idempotent setup + start) and `update.bat` (git pull or ZIP download); both idempotent, see the Idempotency section of the LaunchAndUpdate guide |
+| `scripts/` | End-user scripts only: `launch.bat` (idempotent setup + start), `update.bat` (git pull or ZIP download) and `save-logs.bat` (scrubbed log ZIP on the Desktop, version stamping: see "Saving logs and versions"); all idempotent, see the Idempotency section of the LaunchAndUpdate guide |
 | `app/src/` | Game code: `audio`, `capture`, `core`, `enemies`, `game`, `player`, `render`, `server`, `weapons`, `world` |
-| `app/src/tools/` | Developer tools: `playtest.mjs`, `critic.mjs`, `analyse-telemetry.mjs`; `once_off/` debug scripts; `textures/` Python texture helpers |
+| `app/src/tools/` | Developer tools: `save-logs.ps1` and `version.ps1` (workers for the .bat scripts), `playtest.mjs`, `critic.mjs`, `analyse-telemetry.mjs`; `once_off/` debug scripts; `textures/` Python texture helpers |
 | `app/tests/` | Vitest suite, including `layout.test.js` which pins the repo conventions |
 | `docs/Guides/` | Procedures a person follows |
 | `docs/References/` | Facts and reasoning |
@@ -52,7 +53,7 @@ node src/tools/analyse-telemetry.mjs         # digest of app/captures/telemetry
 - The level is one seeded analytic height function; the no-straight-line invariants are unit tests.
 - Simulation consumes input intents and entities are plain serializable state.
 - Clean-machine rule: `scripts/*.bat` use only built-in Windows tools plus Node; never assume git, bash, python (see the LaunchAndUpdate guide).
-- The repo root holds only `.gitignore`, `LICENSE`, `README.md`, `CLAUDE.md`, `docs/`, `scripts/` and `app/`. Keep `scripts/` to `launch.bat` and `update.bat` only; tools go under `src/tools/`.
+- The repo root holds only `.gitignore`, `.gitattributes` (CRLF for .bat, export-subst for app/VERSION), `LICENSE`, `README.md`, `CLAUDE.md`, `docs/`, `scripts/` and `app/`. Keep `scripts/` to `launch.bat`, `update.bat` and `save-logs.bat` only; tools go under `src/tools/`.
 - Doc folders are single capitalised words, doc files are PascalCase with acronyms fully capitalised. `app/tests/layout.test.js` enforces this.
 - No em or en dashes and no absolute user paths in docs.
 - Generated output goes in gitignored `app/captures/`, never in the repo root.

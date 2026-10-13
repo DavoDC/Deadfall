@@ -14,7 +14,7 @@ const ALLOWED_ROOT_DIRS = [
   // local, gitignored or tool-owned
   '.git', '.claude', 'TEMP',
 ];
-const ALLOWED_APP_FILES = ['package.json', 'package-lock.json', 'index.html'];
+const ALLOWED_APP_FILES = ['package.json', 'package-lock.json', 'index.html', 'VERSION'];
 const ALLOWED_APP_DIRS = [
   'assets', 'config', 'src', 'tests',
   // local, gitignored
@@ -35,8 +35,16 @@ const docFiles = walk(docsDir);
 const mdFiles = docFiles.filter((f) => f.endsWith('.md'));
 
 describe('repo layout', () => {
-  it('scripts/ contains only the two user-facing launchers', () => {
-    expect(readdirSync(join(ROOT, 'scripts'))).toEqual(['launch.bat', 'update.bat']);
+  it('scripts/ contains only the three user-facing scripts', () => {
+    expect(readdirSync(join(ROOT, 'scripts'))).toEqual(['launch.bat', 'save-logs.bat', 'update.bat']);
+  });
+
+  it('app/VERSION is stamped by git archive (export-subst) and holds the placeholder or a stamped sha', () => {
+    const attrs = readFileSync(join(ROOT, '.gitattributes'), 'utf8');
+    expect(attrs).toMatch(/^app[/]VERSION export-subst[ ]*$/m);
+    expect(attrs).toContain('*.bat text eol=crlf');
+    const v = readFileSync(join(APP, 'VERSION'), 'utf8').trim();
+    expect(v === '$Format:%H %cI$' || /^[0-9a-f]{40} [^ ]+$/.test(v)).toBe(true);
   });
 
   it('repo root contains only the allowed files and folders', () => {
@@ -57,7 +65,7 @@ describe('repo layout', () => {
   });
 
   it('the npm project is not at the repo root', () => {
-    for (const f of ALLOWED_APP_FILES) expect(existsSync(join(ROOT, f)), f).toBe(false);
+    for (const f of ALLOWED_APP_FILES.filter((x) => x !== 'VERSION')) expect(existsSync(join(ROOT, f)), f).toBe(false);
   });
 
   it('the vite config lives in app/config/', () => {
