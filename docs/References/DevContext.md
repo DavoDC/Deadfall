@@ -12,6 +12,7 @@ Orientation for anyone working on Deadfall: where things live, how to run them, 
 | [Engineering.md](Engineering.md) | How the game is built: height function, sim/presentation split, instancing, audio |
 | [PlaytestAnalysis.md](PlaytestAnalysis.md) | Collecting a friend's logs, reading every field, standard questions, improvements checklist |
 | [Telemetry.md](Telemetry.md) | The playtest flight recorder as built (input, game state, visual channels) |
+| [ResultScreen.md](ResultScreen.md) | The end-of-run screen: its aim (shareable, competitive) and what is built |
 | [DevContext.md](DevContext.md) | This file: doc index, folder map, commands, invariants |
 | [../Guides/HeadlessPlaytest.md](../Guides/HeadlessPlaytest.md) | Running the bot headlessly and the `window.__deadfall` API |
 | [../Guides/ScreenshotRig.md](../Guides/ScreenshotRig.md) | Deterministic screenshots for before/after art grading |
