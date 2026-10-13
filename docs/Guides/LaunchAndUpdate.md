@@ -9,7 +9,7 @@ Windows only (the launchers are `.bat` files). Requirements: Windows 10 or 11, a
 1. Click the green Code button, choose Download ZIP, and unzip it anywhere.
 2. Double-click `scripts\launch.bat`. First run installs what the game needs (a minute or two), then it starts the game and opens it in your browser. Next time it starts straight away.
 
-Windows may show an "unknown publisher" (SmartScreen) warning on a downloaded `.bat`: click More info, then Run anyway (the README keeps this one line). The browser tab can stay blank for a few seconds while the server starts, and closing the black "Deadfall Dev Server" window quits the game; `launch.bat` prints both hints on screen.
+Windows may show an "unknown publisher" (SmartScreen) warning on a downloaded `.bat`: click More info, then Run anyway (the README keeps this one line). The game server runs hidden: there is no black window to keep open or close. Press QUIT in the game (title screen or ESC menu) when you are done.
 
 Updating: double-click `scripts\update.bat` in the same folder. Game progress lives in the browser (local storage), so do not update mid-round: the dev server reloads on file changes and could interrupt a run. Players are never asked to install git or clone; a git clone is a developer route only.
 
@@ -19,9 +19,17 @@ Safe to run repeatedly. Steps, in order:
 
 1. Node.js: needs version 18 or newer. If `node`/`npm` is missing or too old it runs `winget install --id OpenJS.NodeJS.LTS`, then refreshes `PATH` from the registry (and probes `%ProgramFiles%\nodejs`). If Node is still invisible it tells the player to close the window and double-click again. With no winget it points to https://nodejs.org.
 2. Packages: `npm install` runs only when `app\node_modules` is missing, the stamp file is missing, or `app\package-lock.json` is newer than the stamp. The stamp is `app\node_modules\.deadfall-install-stamp`, written after a successful install. Fast path (already set up) skips all of this.
-3. Server and browser: if something already listens on port 5199 the server is not started a second time; the browser (Brave if present, else the default) is just opened.
+3. Server and browser: if something already listens on port 5199 the server is not started a second time; otherwise the Vite server is started fully hidden (`powershell Start-Process` of a hidden `cmd /c node node_modules\vite\bin\vite.js ...`, stdout and stderr appended to `app\captures\launcher.log`), it polls up to 30 s for the port, opens the browser (Brave if present, else the default) and closes its own window. If the server never answers it stays open with a plain-English message and the log path.
 
 Flags: `--no-pause` (no waiting for a key) and `--dry-run` (if Node is missing, print the winget command instead of running it).
+
+## Hidden server, Quit and idle exit
+
+- The server writes its own PID to `app\captures\server.pid` (node process, removed on exit) and lifecycle lines (listening, quit requested, idle exit) to stdout, which the launcher redirects to `app\captures\launcher.log`. Both are gitignored.
+- The page pings GET /api/ping every 30 s (not logged). POST /api/quit (the Quit button) answers 204 and then the process exits; it only accepts loopback sockets with a localhost Host and Origin (403 otherwise). Both endpoints are in the lifecycle plugin in app/config/vite.config.js, for the dev and the preview server, and are skipped under vitest.
+- Idle exit: if no page pings for DEADFALL_IDLE_MINUTES (default 10, fractions allowed) the server exits itself, so a closed tab never leaves an orphan. A developer running npm run dev gets the same behaviour.
+- Stuck server by hand: run `curl.exe -X POST http://localhost:5199/api/quit`, or kill the node process whose id is in server.pid (`taskkill /F /PID <id>`).
+- update.bat closes a running server first (asks /api/quit, falls back to the PID file, checks port 5199 is free) so files are not locked.
 
 ## update.bat
 

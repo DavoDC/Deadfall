@@ -67,7 +67,7 @@ npm install
 npm run dev        # opens on http://localhost:5199
 ```
 
-On Windows, double-clicking `scripts\launch.bat` does the same and opens the browser; it installs Node.js (winget) and packages only when needed, using the stamp `app\node_modules\.deadfall-install-stamp` compared with `app\package-lock.json`. `scripts\update.bat` fetches the latest version (see [../Guides/LaunchAndUpdate.md](../Guides/LaunchAndUpdate.md)). `npm test` runs the unit suite.
+On Windows, double-clicking `scripts\launch.bat` does the same and opens the browser; the server then runs hidden and the in-game Quit button stops it (ping, quit and idle exit are in the lifecycle plugin of app/config/vite.config.js); it installs Node.js (winget) and packages only when needed, using the stamp `app\node_modules\.deadfall-install-stamp` compared with `app\package-lock.json`. `scripts\update.bat` fetches the latest version (see [../Guides/LaunchAndUpdate.md](../Guides/LaunchAndUpdate.md)). `npm test` runs the unit suite.
 
 ## Credits
 

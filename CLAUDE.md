@@ -7,7 +7,7 @@ Browser first-person PVE extraction shooter. Vanilla JS, Three.js, Vite, vitest.
 The npm project lives in `app/`; run everything from there.
 
 - Any platform: `cd app`, `npm install` once, then `npm run dev` (opens http://localhost:5199), `npm run build`, `npm test` (the unit suite)
-- Windows: double-click `scripts\launch.bat` (idempotent: installs Node.js via winget and npm packages only when needed). `scripts\update.bat` fetches the latest (git pull for a clone, ZIP download otherwise). Players use the ZIP route; git clone is a developer route.
+- Windows: double-click `scripts\launch.bat` (idempotent: installs Node.js via winget and npm packages only when needed). `scripts\update.bat` fetches the latest (git pull for a clone, ZIP download otherwise). The server runs hidden (log app\captures\launcher.log, PID app\captures\server.pid); the in-game Quit button (POST /api/quit) stops it, and it exits itself after 10 idle minutes. update.bat stops it first. Players use the ZIP route; git clone is a developer route.
 - Headless bot: `node src/tools/playtest.mjs --runs 1`
 - Critic sweep: `node src/tools/critic.mjs` (reports land in gitignored `app/captures/critic/`)
 
