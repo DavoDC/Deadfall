@@ -1,5 +1,7 @@
 # Deadfall
 
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/G2G31WKOCN)
+
 **A first-person PVE extraction shooter in an Amazonian fever-dream that hunts
 you back - in your browser.**
 
@@ -116,7 +118,7 @@ Vantages cover: insertion beach, dense jungle (west), river crossing, gorge lip,
 
 ## Engineering
 
-Everything is synthesized at runtime - **zero art or audio assets**:
+Geometry, creatures and audio are synthesized at runtime (the only binary assets are six CC0 PBR texture sets):
 
 - One seeded analytic height function IS the level - gorge, crossings, mesa
   and all. Ground collision anywhere is an exact function sample; the
@@ -133,10 +135,8 @@ Everything is synthesized at runtime - **zero art or audio assets**:
 
 Vanilla JS + Three.js + Vite. `npm test` for the unit suite.
 
-*Round 1 built the game in one autonomous Claude (Fable 5) session
-(2026-07-11); round 2 (2026-07-12) answered the human playtest - real
-challenge, real FPS feel, the fever-dream look, and the headless tooling.
-Round 3 (2026-07-13, the Fable finale) rebuilt the world as physical
-geography, added the Miremother, live weather, the deception layer and the
-trip - with Sonnet subagents building to Fable's specs in parallel.
-See `the central backlog HISTORY.md` for the evidence.*
+*Built with Claude: round 1 (2026-07-11) was one autonomous session; later rounds answered human playtests with real challenge, FPS feel, the fever-dream look, the headless tooling, physical geography, the Miremother, live weather, the deception layer and the trip.*
+
+## License
+
+[PolyForm Noncommercial 1.0.0](LICENSE). Free to play, study and modify for noncommercial use; selling it or building a commercial service on it is not permitted. Textures in `public/textures/` are CC0 from ambientCG (see `public/textures/CREDITS.md`).

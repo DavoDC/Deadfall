@@ -1,6 +1,7 @@
 {
   "name": "deadfall",
   "version": "0.1.0",
+  "license": "SEE LICENSE IN LICENSE",
   "description": "Browser-based first-person PVE extraction shooter set in a hostile jungle",
   "type": "module",
   "scripts": {
