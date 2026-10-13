@@ -9,6 +9,9 @@ import { readVersion } from '../src/server/version.js';
 // Project root is app/ (this file lives in app/config/).
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
+// The game's port. DEADFALL_PORT overrides it (for tests on a machine whose 5199 is busy); players never set it.
+const PORT = Number(process.env.DEADFALL_PORT) || 5199;
+
 // TELEMETRY V2 (the playtest flight recorder, docs/References/TelemetryV2Spec.md).
 // David plays -> the client fire-and-forget POSTs here -> files land in
 // gitignored captures/telemetry/ -> Claude reads them off disk. No MCP, no
@@ -203,7 +206,11 @@ export default defineConfig({
   publicDir: path.join(ROOT, 'assets'),
   plugins: [lifecyclePlugin(), telemetryPlugin()],
   server: {
-    port: 5199,
+    port: PORT,
+    strictPort: true,
+  },
+  preview: {
+    port: PORT,
     strictPort: true,
   },
   build: {

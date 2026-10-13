@@ -202,6 +202,7 @@ exit /b 0
 REM A running (hidden) game server would keep its files locked: close it first.
 set "STOP_FAILED=0"
 set "PORT=5199"
+if defined DEADFALL_PORT set "PORT=%DEADFALL_PORT%"
 set "PIDFILE=%ROOT%\app\logs\server.pid"
 call :port_busy
 if "%BUSY%"=="0" exit /b 0

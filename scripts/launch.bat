@@ -18,6 +18,7 @@ exit /b %errorlevel%
 :logging_ready
 set "START_TIME=%TIME%"
 set "PORT=5199"
+if defined DEADFALL_PORT set "PORT=%DEADFALL_PORT%"
 set "LAUNCH_URL=http://localhost:%PORT%"
 set "APP=%~dp0..\app"
 for %%I in ("%~dp0..") do set "ROOT=%%~fI"
