@@ -1,6 +1,6 @@
 @echo off
-REM Starts the Vite dev server and opens the browser to it, similar to
-REM Constellation's scripts\launch.bat. Port is fixed in config\vite.config.js.
+REM Starts the Vite dev server and opens the browser to it.
+REM Port is fixed in configite.config.js.
 set START_TIME=%TIME%
 set PORT=5199
 set LAUNCH_URL=http://localhost:%PORT%
