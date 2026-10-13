@@ -1,26 +1,37 @@
 # Deadfall
 
-Browser first-person PVE extraction shooter. Vanilla JS, Three.js, Vite, vitest.
+Browser first-person PVE extraction shooter. Vanilla JS, Three.js, Vite, vitest. Needs [Node.js](https://nodejs.org) 18 or newer.
 
 ## Commands
 
-- `npm install` once, then `npm run dev` (http://localhost:5199), `npm run build`, `npm test`
+The npm project lives in `app/`; run everything from there.
+
+- Any platform: `cd app`, `npm install` once, then `npm run dev` (opens http://localhost:5199), `npm run build`, `npm test` (the unit suite)
+- Windows: double-click `scripts\launch.bat`
 - Headless bot: `node src/tools/playtest.mjs --runs 1`
-- Critic sweep: `node src/tools/critic.mjs` (reports land in gitignored `captures/critic/`)
+- Critic sweep: `node src/tools/critic.mjs` (reports land in gitignored `app/captures/critic/`)
 
 ## Folder map
 
-- `config/` Vite and vitest config, `assets/` static files (Vite publicDir)
-- `src/` game code, `src/tools/` dev tools (`once_off/`, `textures/` inside)
-- `scripts/` end-user `launch.bat` only
-- `tests/` vitest, `docs/Guides|References|Images` documentation
-- Full index and rules: `docs/References/DevContext.md`
+- Repo root: `.gitignore`, `LICENSE`, `README.md`, `CLAUDE.md`, `docs/`, `scripts/`, `app/` only
+- `app/`: `package.json`, `index.html`, `config/` (Vite and vitest config), `assets/` (Vite publicDir), `src/` (game code, `src/tools/` dev tools), `tests/`
+- `scripts/` end-user `launch.bat` only; `docs/Guides|References|Images` documentation
+
+## Docs
+
+- [docs/References/DevContext.md](docs/References/DevContext.md): index of every doc, folder map, how to run tests, rules and invariants.
+- [docs/Guides/HeadlessPlaytest.md](docs/Guides/HeadlessPlaytest.md): the headless bot and the `window.__deadfall` API.
+- [docs/Guides/ScreenshotRig.md](docs/Guides/ScreenshotRig.md): deterministic before/after screenshots for art changes.
+- [docs/References/Engineering.md](docs/References/Engineering.md): how the game is built.
+- [docs/References/GameFeatures.md](docs/References/GameFeatures.md): everything in the jungle.
 
 ## Invariants
 
-- `src/game/sim.js` has zero DOM, GPU or audio dependencies; it must run in plain Node.
+- `app/src/game/sim.js` has zero DOM, GPU or audio dependencies; it must run in plain Node.
 - The level is one seeded analytic height function; unit tests pin the no-straight-line rules.
-- Repo root stays minimal; `tests/layout.test.js` pins the layout and doc naming conventions.
+- `app/tests/layout.test.js` pins the layout and doc naming conventions.
 - Docs: capitalised single-word folders, PascalCase file names, no em or en dashes, one paragraph per line.
-- Generated output goes in gitignored `captures/`.
+- Generated output goes in gitignored `app/captures/`.
 - Change code, tests and docs together in one commit.
+
+*Built with Claude: round 1 (2026-07-11) was one autonomous session; later rounds answered human playtests with real challenge, FPS feel, the fever-dream look, the headless tooling, physical geography, the Miremother, live weather, the deception layer and the trip.*

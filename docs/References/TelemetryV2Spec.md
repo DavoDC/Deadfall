@@ -11,13 +11,13 @@ their rich data was LOST. Everything below follows from fixing that.
 
 ## Architecture: POST to the dev server, which writes files
 
-Add a vite `configureServer` middleware in `config/vite.config.js`:
-- `POST /telemetry` - JSON body -> write `captures/telemetry/session-<startedAt>.json`
+Add a vite `configureServer` middleware in `app/config/vite.config.js`:
+- `POST /telemetry` - JSON body -> write `app/captures/telemetry/session-<startedAt>.json`
   (overwrite the same file as the session updates; also mirror to `latest.json`).
 - `POST /telemetry/frame` - JPEG dataURL/blob + timestamp -> write
-  `captures/telemetry/frames/<startedAt>/<t>.jpg`.
-- `POST /telemetry/video` (opt-in) -> write `captures/telemetry/session-<startedAt>.webm`.
-`captures/` is gitignored. Claude then just reads files. No MCP, no browser, no interruption.
+  `app/captures/telemetry/frames/<startedAt>/<t>.jpg`.
+- `POST /telemetry/video` (opt-in) -> write `app/captures/telemetry/session-<startedAt>.webm`.
+`app/captures/` is gitignored. Claude then just reads files. No MCP, no browser, no interruption.
 
 Client posts fire-and-forget (never block a frame, ignore failures, no game impact).
 
@@ -65,4 +65,4 @@ menu time. A died run must leave a complete file on disk (both 2026-07-18 runs l
 - Fire-and-forget POSTs, coalesced; never block the render loop; failures are silent.
 - Keep a session JSON readable by a human and by Claude without blowing context - target
   well under a megabyte for a 6-minute run; frames live as separate files.
-- Never write to Downloads (workspace rule); everything goes to gitignored `captures/`.
+- Never write to Downloads (workspace rule); everything goes to gitignored `app/captures/`.

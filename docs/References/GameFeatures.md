@@ -10,3 +10,9 @@
 - **Ayahuasca is a real trip.** Drink the vine: the world warps and breathes, the jungle writhes, and every creature GLOWS THROUGH the foliage - x-ray perception, 25 seconds, on top of speed and healing.
 - **Named ground.** The Rapids, Cinder Fang, Bonebridge, the Sunken Maw - location reveals as you discover them, and an ember-tipped spire you can navigate by from anywhere in the north.
 - **The birds know first.** Birdsong thins as something closes in; below it a drone swells. The silence is the warning.
+
+## Original pitch
+
+The first README intro, kept verbatim:
+
+One run, one question: which way north? Insert at the southern treeline and pick your way through a world that is all walls and choices - a mountain Palisade with three gates, a flooded razorfin gorge with three sills, a highlands cliff with two ways up - while storms, fog banks and the threat director hunt you. At the end, a flooded moat, the thing that lives in it, and one drowned stair to the extraction beacon. Die or extract - either way the run is a complete story.
