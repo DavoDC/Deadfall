@@ -114,7 +114,7 @@ if defined SRC (
     set "NEWDIR=!SRC!"
     goto :zip_copy
 )
-echo   [1/3] Downloading the newest version...
+echo   [1/3] Downloading the newest version (a minute or so, please wait)... 
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference = 'SilentlyContinue'; try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -UseBasicParsing -Uri $env:ZIPURL -OutFile ($env:WORK + '\main.zip'); Expand-Archive -LiteralPath ($env:WORK + '\main.zip') -DestinationPath ($env:WORK + '\extract') -Force } catch { Write-Host $_.Exception.Message; exit 1 }"
 if errorlevel 1 (
     echo.

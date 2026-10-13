@@ -295,3 +295,11 @@ describe('player mode and developer mode', () => {
     expect(vite).toMatch(/preview: \{\s*port: PORT/);
   });
 });
+
+describe('scripts wait for a key press at the end', () => {
+  it.each(['launch.bat', 'update.bat', 'save-logs.bat'])('%s pauses unless --no-pause', (name) => {
+    const text = read(name);
+    expect(text).toMatch(/pause >nul/);
+    expect(text).not.toMatch(/ping\.exe" -n 5 127\.0\.0\.1/);
+  });
+});

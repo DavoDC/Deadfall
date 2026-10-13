@@ -191,10 +191,13 @@ echo     Deadfall is opening in your browser:
 echo     %LAUNCH_URL%
 echo.
 echo     When you are done, press QUIT in the
-echo     game. This window closes by itself.
+echo     game. You can close this window now.
 echo   ========================================
 echo.
-if not defined NOPAUSE "%SystemRoot%\System32\ping.exe" -n 5 127.0.0.1 >nul
+if not defined NOPAUSE (
+    echo   Press any key to close this window.
+    pause >nul
+)
 exit /b 0
 
 :fail

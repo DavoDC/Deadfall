@@ -25,7 +25,7 @@ Safe to run repeatedly. Steps, in order:
 
 1. Node.js: needs version 18 or newer. If `node`/`npm` is missing or too old it runs `winget install --id OpenJS.NodeJS.LTS`, then refreshes `PATH` from the registry (and probes `%ProgramFiles%\nodejs`). If Node is still invisible it tells the player to close the window and double-click again. With no winget it points to https://nodejs.org.
 2. Packages: `npm install` runs only when `app\node_modules` is missing, the stamp file is missing, or `app\package-lock.json` is newer than the stamp. The stamp is `app\node_modules\.deadfall-install-stamp`, written after a successful install. Fast path (already set up) skips all of this.
-3. Server and browser: if something already listens on port 5199 the server is not started a second time; otherwise the Vite server is started fully hidden (`powershell Start-Process` of a hidden `cmd /c node node_modules\vite\bin\vite.js ...`, stdout and stderr appended to `app\logs\server.log`), it polls up to 30 s for the port, opens the browser (Brave if present, else the default) and closes its own window. If the server never answers it stays open with a plain-English message and the log path.
+3. Server and browser: if something already listens on port 5199 the server is not started a second time; otherwise the Vite server is started fully hidden (`powershell Start-Process` of a hidden `cmd /c node node_modules\vite\bin\vite.js ...`, stdout and stderr appended to `app\logs\server.log`), it polls up to 30 s for the port, opens the browser (Brave if present, else the default) and then waits for a key press so the window never vanishes on its own (the server keeps running hidden; Quit in the game stops it). If the server never answers it stays open with a plain-English message and the log path.
 
 ### Player mode and developer mode
 
@@ -99,3 +99,8 @@ Unzip it and read `VERSION.txt` first (does the sha match the build you expect?)
 2. ZIP folder (no `.git`): run `scripts\update.bat --no-pause --source <folder>`, then once without `--source` in a throwaway scripts-only copy; confirm `node_modules`, `captures` and `logs` survive.
 3. Clone: run `scripts\update.bat --no-pause`; confirm a friendly "newest version" or "Updated" line.
 4. Missing Node: with `PATH` reduced to the Windows folders, run `scripts\launch.bat --no-pause --dry-run`; it should print the winget command.
+
+## Script rules (apply to every .bat in `scripts/`)
+
+- **Never close on their own:** every script ends with "Press any key to close this window." on success and on failure; only `--no-pause` (tests and automation) skips it. This is pinned by `app/tests/scripts.test.js`.
+- **Two levels of logging:** the terminal shows short, friendly, high-level steps; the log file in `app\logs\` records full detail (old and new version SHA, method used, every command's exit code and summary output, durations, file counts, errors). A failure points to the log path.
