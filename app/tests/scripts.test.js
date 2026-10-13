@@ -123,3 +123,47 @@ describe('update.bat stops a running server first', () => {
     expect(text).toContain(':stop_stuck');
   });
 });
+
+describe.each(['launch.bat', 'update.bat'])('scripts/%s clean-machine rules', (name) => {
+  const text = read(name);
+
+  it('puts the built-in Windows folders first on PATH', () => {
+    expect(text).toContain(String.raw`set "PATH=%SystemRoot%\System32;%SystemRoot%;%SystemRoot%\System32\WindowsPowerShell\v1.0;%PATH%"`);
+  });
+
+  it('runs every powershell call with ExecutionPolicy Bypass', () => {
+    const calls = text.split('\n').filter((l) => /^\s*(powershell|for .*powershell)|`powershell|'powershell/.test(l) || /\bpowershell -/.test(l));
+    expect(calls.length).toBeGreaterThan(0);
+    for (const l of calls) {
+      if (/^\s*REM/i.test(l)) continue;
+      expect(l).toContain('-ExecutionPolicy Bypass');
+    }
+  });
+
+  it('never assumes bash, python, timeout.exe or a bare git without checking', () => {
+    const code = text.split('\n').filter((l) => !/^\s*REM/i.test(l)).join('\n');
+    expect(code).not.toMatch(/\bpython\b|\bbash\b|\bsh\.exe\b|timeout(\.exe)?\s+\/t/i);
+    if (/\bgit\b/.test(code.replace(/\.git\b/g, ''))) expect(code).toContain('where git');
+  });
+
+  it('prints a banner with its title centred between two equal rules and a 2-space indent', () => {
+    const lines = text.split('\n').map((l) => l.replace(/\r$/, '')).filter((l) => /^echo /.test(l));
+    const i = lines.findIndex((l) => /DEADFALL  -  /.test(l));
+    expect(i).toBeGreaterThan(0);
+    const rule = lines[i - 1];
+    expect(rule).toMatch(/^echo   =+$/);
+    expect(lines[i + 1]).toBe(rule);
+    const width = rule.replace(/^echo   /, '').length;
+    const title = lines[i].replace(/^echo /, '');
+    const left = title.length - title.trimStart().length - 2;
+    const right = width - left - title.trim().length;
+    expect(Math.abs(left - right)).toBeLessThanOrEqual(1);
+  });
+
+  it('indents every status line by two spaces', () => {
+    for (const l of text.split('\n')) {
+      const m = l.match(/^\s*echo (\[\w[^\]]*\].*)$/);
+      if (m) expect(l).toMatch(/^\s*echo {3}\[/);
+    }
+  });
+});

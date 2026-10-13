@@ -13,6 +13,12 @@ Windows may show an "unknown publisher" (SmartScreen) warning on a downloaded `.
 
 Updating: double-click `scripts\update.bat` in the same folder. Game progress lives in the browser (local storage), so do not update mid-round: the dev server reloads on file changes and could interrupt a run. Players are never asked to install git or clone; a git clone is a developer route only.
 
+## Works on a clean Windows machine
+
+Both scripts use only built-in Windows tools plus Node.js (which `launch.bat` installs through winget): never assume git, bash or python. Each script puts `%SystemRoot%\System32`, `%SystemRoot%` and `%SystemRoot%\System32\WindowsPowerShell\v1.0` first on its own `PATH`, so a same-named tool elsewhere cannot shadow `findstr`, `netstat`, `robocopy`, `choice`, `where` or `powershell`. Every `powershell` call passes `-NoProfile -ExecutionPolicy Bypass` and sticks to PowerShell 5.1 syntax. Waiting uses `ping.exe` because `timeout.exe` refuses to run when input is redirected. Install folders with spaces and parentheses (such as `Deadfall-main (2)`) work: paths are always quoted, and text inside `if (...)` blocks uses `!VAR!` rather than `%VAR%`. Git is optional: update.bat uses it only if `where git` finds it and a `.git` folder exists.
+
+Tested (2026-10-13) with `PATH` reduced to `C:\Windows\System32;C:\Windows;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Program Files\nodejs` (no git or bash directories) in copies without `.git` named `Deadfall-main (2) test` and `Deadfall main spaced test`, started from `C:\Windows` as the working directory: `launch.bat --no-pause` installed packages and served HTTP 200 on 5199, a second run said "Already set up" and "Already running", `update.bat --no-pause` closed the running server and then did a real ZIP download, extract and copy (exit 0), and `update.bat --no-pause --source "<folder with (3) in its name>"` printed "You are already up to date." With `node` missing from `PATH`, `launch.bat --dry-run` printed the winget command. SmartScreen and antivirus prompts cannot be controlled by the scripts.
+
 ## launch.bat
 
 Safe to run repeatedly. Steps, in order:
@@ -35,7 +41,7 @@ Flags: `--no-pause` (no waiting for a key) and `--dry-run` (if Node is missing, 
 
 Runs from a temp copy of itself so overwriting `scripts\update.bat` mid-run is safe.
 
-- Git clone (repo has `.git` and `git` exists): `git pull --ff-only`. If git is missing it offers to install it with winget (`Git.Git`), else it falls back to the ZIP path. If the pull is blocked (local edits, no network) it explains in plain English and uses the ZIP path only after an explicit Y.
+- Git clone (repo has `.git` and `git` exists): `git pull --ff-only`. If git is missing (the normal case for players) it goes straight to the ZIP path, never asking to install anything. If the pull is blocked (local edits, no network) it explains in plain English and uses the ZIP path only after an explicit Y.
 - Downloaded ZIP (no `.git`): downloads `https://github.com/DavoDC/Deadfall/archive/refs/heads/main.zip` with PowerShell (TLS 1.2), extracts to a temp folder, and copies over the repo root with `robocopy /E`. Nothing is deleted, and `node_modules`, `captures`, `dist` and `.git` are never touched. The temp folder is removed afterwards.
 - If `app\package-lock.json` changed, the install stamp is deleted so the next `launch.bat` reinstalls packages.
 - Flags: `--no-pause` (questions default to No, nothing is started), `--source "<folder>"` or the `DEADFALL_UPDATE_SOURCE` environment variable (copy from a local folder instead of GitHub, for testing).

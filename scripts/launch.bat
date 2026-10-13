@@ -6,6 +6,9 @@ REM starts the game server (once, fully hidden, no extra window) and opens the g
 REM The game has a Quit button that stops the server. Log: app\captures\launcher.log, process id: app\captures\server.pid.
 REM Flags: --no-pause (do not wait at the end), --dry-run (print what
 REM would be installed, change nothing). The port is fixed in app\config\vite.config.js.
+REM Clean-machine rule: only built-in Windows tools plus Node. Never assume git, bash or python.
+REM The Windows folders go first on PATH so a same-named tool elsewhere can never shadow them.
+set "PATH=%SystemRoot%\System32;%SystemRoot%;%SystemRoot%\System32\WindowsPowerShell\v1.0;%PATH%"
 set "START_TIME=%TIME%"
 set "PORT=5199"
 set "LAUNCH_URL=http://localhost:%PORT%"
@@ -19,63 +22,65 @@ for %%A in (%*) do (
 )
 
 echo.
-echo  ==============================
-echo    DEADFALL  -  getting ready
-echo  ==============================
+echo   ========================================
+echo          DEADFALL  -  getting ready
+echo   ========================================
 echo.
 
 if not exist "%APP%\package.json" (
-    echo [PROBLEM] I cannot find the game files next to this launcher.
-    echo Please unzip the whole Deadfall folder first, then open scripts\launch.bat from inside it.
+    echo   [PROBLEM] I cannot find the game files next to this launcher.
+    echo             Please unzip the whole Deadfall folder first, then open scripts\launch.bat from inside it.
     goto :fail
 )
 
 REM ---------- Step 1: Node.js ----------
-echo [1/3] Checking Node.js...
+echo   [1/3] Checking Node.js...
 call :check_node
 if "%NODE_OK%"=="1" goto :node_ready
 
 if defined DRYRUN (
-    echo [DRY RUN] Node.js 18 or newer is missing here. I would now run:
-    echo [DRY RUN]   winget install --id OpenJS.NodeJS.LTS -e --silent --accept-package-agreements --accept-source-agreements
-    goto :end_ok
+    echo   [DRY RUN] Node.js 18 or newer is missing here. I would now run:
+    echo   [DRY RUN]   winget install --id OpenJS.NodeJS.LTS -e --silent --accept-package-agreements --accept-source-agreements
+    echo.
+    echo   Dry run only: nothing was installed or started.
+    exit /b 0
 )
 
 where winget >nul 2>nul
 if errorlevel 1 (
     echo.
-    echo [PROBLEM] This game needs Node.js, and I could not install it for you automatically.
-    echo Please install it yourself: open https://nodejs.org , click the big green LTS button,
-    echo run the installer, then double-click launch.bat again.
+    echo   [PROBLEM] This game needs Node.js, and I could not install it for you automatically.
+    echo             Please install it yourself: open https://nodejs.org , click the big green LTS button,
+    echo             run the installer, then double-click launch.bat again.
     goto :fail
 )
 
-echo       Installing Node.js (Windows may ask permission; click Yes).
+echo         Installing Node.js (Windows may ask permission; click Yes).
 winget install --id OpenJS.NodeJS.LTS -e --silent --accept-package-agreements --accept-source-agreements
 call :refresh_path
 call :check_node
 if not "%NODE_OK%"=="1" (
     echo.
-    echo [PROBLEM] Node.js was installed but this window cannot see it yet.
-    echo Please close this window and double-click launch.bat again. That fixes it.
+    echo   [PROBLEM] Node.js was installed but this window cannot see it yet.
+    echo             Please close this window and double-click launch.bat again. That fixes it.
     goto :fail
 )
-echo       Node.js installed.
+echo         Node.js installed.
 
 :node_ready
-echo       Node.js %NODE_VER% OK.
+echo         Node.js %NODE_VER% OK.
 
 REM ---------- Step 2: game packages ----------
-echo [2/3] Checking game files...
+echo   [2/3] Checking game files...
 set "NEED_INSTALL="
 if not exist "%APP%\node_modules" set "NEED_INSTALL=1"
 if not exist "%STAMP%" set "NEED_INSTALL=1"
 if not defined NEED_INSTALL (
-    powershell -NoProfile -Command "if ((Get-Item -LiteralPath ($env:APP + '\package-lock.json')).LastWriteTime -gt (Get-Item -LiteralPath $env:STAMP).LastWriteTime) { exit 1 }" >nul 2>nul
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "if ((Get-Item -LiteralPath ($env:APP + '\package-lock.json')).LastWriteTime -gt (Get-Item -LiteralPath $env:STAMP).LastWriteTime) { exit 1 }" >nul 2>nul
     if errorlevel 1 set "NEED_INSTALL=1"
 )
 if defined NEED_INSTALL (
-    echo       First-time setup, a minute or two...
+    echo         First-time setup, a minute or two...
     REM Remove the stamp first so an interrupted install is always redone on the next run.
     del "%STAMP%" >nul 2>nul
     pushd "%APP%"
@@ -84,39 +89,40 @@ if defined NEED_INSTALL (
     popd
     if not "!NPM_RC!"=="0" (
         echo.
-        echo [PROBLEM] The game's packages did not install. Check your internet connection and try again.
+        echo   [PROBLEM] The game's packages did not install. Check your internet connection and try again.
         goto :fail
     )
     echo installed %DATE% %TIME%> "%STAMP%"
 ) else (
-    echo       Already set up.
+    echo         Already set up.
 )
 
 REM ---------- Step 3: start the game ----------
 REM The server runs completely hidden (no black window) and stops with the Quit button in the game.
-echo [3/3] Starting the game...
+echo   [3/3] Starting the game...
 call :server_up
 if "%SERVER_UP%"=="1" goto :already_running
 if not exist "%APP%\captures" mkdir "%APP%\captures" >nul 2>nul
 echo [%DATE% %TIME%] launch.bat starting the game server>> "%APP%\captures\launcher.log"
 set "DF_SERVER_ARGS=/c node node_modules\vite\bin\vite.js --config config\vite.config.js >> captures\launcher.log 2>&1"
-powershell -NoProfile -Command "Start-Process -FilePath $env:ComSpec -ArgumentList $env:DF_SERVER_ARGS -WorkingDirectory $env:APP -WindowStyle Hidden" >nul 2>nul
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath $env:ComSpec -ArgumentList $env:DF_SERVER_ARGS -WorkingDirectory $env:APP -WindowStyle Hidden" >nul 2>nul
 set "WAITED=0"
 :wait_loop
 call :server_up
 if "%SERVER_UP%"=="1" goto :open_browser
 if %WAITED% GEQ 30 goto :server_slow
-"%SystemRoot%\System32\timeout.exe" /t 1 /nobreak >nul
+REM ping is the wait: timeout.exe refuses to run when input is redirected.
+"%SystemRoot%\System32\ping.exe" -n 2 127.0.0.1 >nul
 set /a WAITED+=1
 goto :wait_loop
 :server_slow
 echo.
-echo [PROBLEM] The game did not start within 30 seconds.
-echo Please double-click launch.bat again. If it keeps happening, the details are in:
-echo %APP%\captures\launcher.log
+echo   [PROBLEM] The game did not start within 30 seconds.
+echo             Please double-click launch.bat again. If it keeps happening, the details are in:
+echo             %APP%\captures\launcher.log
 goto :fail
 :already_running
-echo       Already running; opening it.
+echo         Already running; opening it.
 
 :open_browser
 REM Prefer Brave; falls back to the system default browser when Brave isn't found.
@@ -132,18 +138,21 @@ if defined BRAVE_EXE (
 
 :end_ok
 echo.
-echo ============================================================
-echo Deadfall is opening in your browser: %LAUNCH_URL%
-echo When you are done, press QUIT in the game. This window closes by itself.
-echo ============================================================
+echo   ========================================
+echo     Deadfall is opening in your browser:
+echo     %LAUNCH_URL%
 echo.
-if not defined NOPAUSE "%SystemRoot%\System32\timeout.exe" /t 4 /nobreak >nul
+echo     When you are done, press QUIT in the
+echo     game. This window closes by itself.
+echo   ========================================
+echo.
+if not defined NOPAUSE "%SystemRoot%\System32\ping.exe" -n 5 127.0.0.1 >nul
 exit /b 0
 
 :fail
 echo.
 if not defined NOPAUSE (
-    echo Press any key to close this window.
+    echo   Press any key to close this window.
     pause >nul
 )
 exit /b 1
@@ -164,7 +173,7 @@ exit /b 0
 
 :refresh_path
 REM A fresh Node.js install is not on this window's PATH yet: re-read it from the registry and probe the default folder.
-for /f "usebackq delims=" %%p in (`powershell -NoProfile -Command "[Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')"`) do set "PATH=%%p;%PATH%"
+for /f "usebackq delims=" %%p in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "[Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')"`) do set "PATH=%%p;%PATH%"
 if exist "%ProgramFiles%\nodejs\node.exe" set "PATH=%ProgramFiles%\nodejs;%PATH%"
 exit /b 0
 

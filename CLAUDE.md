@@ -11,7 +11,7 @@ The npm project lives in `app/`; run everything from there.
 - Headless bot: `node src/tools/playtest.mjs --runs 1`
 - Critic sweep: `node src/tools/critic.mjs` (reports land in gitignored `app/captures/critic/`)
 
-Scripts are idempotent: safe to rerun; keep it that way, changes must be re-verified by running twice.
+Scripts are idempotent: safe to rerun; keep it that way, changes must be re-verified by running twice. Clean-machine rule: scripts use only built-in Windows tools plus Node; never assume git, bash, python.
 
 ## Folder map
 

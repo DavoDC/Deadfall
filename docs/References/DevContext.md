@@ -51,6 +51,7 @@ node src/tools/analyse-telemetry.mjs         # digest of app/captures/telemetry
 - (Paths below are relative to `app/`.) `src/game/sim.js` has zero DOM, GPU or audio dependencies. It must keep running in plain Node.
 - The level is one seeded analytic height function; the no-straight-line invariants are unit tests.
 - Simulation consumes input intents and entities are plain serializable state.
+- Clean-machine rule: `scripts/*.bat` use only built-in Windows tools plus Node; never assume git, bash, python (see the LaunchAndUpdate guide).
 - The repo root holds only `.gitignore`, `LICENSE`, `README.md`, `CLAUDE.md`, `docs/`, `scripts/` and `app/`. Keep `scripts/` to `launch.bat` and `update.bat` only; tools go under `src/tools/`.
 - Doc folders are single capitalised words, doc files are PascalCase with acronyms fully capitalised. `app/tests/layout.test.js` enforces this.
 - No em or en dashes and no absolute user paths in docs.
