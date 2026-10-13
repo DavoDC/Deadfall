@@ -154,7 +154,8 @@ if %ROBO_RC% GEQ 8 (
     goto :fail
 )
 set "COUNT=0"
-for /f %%n in ('findstr /R /C:"[A-Za-z0-9]" "%WORK%\robocopy.txt" ^| find /c /v ""') do set "COUNT=%%n"
+REM robocopy exit code bit 1 = at least one file was copied (0 = nothing to do); robust, unlike counting log lines.
+set /a "COUNT=ROBO_RC & 1"
 set "CHANGED_LINE=Updated to the newest version."
 if "%COUNT%"=="0" set "CHANGED_LINE=You are already up to date."
 rmdir /s /q "%WORK%" >nul 2>nul

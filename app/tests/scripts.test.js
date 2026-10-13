@@ -73,6 +73,11 @@ describe('update.bat', () => {
     expect(text).toContain('You are already up to date.');
   });
 
+  it('decides "already up to date" from the robocopy exit code, not from log lines', () => {
+    expect(text).toContain('set /a "COUNT=ROBO_RC & 1"');
+    expect(text).not.toContain('find.exe');
+  });
+
   it('resets the install stamp when the package lock changed and updates from a temp copy', () => {
     expect(text).toContain('.deadfall-install-stamp');
     expect(text).toContain('DF_UPDATE_COPY');
