@@ -84,3 +84,42 @@ describe('update.bat', () => {
     expect(text).toContain('--source');
   });
 });
+
+describe('launch.bat hidden server', () => {
+  const text = read('launch.bat');
+
+  it('starts the server hidden and never leaves a visible server window', () => {
+    expect(text).toContain('-WindowStyle Hidden');
+    expect(text).toContain('node_modules\\vite\\bin\\vite.js');
+    expect(text).not.toMatch(/start "Deadfall Dev Server"/);
+    expect(text).not.toMatch(/npm run dev/);
+  });
+
+  it('logs to app\\captures\\launcher.log and closes its own window (no cmd /k)', () => {
+    expect(text).toContain('captures\\launcher.log');
+    expect(text).not.toMatch(/cmd \/k/i);
+    expect(text).toMatch(/:end_ok[\s\S]*exit \/b 0/);
+  });
+
+  it('waits at most 30 seconds for the server and keeps the window open on failure', () => {
+    expect(text).toContain('if %WAITED% GEQ 30 goto :server_slow');
+    expect(text).toMatch(/:server_slow[\s\S]*launcher\.log[\s\S]*goto :fail/);
+  });
+
+  it('tells the player to use the Quit button', () => {
+    expect(text).toContain('QUIT');
+  });
+});
+
+describe('update.bat stops a running server first', () => {
+  const text = read('update.bat');
+
+  it('asks /api/quit, falls back to the PID file, and verifies the port is free before copying', () => {
+    expect(text).toContain('/api/quit');
+    expect(text).toContain('server.pid');
+    expect(text.indexOf('call :stop_server')).toBeGreaterThan(-1);
+    expect(text.indexOf('call :stop_server')).toBeLessThan(text.indexOf('pull --ff-only'));
+    expect(text.indexOf('call :stop_server')).toBeLessThan(text.indexOf('robocopy "%NEWDIR%"'));
+    expect(text).toContain(':stop_stuck');
+  });
+});

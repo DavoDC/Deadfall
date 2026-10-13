@@ -49,6 +49,8 @@ if not exist "%ROOT%\app\package.json" (
     goto :fail
 )
 
+call :stop_server
+if "%STOP_FAILED%"=="1" goto :fail
 call :lock_hash
 set "HASH_BEFORE=%LOCK_HASH%"
 set "CHANGED_LINE="
@@ -187,6 +189,35 @@ if not defined NOPAUSE (
 exit /b 1
 
 REM ---------- helpers ----------
+:stop_server
+REM A running (hidden) game server would keep its files locked: close it first.
+set "STOP_FAILED=0"
+set "PORT=5199"
+set "PIDFILE=%ROOT%\app\captures\server.pid"
+call :port_busy
+if "%BUSY%"=="0" exit /b 0
+echo       Deadfall is running, so I am closing it first. Your progress is saved in the browser.
+powershell -NoProfile -Command "try { Invoke-WebRequest -UseBasicParsing -Method Post -Uri ('http://localhost:' + $env:PORT + '/api/quit') -TimeoutSec 5 | Out-Null } catch {}; Start-Sleep -Seconds 2; if (Test-Path -LiteralPath $env:PIDFILE) { $p = Get-Process -Id ([int](Get-Content -LiteralPath $env:PIDFILE)) -ErrorAction SilentlyContinue; if ($p -and $p.ProcessName -eq 'node') { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue } }" >nul 2>nul
+set "TRIES=0"
+:stop_wait
+call :port_busy
+if "%BUSY%"=="0" exit /b 0
+if %TRIES% GEQ 10 goto :stop_stuck
+"%SystemRoot%\System32\timeout.exe" /t 1 /nobreak >nul
+set /a TRIES+=1
+goto :stop_wait
+:stop_stuck
+echo.
+echo [PROBLEM] I could not close the running game. Press QUIT in the game, then run update.bat again.
+set "STOP_FAILED=1"
+exit /b 0
+
+:port_busy
+set "BUSY=0"
+netstat -ano | findstr /R /C:":%PORT% .*LISTENING" >nul 2>nul
+if not errorlevel 1 set "BUSY=1"
+exit /b 0
+
 :ask_yes_no
 set "ANSWER=N"
 if defined NOPAUSE exit /b 0

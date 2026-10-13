@@ -2,8 +2,9 @@
 setlocal EnableDelayedExpansion
 REM Deadfall launcher: double-click to play. Safe to run again and again.
 REM It installs Node.js and the game's packages only when they are missing,
-REM starts the game server (once) and opens the game in your browser.
-REM Flags: --no-pause (do not wait for a key at the end), --dry-run (print what
+REM starts the game server (once, fully hidden, no extra window) and opens the game in your browser.
+REM The game has a Quit button that stops the server. Log: app\captures\launcher.log, process id: app\captures\server.pid.
+REM Flags: --no-pause (do not wait at the end), --dry-run (print what
 REM would be installed, change nothing). The port is fixed in app\config\vite.config.js.
 set "START_TIME=%TIME%"
 set "PORT=5199"
@@ -92,21 +93,28 @@ if defined NEED_INSTALL (
 )
 
 REM ---------- Step 3: start the game ----------
+REM The server runs completely hidden (no black window) and stops with the Quit button in the game.
 echo [3/3] Starting the game...
 call :server_up
 if "%SERVER_UP%"=="1" goto :already_running
-start "Deadfall Dev Server" /D "%APP%" cmd /c "npm run dev"
+if not exist "%APP%\captures" mkdir "%APP%\captures" >nul 2>nul
+echo [%DATE% %TIME%] launch.bat starting the game server>> "%APP%\captures\launcher.log"
+set "DF_SERVER_ARGS=/c node node_modules\vite\bin\vite.js --config config\vite.config.js >> captures\launcher.log 2>&1"
+powershell -NoProfile -Command "Start-Process -FilePath $env:ComSpec -ArgumentList $env:DF_SERVER_ARGS -WorkingDirectory $env:APP -WindowStyle Hidden" >nul 2>nul
 set "WAITED=0"
 :wait_loop
 call :server_up
 if "%SERVER_UP%"=="1" goto :open_browser
-if %WAITED% GEQ 40 goto :server_slow
+if %WAITED% GEQ 30 goto :server_slow
 "%SystemRoot%\System32\timeout.exe" /t 1 /nobreak >nul
 set /a WAITED+=1
 goto :wait_loop
 :server_slow
-echo       Slow start; opening your browser anyway.
-goto :open_browser
+echo.
+echo [PROBLEM] The game did not start within 30 seconds.
+echo Please double-click launch.bat again. If it keeps happening, the details are in:
+echo %APP%\captures\launcher.log
+goto :fail
 :already_running
 echo       Already running; opening it.
 
@@ -125,11 +133,11 @@ if defined BRAVE_EXE (
 :end_ok
 echo.
 echo ============================================================
-echo Deadfall is opening in your browser (a few seconds): %LAUNCH_URL%
-echo Close the black "Deadfall Dev Server" window to quit.
+echo Deadfall is opening in your browser: %LAUNCH_URL%
+echo When you are done, press QUIT in the game. This window closes by itself.
 echo ============================================================
 echo.
-if not defined NOPAUSE pause
+if not defined NOPAUSE "%SystemRoot%\System32\timeout.exe" /t 4 /nobreak >nul
 exit /b 0
 
 :fail
