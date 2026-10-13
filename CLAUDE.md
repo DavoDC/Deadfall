@@ -26,6 +26,7 @@ Scripts are idempotent: safe to rerun; keep it that way, changes must be re-veri
 - [docs/Guides/HeadlessPlaytest.md](docs/Guides/HeadlessPlaytest.md): the headless bot and the `window.__deadfall` API.
 - [docs/Guides/ScreenshotRig.md](docs/Guides/ScreenshotRig.md): deterministic before/after screenshots for art changes.
 - [docs/References/Engineering.md](docs/References/Engineering.md): how the game is built.
+- [docs/References/PlaytestAnalysis.md](docs/References/PlaytestAnalysis.md): reading a friend's playtest logs (`node src/tools/analyzeSession.mjs`).
 - [docs/References/GameFeatures.md](docs/References/GameFeatures.md): everything in the jungle.
 
 ## Invariants

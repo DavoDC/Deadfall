@@ -43,7 +43,7 @@ The HUD shows world `x,z` and the nearest landmark so a player can say "it happe
 
 ## Reading it
 
-`node src/tools/analyse-telemetry.mjs` (run from `app/`) prints a digest of `captures/telemetry`. `scripts\save-logs.bat` bundles scrubbed logs and the newest sessions for playtesters to send back.
+`node src/tools/analyse-telemetry.mjs` (run from `app/`) prints a digest of `captures/telemetry`; `node src/tools/analyzeSession.mjs <file or folder>` prints a one-page report of one session (guide: [PlaytestAnalysis.md](PlaytestAnalysis.md)). `scripts\save-logs.bat` bundles scrubbed logs and the newest sessions for playtesters to send back.
 
 ## Not built yet
 

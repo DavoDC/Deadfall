@@ -152,7 +152,9 @@ try {
         'telemetry\session-*.json ..... one file per play session: deaths, damage, frame rate, where you went',
         'telemetry\frames\ ............ small screenshots taken during play (newest first)',
         '',
-        $teleNote
+        $teleNote,
+        '',
+        'For the developer: docs/References/PlaytestAnalysis.md in the Deadfall repo explains how to read these files.'
     )
     [IO.File]::WriteAllText((Join-Path $stage 'README.txt'), (($readme -join "`r`n") + "`r`n"), $utf8)
 

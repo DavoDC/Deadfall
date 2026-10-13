@@ -1,0 +1,143 @@
+// One-page playtest report from a telemetry session. Plain node, no deps.
+//
+//   node src/tools/analyzeSession.mjs <session.json | folder | extracted save-logs folder>
+//
+// A folder is searched (and its telemetry/ subfolder) for session-*.json, and
+// the newest file by name is used; latest.json is the fallback. Works on
+// in-progress, abandoned and old-format files: every field is optional.
+// How to read the result: docs/References/PlaytestAnalysis.md
+
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+export const STALL_SECONDS = 4;     // standing still this long counts as a stall
+export const STALL_RADIUS = 2;      // metres of drift still counted as standing
+export const STALE_SECONDS = 30;    // in-progress file older than this = abandoned or crashed
+
+const f1 = (n) => (Number.isFinite(n) ? n.toFixed(1) : '?');
+const mmss = (s) => (Number.isFinite(s) ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}` : '?');
+const arr = (v) => (Array.isArray(v) ? v : []);
+
+export function findSessionFile(target) {
+  const st = fs.statSync(target);
+  if (st.isFile()) return target;
+  for (const dir of [target, path.join(target, 'telemetry')]) {
+    if (!fs.existsSync(dir)) continue;
+    const names = fs.readdirSync(dir).filter((n) => /^session-.*\.json$/.test(n)).sort();
+    if (names.length) return path.join(dir, names[names.length - 1]);
+    if (fs.existsSync(path.join(dir, 'latest.json'))) return path.join(dir, 'latest.json');
+  }
+  return null;
+}
+
+// Stretches where the player stayed within STALL_RADIUS for STALL_SECONDS or more.
+export function findStalls(pathPoints) {
+  const stalls = [];
+  const pts = arr(pathPoints);
+  let i = 0;
+  while (i < pts.length) {
+    let j = i;
+    while (j + 1 < pts.length && Math.hypot(pts[j + 1].x - pts[i].x, pts[j + 1].z - pts[i].z) <= STALL_RADIUS) j++;
+    if (pts[j].time - pts[i].time >= STALL_SECONDS) {
+      stalls.push({ from: pts[i].time, to: pts[j].time, x: pts[i].x, z: pts[i].z });
+      i = j + 1;
+    } else i++;
+  }
+  return stalls;
+}
+
+export function pathLength(pathPoints) {
+  const pts = arr(pathPoints);
+  let d = 0;
+  for (let i = 1; i < pts.length; i++) d += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z);
+  return d;
+}
+
+function percentile(sorted, p) {
+  if (!sorted.length) return null;
+  return sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))];
+}
+
+export function analyse(s, { nowMs = Date.now() } = {}) {
+  const pts = arr(s.path);
+  const lastT = Math.max(0, pts.length ? pts[pts.length - 1].time : 0, ...arr(s.state).map((x) => x.t || 0));
+  const outcome = s.outcome || (s.endedAt ? 'unknown' : 'unfinished (old format)');
+  const toMs = (v) => (typeof v === 'number' ? v : Date.parse(v || ''));
+  const savedAt = toMs(s.lastSavedAt ?? s.endedAt);
+  const staleSec = Number.isFinite(savedAt) ? (nowMs - savedAt) / 1000 : null;
+  const fps = arr(s.fps).map((x) => x.fps ?? x.value ?? x).filter(Number.isFinite).sort((a, b) => a - b);
+  const frameMs = arr(s.state).map((x) => x.frameMs).filter(Number.isFinite).sort((a, b) => a - b);
+  const enc = arr(s.encounters);
+  const byType = {};
+  for (const e of enc) {
+    const t = (byType[e.type] ||= { spawned: 0, seen: 0, killed: 0, dmg: 0, seenDist: [] });
+    t.spawned++;
+    if (e.firstSeenT != null) { t.seen++; t.seenDist.push(e.firstSeenDist); }
+    if (e.fate === 'killed') t.killed++;
+    t.dmg += e.dmgToPlayer || 0;
+  }
+  const killsByWeapon = {};
+  for (const e of enc) if (e.fate === 'killed') killsByWeapon[e.killedBy || 'other'] = (killsByWeapon[e.killedBy || 'other'] || 0) + 1;
+  const hp = arr(s.state).map((x) => x.hp).filter(Number.isFinite);
+  return {
+    outcome, endReason: s.endReason ?? null, difficulty: s.difficulty ?? null,
+    gameVersion: s.gameVersion && typeof s.gameVersion === 'object' ? String(s.gameVersion.sha || '').slice(0, 7) : (s.gameVersion ?? null),
+    durationSec: lastT, staleSec,
+    abandoned: outcome === 'abandoned' || (!s.outcome && !s.endedAt) || (outcome === 'in-progress' && staleSec != null && staleSec > STALE_SECONDS),
+    pathPoints: pts.length, distance: pathLength(pts), stalls: findStalls(pts),
+    waypoints: arr(s.waypoints), deaths: arr(s.deaths),
+    damageTaken: Array.isArray(s.damageTaken) ? s.damageTaken.reduce((a, d) => a + (d.amount || 0), 0) : (s.damageTaken ?? null), damageBySource: s.damageTakenBySource || {},
+    shots: s.shots || null, kills: s.kills ?? null,
+    spawned: s.spawned || {}, byType, killsByWeapon, encounters: enc.length,
+    neverSeen: enc.filter((e) => e.firstSeenT == null && e.fate !== 'alive').length,
+    fpsMedian: percentile(fps, 0.5), fpsP5: percentile(fps, 0.05), frameP95: percentile(frameMs, 0.95),
+    minHp: hp.length ? Math.min(...hp) : null,
+    errors: arr(s.errors), env: s.env || null,
+    events: arr(s.events).length,
+    hasEncounters: enc.length > 0,
+  };
+}
+
+export function formatReport(r, file = '') {
+  const L = [];
+  L.push(`PLAYTEST REPORT ${file ? `(${path.basename(file)})` : ''}`.trim());
+  L.push(`Outcome: ${r.outcome}${r.endReason ? ` (${r.endReason})` : ''}   difficulty: ${r.difficulty ?? '?'}   version: ${r.gameVersion ?? '?'}`);
+  L.push(`Length: ${mmss(r.durationSec)}   route: ${r.pathPoints} points, ${Math.round(r.distance)} m`);
+  if (r.abandoned) L.push(`WARNING: run did not finish cleanly (abandoned or crashed); data stops at ${mmss(r.durationSec)}.`);
+  if (r.outcome === 'in-progress' && !r.abandoned) L.push('Run still in progress or just saved; numbers are complete so far.');
+  if (r.env) L.push(`Machine: ${r.env.gpu ?? '?'}, screen ${r.env.screen?.w ?? '?'}x${r.env.screen?.h ?? '?'}, dpr ${r.env.devicePixelRatio ?? '?'}`);
+  L.push(`Performance: fps median ${f1(r.fpsMedian)}, 5th percentile ${f1(r.fpsP5)}, frame time p95 ${f1(r.frameP95)} ms`);
+  L.push(`Health: lowest ${f1(r.minHp)}, damage taken ${Math.round(r.damageTaken ?? 0)}, deaths ${r.deaths.length}`);
+  const srcs = Object.entries(r.damageBySource).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${Math.round(v)}`);
+  if (srcs.length) L.push(`Damage by source: ${srcs.join(', ')}`);
+  if (r.shots) L.push(`Shots: ${r.shots.fired ?? '?'} fired, ${r.shots.hits ?? '?'} hit`);
+  if (r.kills != null) L.push(`Kills: ${r.kills}`);
+  L.push(`Waypoints reached: ${r.waypoints.length}${r.waypoints.length ? ` (last at ${mmss(r.waypoints[r.waypoints.length - 1].time ?? r.waypoints[r.waypoints.length - 1].t)})` : ''}`);
+  if (r.stalls.length) {
+    L.push(`Stalls (${STALL_SECONDS}s+ standing still): ${r.stalls.length}`);
+    for (const s of r.stalls.slice(0, 5)) L.push(`  ${mmss(s.from)} to ${mmss(s.to)} at ${Math.round(s.x)},${Math.round(s.z)}`);
+  } else L.push('Stalls: none');
+  if (r.hasEncounters) {
+    L.push(`Enemies: ${r.encounters} spawned, ${r.neverSeen} gone without ever being seen`);
+    for (const [type, t] of Object.entries(r.byType)) {
+      const d = t.seenDist.filter(Number.isFinite);
+      const avg = d.length ? Math.round(d.reduce((a, b) => a + b, 0) / d.length) : null;
+      L.push(`  ${type}: spawned ${t.spawned}, seen ${t.seen}, killed ${t.killed}, damage to you ${Math.round(t.dmg)}${avg != null ? `, first seen at ${avg} m avg` : ''}`);
+    }
+    const kw = Object.entries(r.killsByWeapon).map(([k, v]) => `${k} ${v}`).join(', ');
+    if (kw) L.push(`Kills by weapon: ${kw}`);
+  } else L.push('Enemies: no encounter log in this file (older version).');
+  L.push(`Errors: ${r.errors.length}`);
+  for (const e of r.errors.slice(0, 3)) L.push(`  ${mmss(e.t)} ${e.kind}: ${e.message}`);
+  return L.join('\n');
+}
+
+const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMain) {
+  const target = process.argv[2];
+  if (!target) { console.error('usage: node src/tools/analyzeSession.mjs <session.json | folder>'); process.exit(2); }
+  const file = fs.existsSync(target) ? findSessionFile(target) : null;
+  if (!file) { console.error(`no session file found at ${target}`); process.exit(1); }
+  console.log(formatReport(analyse(JSON.parse(fs.readFileSync(file, 'utf8'))), file));
+}
