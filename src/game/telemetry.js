@@ -1,7 +1,7 @@
 // HUMAN-PLAYTEST TELEMETRY ("GIVE CLAUDE MORE DATA", playtest ask 2026-07-18).
 // David plays a real run -> this logs every meaningful metric with
 // timestamps to a session file -> Claude reads it straight off disk
-// (captures/telemetry/, see src/server/telemetryStore.js + vite.config.js)
+// (captures/telemetry/, see src/server/telemetryStore.js + config/vite.config.js)
 // and finds issues (difficulty spikes, bugs, unfair deaths, bad frames).
 // This is the observation harness for data-driven tuning - the
 // "build the harness before you iterate" principle applied to a human

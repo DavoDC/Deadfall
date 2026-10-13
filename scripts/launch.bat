@@ -1,15 +1,26 @@
 @echo off
 REM Starts the Vite dev server and opens the browser to it, similar to
-REM Constellation's scripts\launch.bat. Port is fixed in vite.config.js.
+REM Constellation's scripts\launch.bat. Port is fixed in config\vite.config.js.
 set START_TIME=%TIME%
 set PORT=5199
 set LAUNCH_URL=http://localhost:%PORT%
 cd /d "%~dp0.."
 
-if not exist "node_modules" (
-    echo [ERROR] node_modules not found - run "npm install" first.
+where npm >nul 2>nul
+if errorlevel 1 (
+    echo [ERROR] Node.js not found - install Node.js 18 or newer from https://nodejs.org
     if not "%1"=="--no-pause" cmd /k
     exit /b 1
+)
+
+if not exist "node_modules" (
+    echo First run: installing dependencies with npm install ...
+    call npm install
+    if errorlevel 1 (
+        echo [ERROR] npm install failed.
+        if not "%1"=="--no-pause" cmd /k
+        exit /b 1
+    )
 )
 
 start "Deadfall Dev Server" cmd /c "npm run dev"

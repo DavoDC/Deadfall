@@ -11,7 +11,7 @@ their rich data was LOST. Everything below follows from fixing that.
 
 ## Architecture: POST to the dev server, which writes files
 
-Add a vite `configureServer` middleware in `vite.config.js`:
+Add a vite `configureServer` middleware in `config/vite.config.js`:
 - `POST /telemetry` - JSON body -> write `captures/telemetry/session-<startedAt>.json`
   (overwrite the same file as the session updates; also mirror to `latest.json`).
 - `POST /telemetry/frame` - JPEG dataURL/blob + timestamp -> write

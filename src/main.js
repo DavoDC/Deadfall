@@ -187,7 +187,7 @@ let telemetryStartPerf = 0;
 let telemetryWasLocked = null;
 
 // --- TELEMETRY V2 TRANSPORT (docs/References/TelemetryV2Spec.md) ---
-// David plays -> the disk endpoint (vite.config.js -> src/server/
+// David plays -> the disk endpoint (config/vite.config.js -> src/server/
 // telemetryStore.js) is where it actually lands. Everything here is
 // fire-and-forget: never await, never block the render loop, swallow every
 // failure. Posted on a ~1s interval AND after every notable event AND at
