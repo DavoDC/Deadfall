@@ -110,8 +110,7 @@ function lifecyclePlugin() {
   function log(line) {
     try {
       fs.mkdirSync(capturesDir, { recursive: true });
-      fs.appendFileSync(logFile, `[${new Date().toISOString()}] ${line}
-`);
+      fs.appendFileSync(logFile, `[${new Date().toISOString()}] ${line}\n`);
     } catch {
       // logging must never take the server down
     }
