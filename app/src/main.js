@@ -596,19 +596,25 @@ function renderResult(view) {
   document.getElementById('end-tag').textContent = view.tag;
   const bd = document.getElementById('end-breakdown');
   bd.textContent = '';
-  const row = (label, value, neg) => {
+  const row = (label, value, cls) => {
     const l = document.createElement('span');
     l.textContent = label;
     const v = document.createElement('b');
     v.textContent = value;
-    if (neg) v.className = 'neg';
+    if (cls) l.className = v.className = cls;
     bd.append(l, v);
   };
-  for (const [label, value] of view.breakdown) row(label, value, value.startsWith('-') && value !== '-0');
-  const sep = document.createElement('div');
-  sep.className = 'sep';
-  bd.appendChild(sep);
-  row('DIFFICULTY', view.multiplierLabel, false);
+  // line items, DIFFICULTY, then TOTAL under a rule (resultView.rows)
+  for (const [label, value] of view.rows) {
+    if (label === 'TOTAL') {
+      const sep = document.createElement('div');
+      sep.className = 'sep';
+      bd.appendChild(sep);
+      row(label, value, 'tot');
+    } else {
+      row(label, value, value.startsWith('-') && value !== '-0' ? 'neg' : '');
+    }
+  }
   copyText = view.copyText;
   btnCopy.textContent = 'COPY RESULT';
   document.getElementById('end-record').classList.toggle('hidden', !view.record);

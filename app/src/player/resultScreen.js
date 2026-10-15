@@ -28,6 +28,12 @@ export function resultView(run) {
     total: String(sc.total),
     breakdown: sc.lines.map((l) => [l.label, signed(l.points)]),
     multiplierLabel: `x${sc.multiplier.toFixed(2)} ${run.difficultyLabel}`,
+    // every row of the score box in order: line items, the difficulty multiplier, TOTAL last
+    rows: [
+      ...sc.lines.map((l) => [l.label, signed(l.points)]),
+      ['DIFFICULTY', `x${sc.multiplier.toFixed(2)} ${run.difficultyLabel}`],
+      ['TOTAL', String(sc.total)],
+    ],
     copyText: sc.copyText,
     stats: [
       ['TIME', formatRunTime(run.time)],

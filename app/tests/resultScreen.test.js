@@ -30,6 +30,15 @@ describe('resultView', () => {
     expect(v.copyText).toContain('EXTRACTED');
   });
 
+  it('DF-146: TOTAL row sits directly under the line items and equals the headline points', () => {
+    const v = resultView({ ...base, difficulty: 'hard', hits: 40, extracted: true });
+    const labels = v.rows.map((r) => r[0]);
+    expect(labels.at(-1)).toBe('TOTAL');
+    expect(labels).toEqual([...v.breakdown.map((b) => b[0]), 'DIFFICULTY', 'TOTAL']);
+    expect(v.rows.at(-1)[1]).toBe(String(v.score.total));
+    expect(v.rows.at(-1)[1]).toBe(v.total);
+  });
+
   it('K.I.A. view grades F and has no extraction line', () => {
     const v = resultView({ ...base, difficulty: 'hard', hits: 10, extracted: false });
     expect(v.grade).toBe('F');
@@ -60,6 +69,7 @@ describe('copy text carries everything the result screen shows', () => {
     expect(t).toContain(v.multiplierLabel);
     for (const [label, value] of v.stats) expect(t).toContain(`${label} ${value}`);
     for (const [label, value] of v.breakdown) expect(t).toContain(`${label} ${value}`);
+    for (const [label, value] of v.rows) expect(t).toContain(`${label} ${value}`);
     expect(t).toContain('ACCURACY +');
     expect(t).toContain('DAMAGE TAKEN -');
     expect(t).toContain('SHOTS 90');

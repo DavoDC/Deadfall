@@ -90,6 +90,7 @@ export function scoreRun(run) {
     `DAMAGE TAKEN ${Math.round(damage)}`,
     `SCORE ${lines.map((l) => `${l.label} ${signed(l.points)}`).join(', ')}`,
     `DIFFICULTY x${multiplier.toFixed(2)} ${diffName}`,
+    `TOTAL ${total}`,
     run.isRecord ? 'NEW RECORD' : null,
   ].filter(Boolean).join(' | ');
   return { lines, subtotal, multiplier, total, grade, title, tag, copyText };

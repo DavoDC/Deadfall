@@ -13,7 +13,7 @@ The result screen is the moment a run turns into something worth talking about. 
 
 ## What it shows today
 
-Title (EXTRACTED or K.I.A.), difficulty, a big letter grade with the score and a rank title (plus one style tag when earned), a stats row (time, kills, shots, damage taken), a compact breakdown of what earned and cost points, NEW RECORD when the best time is beaten, a flavour line, RUN IT AGAIN, COPY RESULT, a compact difficulty selector and a small QUIT button.
+Title (EXTRACTED or K.I.A.), difficulty, a big letter grade with the score and a rank title (plus one style tag when earned), a stats row (time, kills, shots, damage taken), a compact breakdown of what earned and cost points ending in the difficulty multiplier and a TOTAL row under a rule (the same number as the headline points), NEW RECORD when the best time is beaten, a flavour line, RUN IT AGAIN, COPY RESULT, a compact difficulty selector and a small QUIT button.
 
 ## Scoring
 
