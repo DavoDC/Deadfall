@@ -90,3 +90,29 @@ describe('copy text carries everything the result screen shows', () => {
     expect(t).toContain('x0.75 RECRUIT');
   });
 });
+
+describe('KILLED BY (DF-150)', () => {
+  it('flood death: KILLED BY FLOOD on the K.I.A. view and in the copy text', () => {
+    const v = resultView({ ...base, extracted: false, cause: 'flood' });
+    expect(v.killedBy).toBe('FLOOD');
+    expect(v.copyText).toContain('KILLED BY FLOOD');
+  });
+
+  it('enemy death: KILLED BY names the enemy', () => {
+    const v = resultView({ ...base, extracted: false, cause: 'shrike' });
+    expect(v.killedBy).toBe('SHRIKE');
+    expect(v.copyText).toContain('KILLED BY SHRIKE');
+  });
+
+  it('missing cause reads UNKNOWN on K.I.A.', () => {
+    const v = resultView({ ...base, extracted: false });
+    expect(v.killedBy).toBe('UNKNOWN');
+    expect(v.copyText).toContain('KILLED BY UNKNOWN');
+  });
+
+  it('extraction has no KILLED BY line', () => {
+    const v = resultView({ ...base, extracted: true, cause: 'shrike' });
+    expect(v.killedBy).toBe('');
+    expect(v.copyText).not.toContain('KILLED BY');
+  });
+});

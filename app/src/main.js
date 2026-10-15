@@ -369,7 +369,7 @@ const ui = {
       hp: player.p.hp,
     });
     if (telemetry.recording) telemetry.snapshotState(buildTelemetryCtx(performance.now(), 0.016));
-    endRun(false);
+    endRun(false, lastHurt ? lastHurt.source : null);
   },
   onWin() {
     sfxStinger('win');
@@ -542,7 +542,7 @@ function buildTelemetryCtx(now, dt) {
   };
 }
 
-function endRun(extracted) {
+function endRun(extracted, cause = null) {
   input.exitLock();
   hudEl.classList.add('hidden');
   endEl.classList.remove('hidden');
@@ -557,6 +557,7 @@ function endRun(extracted) {
     hits: runHits,
     damage: game.damageTaken,
     isRecord,
+    cause, // damage source of the last hit (K.I.A. only; see resultView)
   });
   telemetry.setResult({ score: view.score.total, grade: view.grade, title: view.rank, tag: view.tag });
   // closes the session: no sample, event or death can land in it after this
@@ -619,6 +620,7 @@ function renderResult(view) {
   clearTimeout(copyResetTimer);
   setCopyState(false);
   document.getElementById('end-record').classList.toggle('hidden', !view.record);
+  document.getElementById('end-killed').textContent = view.killedBy ? `KILLED BY ${view.killedBy}` : '';
   document.getElementById('end-flavor').textContent = view.flavor;
 }
 

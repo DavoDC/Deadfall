@@ -1,5 +1,7 @@
 // Pure scoring for the result screen: points from the run stats, a letter
 // grade, a rank title and one style tag. No DOM, deterministic, unit-tested.
+
+import { causeLabel } from './causeOfDeath.js';
 // Tuning lives in SCORE so balance changes are one-line edits.
 
 export const SCORE = {
@@ -91,6 +93,7 @@ export function scoreRun(run) {
     `SCORE ${lines.map((l) => `${l.label} ${signed(l.points)}`).join(', ')}`,
     `DIFFICULTY x${multiplier.toFixed(2)} ${diffName}`,
     `TOTAL ${total}`,
+    extracted ? null : `KILLED BY ${causeLabel(run.cause)}`,
     run.isRecord ? 'NEW RECORD' : null,
   ].filter(Boolean).join(' | ');
   return { lines, subtotal, multiplier, total, grade, title, tag, copyText };

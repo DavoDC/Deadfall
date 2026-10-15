@@ -109,6 +109,8 @@
     .result-stat b { font-size: 20px; color: var(--hud); font-weight: 600; }
     .result-record { font-size: 14px; letter-spacing: 0.3em; color: var(--accent); margin-bottom: 8px; }
     .result-record.hidden { display: none; }
+    .result-killed { font-size: 13px; letter-spacing: 0.22em; color: var(--danger); margin-bottom: 8px; }
+    .result-killed:empty { display: none; }
     .result-flavor { font-size: 13px; color: var(--hud-dim); margin-bottom: 8px; }
     .result-flavor:empty { display: none; }
     #btn-again { margin-top: 14px; font-size: 18px; padding: 15px 56px; }
@@ -370,6 +372,7 @@
       <div class="result-stats" id="end-stats"></div>
       <div class="result-breakdown" id="end-breakdown"></div>
       <div class="result-record hidden" id="end-record">NEW RECORD</div>
+      <div class="result-killed" id="end-killed"></div>
       <div class="result-flavor" id="end-flavor"></div>
       <button class="cta" id="btn-again">PLAY AGAIN</button>
       <div class="result-diff-label">DIFFICULTY</div>

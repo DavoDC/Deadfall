@@ -4,6 +4,7 @@
 // Points, grade and rank title come from scoring.js.
 
 import { scoreRun } from './scoring.js';
+import { causeLabel } from './causeOfDeath.js';
 
 export function formatRunTime(seconds) {
   const s = Math.max(0, Math.floor(seconds));
@@ -14,13 +15,14 @@ function signed(n) {
   return (n >= 0 ? '+' : '-') + Math.abs(n);
 }
 
-// run: { extracted, difficulty, difficultyLabel, time, kills, shots, hits, damage, isRecord }
+// run: { extracted, difficulty, difficultyLabel, time, kills, shots, hits, damage, isRecord, cause }
 export function resultView(run) {
   const sc = scoreRun(run);
   return {
     title: run.extracted ? 'EXTRACTED' : 'K.I.A.',
     titleClass: run.extracted ? 'extracted' : 'died',
     difficultyLabel: run.difficultyLabel,
+    killedBy: run.extracted ? '' : causeLabel(run.cause),
     score: sc,
     grade: sc.grade,
     rank: sc.title,

@@ -13,7 +13,7 @@ The result screen is the moment a run turns into something worth talking about. 
 
 ## What it shows today
 
-Title (EXTRACTED or K.I.A.), difficulty, a big letter grade with the score and a rank title (plus one style tag when earned), a stats row (time, kills, shots, damage taken), a compact breakdown of what earned and cost points ending in the difficulty multiplier and a TOTAL row under a rule (the same number as the headline points), NEW RECORD when the best time is beaten, a flavour line, PLAY AGAIN with the compact difficulty selector directly under it (labelled DIFFICULTY), and a small QUIT button. A small icon-only copy button sits beside the score (title and aria-label "Copy result"); after a click it shows a checkmark and "Copied" for about 1.5 seconds.
+Title (EXTRACTED or K.I.A.), difficulty, a big letter grade with the score and a rank title (plus one style tag when earned), a stats row (time, kills, shots, damage taken), a compact breakdown of what earned and cost points ending in the difficulty multiplier and a TOTAL row under a rule (the same number as the headline points), NEW RECORD when the best time is beaten, on K.I.A. only a KILLED BY line (the damage source of the last hit, in plain uppercase words such as FLOOD, ACID or an enemy name; UNKNOWN when missing; `causeOfDeath.js`), a flavour line, PLAY AGAIN with the compact difficulty selector directly under it (labelled DIFFICULTY), and a small QUIT button. A small icon-only copy button sits beside the score (title and aria-label "Copy result"); after a click it shows a checkmark and "Copied" for about 1.5 seconds.
 
 ## Scoring
 
