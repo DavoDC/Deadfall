@@ -76,6 +76,8 @@
     #end-title { font-size: clamp(30px, 6vw, 56px); margin-bottom: 2px; }
     .result-score { display: flex; align-items: center; gap: 18px; margin: 4px 0 12px; }
     .result-grade { font-size: clamp(52px, 11vw, 84px); font-weight: 700; line-height: 1; min-width: 1.1em; text-align: center; }
+    .grade-box { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 12px 8px; border: 1px solid rgba(150, 210, 140, 0.35); border-radius: 3px; }
+    .grade-label { font-size: 10px; letter-spacing: 0.3em; color: var(--hud-dim); }
     .result-grade.g-S { color: #ffd966; text-shadow: 0 0 24px rgba(255, 200, 80, 0.5); }
     .result-grade.g-A { color: #9fe08c; }
     .result-grade.g-B { color: #8fd0e0; }
@@ -355,7 +357,10 @@
       <div class="title" id="end-title">EXTRACTED</div>
       <div class="result-diff" id="end-diff"></div>
       <div class="result-score">
-        <div class="result-grade" id="end-grade">A</div>
+        <div class="grade-box">
+          <span class="grade-label">GRADE</span>
+          <div class="result-grade" id="end-grade">A</div>
+        </div>
         <div class="result-total"><b id="end-total">0</b><span class="rank" id="end-rank"></span><span class="tag" id="end-tag"></span></div>
       </div>
       <div class="result-stats" id="end-stats"></div>
