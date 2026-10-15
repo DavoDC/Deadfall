@@ -19,6 +19,24 @@ describe('resultView', () => {
     expect(v.record).toBe(false);
   });
 
+  it('carries score, grade, rank, breakdown and copy text', () => {
+    const v = resultView({ ...base, difficulty: 'normal', hits: 40, extracted: true });
+    expect(v.grade).toMatch(/^[SABCD]$/);
+    expect(v.rank).toMatch(/\S/);
+    expect(Number(v.total)).toBe(v.score.total);
+    expect(v.breakdown.map((b) => b[0])).toEqual(['KILLS', 'ACCURACY', 'SPEED', 'EXTRACTION', 'DAMAGE TAKEN']);
+    expect(v.breakdown[4][1]).toMatch(/^-/);
+    expect(v.multiplierLabel).toBe('x1.00 RECRUIT');
+    expect(v.copyText).toContain('EXTRACTED');
+  });
+
+  it('K.I.A. view grades F and has no extraction line', () => {
+    const v = resultView({ ...base, difficulty: 'hard', hits: 10, extracted: false });
+    expect(v.grade).toBe('F');
+    expect(v.breakdown.map((b) => b[0])).not.toContain('EXTRACTION');
+    expect(v.multiplierLabel).toMatch(/^x1\.30/);
+  });
+
   it('death: K.I.A. with the flavor line, record flag passes through', () => {
     const v = resultView({ ...base, extracted: false, isRecord: true });
     expect(v.title).toBe('K.I.A.');

@@ -323,6 +323,7 @@ const ui = {
   showExtract: (progress) => hud && hud.showExtract(progress),
   hitmarker: (kill, crit) => {
     hud && hud.hitmarker(kill, crit);
+    runHits += 1;
     telemetry.recordShotHit();
     if (kill) telemetry.recordKill();
   },
@@ -332,9 +333,14 @@ const ui = {
     lastHurt = { amount, srcPos, source };
     encounters.noteHurt(source, srcPos, amount);
     telemetry.recordDamageTaken({
-      time: game.time, amount, source,
+      time: game.time, amount, source, hp: player.p.hp,
       pos: srcPos ? { x: srcPos.x, y: srcPos.y, z: srcPos.z } : null,
     });
+    // hp on record right at the hit, not up to 1 s later (throttled to 4 per second)
+    if (telemetry.recording && performance.now() - lastHurtSnapPerf > 250) {
+      lastHurtSnapPerf = performance.now();
+      telemetry.snapshotState(buildTelemetryCtx(performance.now(), 0.016));
+    }
     if (amount >= DAMAGE_SPIKE_THRESHOLD) postFrame();
   },
   onDeath() {
@@ -344,7 +350,9 @@ const ui = {
       pos: { x: player.p.pos.x, y: player.p.pos.y, z: player.p.pos.z },
       cause: lastHurt ? lastHurt.source : 'unknown',
       enemy: lastHurt ? lastHurt.source : null,
+      hp: player.p.hp,
     });
+    if (telemetry.recording) telemetry.snapshotState(buildTelemetryCtx(performance.now(), 0.016));
     telemetry.setOutcome('died');
     endRun(false);
   },
@@ -500,10 +508,43 @@ function saveBest(extracted) {
   return better;
 }
 
+let runHits = 0;
+let lastHurtSnapPerf = 0;
+
+function buildTelemetryCtx(now, dt) {
+  const telemetryElapsedT = telemetryStartPerf ? (now - telemetryStartPerf) / 1000 : 0;
+  terrainNormal(player.p.pos.x, player.p.pos.z, _slopeNormal);
+  const slopeDeg = Math.acos(Math.min(1, Math.max(-1, _slopeNormal.y))) * RAD2DEG;
+  const wst = weapons.state;
+  return {
+    time: telemetryElapsedT, pos: player.p.pos, fps, frameMs: dt * 1000,
+    landmarks: TELEMETRY_LANDMARKS,
+    yaw: player.p.yaw, hp: player.p.hp, stamina: player.p.stamina,
+    ammo: { mag: wst.mag[wst.current], reserve: wst.reserve[wst.current] },
+    weapon: wst.current, speedMps: player.p.speedNow,
+    slopeDeg, verticalVel: player.p.vel.y, grounded: player.p.grounded,
+    enemiesNear: computeEnemiesNear(player.p.pos), threat: director.threat(),
+    extract: extraction.committed ? extraction.progress : null,
+  };
+}
+
 function endRun(extracted) {
   input.exitLock();
   hudEl.classList.add('hidden');
   endEl.classList.remove('hidden');
+  const isRecord = saveBest(extracted);
+  const view = resultView({
+    extracted,
+    difficulty: difficultyKey,
+    difficultyLabel: DIFFICULTIES[difficultyKey].label,
+    time: game.time,
+    kills: game.kills,
+    shots: game.shotsFired,
+    hits: runHits,
+    damage: game.damageTaken,
+    isRecord,
+  });
+  telemetry.setResult({ score: view.score.total, grade: view.grade, title: view.rank, tag: view.tag });
   if (telemetry.recording) {
     telemetry.stop(extracted ? 'extracted' : 'death');
     console.log(telemetry.summaryLine());
@@ -512,16 +553,7 @@ function endRun(extracted) {
   // outcome, every channel) on disk before anything else happens
   postTelemetrySession();
   postFrame();
-  const isRecord = saveBest(extracted);
-  renderResult(resultView({
-    extracted,
-    difficultyLabel: DIFFICULTIES[difficultyKey].label,
-    time: game.time,
-    kills: game.kills,
-    shots: game.shotsFired,
-    damage: game.damageTaken,
-    isRecord,
-  }));
+  renderResult(view);
 }
 
 function renderResult(view) {
@@ -541,6 +573,29 @@ function renderResult(view) {
     stat.append(l, v);
     statsEl.appendChild(stat);
   }
+  const grade = document.getElementById('end-grade');
+  grade.textContent = view.grade;
+  grade.className = 'result-grade g-' + view.grade;
+  document.getElementById('end-total').textContent = view.total + ' PTS';
+  document.getElementById('end-rank').textContent = view.rank;
+  document.getElementById('end-tag').textContent = view.tag;
+  const bd = document.getElementById('end-breakdown');
+  bd.textContent = '';
+  const row = (label, value, neg) => {
+    const l = document.createElement('span');
+    l.textContent = label;
+    const v = document.createElement('b');
+    v.textContent = value;
+    if (neg) v.className = 'neg';
+    bd.append(l, v);
+  };
+  for (const [label, value] of view.breakdown) row(label, value, value.startsWith('-') && value !== '-0');
+  const sep = document.createElement('div');
+  sep.className = 'sep';
+  bd.appendChild(sep);
+  row('DIFFICULTY', view.multiplierLabel, false);
+  copyText = view.copyText;
+  btnCopy.textContent = 'COPY RESULT';
   document.getElementById('end-record').classList.toggle('hidden', !view.record);
   document.getElementById('end-flavor').textContent = view.flavor;
 }
@@ -548,6 +603,12 @@ function renderResult(view) {
 const menuEl = document.getElementById('menu');
 const hudEl = document.getElementById('hud');
 const endEl = document.getElementById('endscreen');
+const btnCopy = document.getElementById('btn-copy');
+let copyText = '';
+btnCopy.addEventListener('click', () => {
+  const done = () => { btnCopy.textContent = 'COPIED'; };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(copyText).then(done, () => {});
+});
 
 function startRun() {
   initAudio();
@@ -566,6 +627,7 @@ function startRun() {
   lastHurt = null;
   telemetryWasLocked = null;
   telemetryStartPerf = performance.now();
+  runHits = 0;
   encounters.reset();
   telemetry.start({ difficulty: difficultyKey, seed: WORLD.seed, gameVersion, env: collectEnv() });
   menuEl.classList.add('hidden');
@@ -686,19 +748,7 @@ function tick(now) {
     // telemetry v2 game-state ctx: everything main.js can see that the
     // spec's diagnosis fields need (stamina, uphill speed vs slope, jump
     // arcs, nearby-threat pressure) - see docs/References/Telemetry.md
-    terrainNormal(player.p.pos.x, player.p.pos.z, _slopeNormal);
-    const slopeDeg = Math.acos(Math.min(1, Math.max(-1, _slopeNormal.y))) * RAD2DEG;
-    const wst = weapons.state;
-    telemetry.tick(dt, {
-      time: telemetryElapsedT, pos: player.p.pos, fps, frameMs: dt * 1000,
-      landmarks: TELEMETRY_LANDMARKS,
-      yaw: player.p.yaw, hp: player.p.hp, stamina: player.p.stamina,
-      ammo: { mag: wst.mag[wst.current], reserve: wst.reserve[wst.current] },
-      weapon: wst.current, speedMps: player.p.speedNow,
-      slopeDeg, verticalVel: player.p.vel.y, grounded: player.p.grounded,
-      enemiesNear: computeEnemiesNear(player.p.pos), threat: director.threat(),
-      extract: extraction.committed ? extraction.progress : null,
-    });
+    telemetry.tick(dt, buildTelemetryCtx(now, dt));
     if (encounters.due(telemetryElapsedT)) encounters.update(telemetryElapsedT, enemyMgr.aliveList(), { x: player.p.pos.x, z: player.p.pos.z, yaw: player.p.yaw });
   }
 

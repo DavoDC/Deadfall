@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>DEADFALL</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%276%27 fill=%27%23101a10%27/%3E%3Cpath d=%27M16 5l9 21H7z%27 fill=%27none%27 stroke=%27%23ffc857%27 stroke-width=%273%27/%3E%3C/svg%3E" />
   <style>
     :root {
       --hud: #d6e4d0;
@@ -59,23 +60,48 @@
     .diff-btn.selected b { color: var(--accent); }
     .controls-hint { margin-top: 26px; font-size: 12px; letter-spacing: 0.12em; color: rgba(214,228,208,0.4); line-height: 2; }
     /* result panel: one tidy centred column; the title menu is hidden behind it */
-    #endscreen { overflow-y: auto; background: radial-gradient(ellipse at 50% 40%, rgba(8, 20, 10, 0.97), rgba(2, 5, 2, 0.99)); }
+    #endscreen { overflow-y: auto; justify-content: flex-start; background: radial-gradient(ellipse at 50% 40%, rgba(8, 20, 10, 0.97), rgba(2, 5, 2, 0.99)); }
     .result-panel {
       display: flex; flex-direction: column; align-items: center;
       width: min(560px, 92vw); margin: auto; padding: 18px 0;
     }
-    #end-title { font-size: clamp(34px, 6vw, 64px); margin-bottom: 4px; }
-    .result-diff { font-size: 13px; letter-spacing: 0.4em; color: var(--hud-dim); margin-bottom: 18px; }
-    .result-stats { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 26px; margin-bottom: 12px; }
+    #end-title { font-size: clamp(30px, 6vw, 56px); margin-bottom: 2px; }
+    .result-score { display: flex; align-items: center; gap: 18px; margin: 4px 0 12px; }
+    .result-grade { font-size: clamp(52px, 11vw, 84px); font-weight: 700; line-height: 1; min-width: 1.1em; text-align: center; }
+    .result-grade.g-S { color: #ffd966; text-shadow: 0 0 24px rgba(255, 200, 80, 0.5); }
+    .result-grade.g-A { color: #9fe08c; }
+    .result-grade.g-B { color: #8fd0e0; }
+    .result-grade.g-C { color: var(--hud); }
+    .result-grade.g-D { color: #d9a066; }
+    .result-grade.g-F { color: var(--danger); text-shadow: 0 0 24px rgba(255, 70, 50, 0.4); }
+    .result-total { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+    .result-total b { font-size: clamp(26px, 5vw, 38px); font-weight: 600; color: var(--hud); }
+    .result-total .rank { font-size: 14px; letter-spacing: 0.28em; color: var(--accent); }
+    .result-total .tag { font-size: 11px; letter-spacing: 0.22em; color: var(--hud-dim); }
+    .result-total .tag:empty { display: none; }
+    .result-breakdown { width: min(340px, 100%); display: grid; grid-template-columns: 1fr auto; gap: 3px 18px; font-size: 12px; letter-spacing: 0.14em; margin-bottom: 12px; padding: 8px 12px; background: rgba(20, 34, 22, 0.55); border: 1px solid rgba(150, 210, 140, 0.18); border-radius: 3px; }
+    .result-breakdown span { color: var(--hud-dim); text-align: left; }
+    .result-breakdown b { text-align: right; font-weight: 600; color: #9fe08c; font-variant-numeric: tabular-nums; }
+    .result-breakdown b.neg { color: var(--danger); }
+    .result-breakdown .sep { grid-column: 1 / -1; height: 1px; background: rgba(150, 210, 140, 0.18); margin: 2px 0; }
+    @media (max-height: 640px) {
+      .result-panel { padding: 8px 0; }
+      #end-title { font-size: clamp(26px, 5vw, 40px); }
+      .result-grade { font-size: 48px; }
+      .result-breakdown { margin-bottom: 8px; padding: 6px 12px; }
+      #btn-copy { margin-top: 8px; font-size: 11px; padding: 7px 18px; letter-spacing: 0.2em; }
+    }
+    .result-diff { font-size: 13px; letter-spacing: 0.4em; color: var(--hud-dim); margin-bottom: 8px; }
+    .result-stats { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 22px; margin-bottom: 10px; }
     .result-stat { display: flex; flex-direction: column; gap: 3px; min-width: 70px; }
     .result-stat span { font-size: 10px; letter-spacing: 0.22em; color: var(--hud-dim); }
-    .result-stat b { font-size: 22px; color: var(--hud); font-weight: 600; }
+    .result-stat b { font-size: 20px; color: var(--hud); font-weight: 600; }
     .result-record { font-size: 14px; letter-spacing: 0.3em; color: var(--accent); margin-bottom: 8px; }
     .result-record.hidden { display: none; }
     .result-flavor { font-size: 13px; color: var(--hud-dim); margin-bottom: 8px; }
     .result-flavor:empty { display: none; }
     #btn-again { margin-top: 14px; font-size: 18px; padding: 15px 56px; }
-    .result-diff-label { margin-top: 26px; font-size: 10px; letter-spacing: 0.3em; color: var(--hud-dim); }
+    .result-diff-label { margin-top: 18px; font-size: 10px; letter-spacing: 0.3em; color: var(--hud-dim); }
     #end-difficulty { display: flex; gap: 8px; margin: 8px 0 4px; }
     .diff-chip {
       cursor: pointer; font-family: inherit; font-size: 12px; letter-spacing: 0.2em; padding: 8px 16px;
@@ -323,10 +349,16 @@
     <div class="result-panel">
       <div class="title" id="end-title">EXTRACTED</div>
       <div class="result-diff" id="end-diff"></div>
+      <div class="result-score">
+        <div class="result-grade" id="end-grade">A</div>
+        <div class="result-total"><b id="end-total">0</b><span class="rank" id="end-rank"></span><span class="tag" id="end-tag"></span></div>
+      </div>
       <div class="result-stats" id="end-stats"></div>
+      <div class="result-breakdown" id="end-breakdown"></div>
       <div class="result-record hidden" id="end-record">NEW RECORD</div>
       <div class="result-flavor" id="end-flavor"></div>
       <button class="cta" id="btn-again">RUN IT AGAIN</button>
+      <button class="cta quit" id="btn-copy">COPY RESULT</button>
       <div class="result-diff-label">DIFFICULTY</div>
       <div id="end-difficulty"></div>
       <button class="cta quit" id="btn-end-quit">QUIT</button>
