@@ -29,6 +29,14 @@
       font-size: clamp(44px, 9vw, 96px); font-weight: 800; letter-spacing: 0.28em;
       color: #e8f2e2; text-shadow: 0 0 24px rgba(80, 200, 90, 0.25), 0 2px 0 #000;
       margin-bottom: 6px;
+      animation: title-pulse 4s ease-in-out infinite;
+    }
+    @keyframes title-pulse {
+      0%, 100% { text-shadow: 0 0 10px rgba(255, 200, 87, 0.2), 0 2px 0 #000; }
+      50% { text-shadow: 0 0 30px rgba(255, 200, 87, 0.75), 0 2px 0 #000; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .title { animation: none; }
     }
     #version-tag { position: absolute; right: 10px; bottom: 6px; font-size: 10px; letter-spacing: 0.08em; color: var(--hud-dim); opacity: 0.35; }
     .subtitle { font-size: 14px; letter-spacing: 0.42em; color: var(--hud-dim); margin-bottom: 38px; }
