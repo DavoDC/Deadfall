@@ -41,6 +41,7 @@ import { createRecorderAPI } from './capture/recorder.js';
 import { createCinematic } from './game/cinematic.js';
 import { createPipeline } from './render/pipeline.js';
 import { createTelemetry, DAMAGE_SPIKE_THRESHOLD } from './game/telemetry.js';
+import { loadDeveloperMode } from './game/developerMode.js';
 import { createSessionFlusher } from './game/telemetrySender.js';
 import { createEncounterTracker } from './game/encounters.js';
 
@@ -282,17 +283,23 @@ function captureFrame() {
   }
 }
 
+// Developer-only (DF-144): frames are JPEGs under captures/, so nothing is
+// captured unless config/launcher.json developerMode is true. The server
+// refuses them too; this check just skips the work.
+let developerMode = false;
+const developerModeReady = loadDeveloperMode(fetch).then((on) => { developerMode = on; });
+
 // The WebGL canvas reads back black outside the render task, so postFrame only
 // raises a flag and the frame loop sends it right after pipeline.render().
 let framePending = false;
 function postFrame() {
-  if (!telemetry.recording || !telemetry.log) return;
+  if (!developerMode || !telemetry.recording || !telemetry.log) return;
   framePending = true;
 }
 function sendPendingFrame() {
   if (!framePending) return;
   framePending = false;
-  if (!telemetry.recording || !telemetry.log) return;
+  if (!developerMode || !telemetry.recording || !telemetry.log) return;
   const dataURL = captureFrame();
   if (!dataURL) return;
   const startedAt = telemetry.log.startedAt;
@@ -1086,6 +1093,11 @@ if (params.has('shots')) {
   // world finish rendering.
   (async () => {
     try {
+      await developerModeReady;
+      if (!developerMode) {
+        console.warn('[shots] skipped: screenshots are developer-only; set developerMode true in config/launcher.json');
+        return;
+      }
       console.log('[shots] URL param detected - starting automated capture...');
       sim.resetRun();
       // Small delay to let initial render settle

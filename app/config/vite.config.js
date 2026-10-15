@@ -3,11 +3,14 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import { idleMinutesFromEnv, createIdleWatch, isLocalRequest } from '../src/server/lifecycle.js';
-import { createSessionStore, writeFrame, writeCapture } from '../src/server/telemetryStore.js';
+import { createSessionStore } from '../src/server/telemetryStore.js';
 import { readVersion } from '../src/server/version.js';
+import { readDeveloperMode, handleCaptureRoute } from '../src/server/captureRoutes.js';
 
 // Project root is app/ (this file lives in app/config/).
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+// developerMode lives here; read per request so an edit needs no restart (DF-144)
+const LAUNCHER_CONFIG = path.join(ROOT, 'config', 'launcher.json');
 
 // The game's port. DEADFALL_PORT overrides it (for tests on a machine whose 5199 is busy); players never set it.
 const PORT = Number(process.env.DEADFALL_PORT) || 5199;
@@ -50,6 +53,14 @@ function telemetryPlugin() {
   function attach(server) {
     {
       server.middlewares.use(async (req, res, next) => {
+        // the page reads the developer flag once at start (src/game/developerMode.js)
+        if (req.method === 'GET' && req.url === '/api/config') {
+          res.setHeader('Content-Type', 'application/json');
+          res.setHeader('Cache-Control', 'no-store');
+          res.end(JSON.stringify({ developerMode: readDeveloperMode(LAUNCHER_CONFIG) }));
+          return;
+        }
+
         if (req.method !== 'POST') return next();
 
         if (req.url === '/telemetry') {
@@ -69,33 +80,15 @@ function telemetryPlugin() {
           return;
         }
 
-        if (req.url === '/telemetry/frame') {
+        // Frames and named captures (screenshots, contact sheets, recordings)
+        // are developer-only: 403 and no file unless launcher.json developerMode is true.
+        if (req.url === '/telemetry/frame' || req.url === '/telemetry/capture') {
           try {
             const body = await readBody(req);
-            const { startedAt, t, dataURL } = JSON.parse(body);
-            writeFrame(telemetryDir, startedAt, t, dataURL);
-            res.statusCode = 204;
+            res.statusCode = handleCaptureRoute(req.url, body, { telemetryDir, configPath: LAUNCHER_CONFIG });
             res.end();
           } catch (err) {
-            console.error('[telemetry] /telemetry/frame write failed:', err.message);
-            res.statusCode = 500;
-            res.end();
-          }
-          return;
-        }
-
-        // Generic named-capture sink for capture tooling that isn't a
-        // numbered session frame (trailer recordings, screenshot rig
-        // exports) - see src/capture/save.js for the client side.
-        if (req.url === '/telemetry/capture') {
-          try {
-            const body = await readBody(req);
-            const { subdir, filename, dataURL } = JSON.parse(body);
-            writeCapture(telemetryDir, subdir, filename, dataURL);
-            res.statusCode = 204;
-            res.end();
-          } catch (err) {
-            console.error('[telemetry] /telemetry/capture write failed:', err.message);
+            console.error(`[telemetry] ${req.url} write failed:`, err.message);
             res.statusCode = 500;
             res.end();
           }
