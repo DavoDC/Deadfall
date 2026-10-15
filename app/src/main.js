@@ -616,7 +616,8 @@ function renderResult(view) {
     }
   }
   copyText = view.copyText;
-  btnCopy.textContent = 'COPY RESULT';
+  clearTimeout(copyResetTimer);
+  setCopyState(false);
   document.getElementById('end-record').classList.toggle('hidden', !view.record);
   document.getElementById('end-flavor').textContent = view.flavor;
 }
@@ -626,9 +627,24 @@ const hudEl = document.getElementById('hud');
 const endEl = document.getElementById('endscreen');
 const btnCopy = document.getElementById('btn-copy');
 let copyText = '';
+let copyResetTimer = 0;
+// icon-only copy control: clipboard icon, then a brief checkmark and "Copied"
+function setCopyState(copied) {
+  const label = copied ? 'Copied' : 'Copy result';
+  btnCopy.classList.toggle('copied', copied);
+  btnCopy.title = label;
+  btnCopy.setAttribute('aria-label', label);
+  btnCopy.innerHTML = copied
+    ? '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg>'
+    : '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>';
+}
 btnCopy.addEventListener('click', () => {
-  const done = () => { btnCopy.textContent = 'COPIED'; };
-  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(copyText).then(done, () => {});
+  if (!navigator.clipboard || !navigator.clipboard.writeText) return;
+  navigator.clipboard.writeText(copyText).then(() => {
+    setCopyState(true);
+    clearTimeout(copyResetTimer);
+    copyResetTimer = setTimeout(() => setCopyState(false), 1500);
+  }, () => {});
 });
 
 function startRun() {
