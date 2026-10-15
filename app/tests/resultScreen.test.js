@@ -45,3 +45,38 @@ describe('resultView', () => {
     expect(v.record).toBe(true);
   });
 });
+
+describe('copy text carries everything the result screen shows', () => {
+  it('one line with every displayed label and value (extraction, DEAD EYE, record)', () => {
+    const v = resultView({ ...base, difficulty: 'hard', hits: 60, damage: 42, time: 400, extracted: true, isRecord: true });
+    const t = v.copyText;
+    expect(v.tag).toBe('DEAD EYE');
+    expect(t).not.toContain('\n');
+    expect(t).toContain(v.title);
+    expect(t).toContain(`${v.grade} ${v.rank}`);
+    expect(t).toContain(`[${v.tag}]`);
+    expect(t).toContain(`${v.total} PTS`);
+    expect(t).toContain(v.difficultyLabel);
+    expect(t).toContain(v.multiplierLabel);
+    for (const [label, value] of v.stats) expect(t).toContain(`${label} ${value}`);
+    for (const [label, value] of v.breakdown) expect(t).toContain(`${label} ${value}`);
+    expect(t).toContain('ACCURACY +');
+    expect(t).toContain('DAMAGE TAKEN -');
+    expect(t).toContain('SHOTS 90');
+    expect(t).toContain('DAMAGE TAKEN 42');
+    expect(t).toContain('NEW RECORD');
+  });
+
+  it('K.I.A. with no tag and no record: title, grade F, no tag brackets, no record', () => {
+    const v = resultView({ ...base, difficulty: 'easy', hits: 0, extracted: false, isRecord: false });
+    const t = v.copyText;
+    expect(v.tag).toBe('');
+    expect(t).toContain('K.I.A.');
+    expect(t).toContain(`F ${v.rank}`);
+    expect(t).toContain(`${v.total} PTS`);
+    for (const [label, value] of v.breakdown) expect(t).toContain(`${label} ${value}`);
+    expect(t).not.toContain('[');
+    expect(t).not.toContain('NEW RECORD');
+    expect(t).toContain('x0.75 RECRUIT');
+  });
+});

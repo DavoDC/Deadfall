@@ -48,7 +48,7 @@ function tagFor({ damage, accuracy, kills, time, extracted }) {
   return '';
 }
 
-// run: { extracted, difficulty, time, kills, shots, hits, damage }
+// run: { extracted, difficulty, difficultyLabel, time, kills, shots, hits, damage, isRecord }
 export function scoreRun(run) {
   const extracted = !!run.extracted;
   const time = Math.max(0, Number(run.time) || 0);
@@ -76,6 +76,21 @@ export function scoreRun(run) {
   const title = titleFor(grade, kills);
   const tag = tagFor({ damage, accuracy, kills, time, extracted });
   const mm = `${Math.floor(time / 60)}:${String(Math.floor(time % 60)).padStart(2, '0')}`;
-  const copyText = `DEADFALL ${extracted ? 'EXTRACTED' : 'K.I.A.'} | ${grade} ${title} | ${total} pts | ${mm}, ${kills} kills, ${Math.round(accuracy * 100)}% acc, ${Math.round(damage)} dmg | ${String(run.difficulty || 'normal').toUpperCase()}`;
+  const diffName = run.difficultyLabel || String(run.difficulty || 'normal').toUpperCase();
+  const signed = (n) => (n >= 0 ? '+' : '-') + Math.abs(n);
+  // one line, every value the result screen shows (resultScreen.js resultView)
+  const copyText = [
+    `DEADFALL ${extracted ? 'EXTRACTED' : 'K.I.A.'}`,
+    `${grade} ${title}${tag ? ` [${tag}]` : ''}`,
+    `${total} PTS`,
+    `TIME ${mm}`,
+    `KILLS ${kills}`,
+    `SHOTS ${shots}`,
+    `ACCURACY ${Math.round(accuracy * 100)}%`,
+    `DAMAGE TAKEN ${Math.round(damage)}`,
+    `SCORE ${lines.map((l) => `${l.label} ${signed(l.points)}`).join(', ')}`,
+    `DIFFICULTY x${multiplier.toFixed(2)} ${diffName}`,
+    run.isRecord ? 'NEW RECORD' : null,
+  ].filter(Boolean).join(' | ');
   return { lines, subtotal, multiplier, total, grade, title, tag, copyText };
 }
