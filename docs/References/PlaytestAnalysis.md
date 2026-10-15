@@ -42,6 +42,8 @@ A folder is searched (and its `telemetry` subfolder) for the newest `session-*.j
 - `inputEdges` and `inputAggregates`: presses and per-second input summaries (sprint share, look speed, aim time).
 - `errors`: uncaught errors, first 20.
 
+`node src/tools/analyzeSession.mjs` prints `Score: N G TITLE (tag)`, `HP over time` (state samples plus the hp on each damage entry), `Input:` (counts per action, sprint and aim seconds, edges kept and dropped) and a WARNING when HP stays flat although damage was taken (the HP bug the log once had). Files from before these fields print `Input: none recorded` and no score.
+
 ## 5. Standard questions
 
 | Question | Where to look | Good | Bad |

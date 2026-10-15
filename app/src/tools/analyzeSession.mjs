@@ -79,8 +79,34 @@ export function analyse(s, { nowMs = Date.now() } = {}) {
   }
   const killsByWeapon = {};
   for (const e of enc) if (e.fate === 'killed') killsByWeapon[e.killedBy || 'other'] = (killsByWeapon[e.killedBy || 'other'] || 0) + 1;
-  const hp = arr(s.state).map((x) => x.hp).filter(Number.isFinite);
+  // hp over time: the 1 s state samples plus the hp recorded on each hit (exact, between samples)
+  const hpPoints = [];
+  for (const x of arr(s.state)) if (Number.isFinite(x.hp)) hpPoints.push({ t: x.t || 0, hp: x.hp });
+  for (const d of arr(s.damageTaken)) if (Number.isFinite(d.hp)) hpPoints.push({ t: d.time || 0, hp: d.hp });
+  hpPoints.sort((a, b) => a.t - b.t);
+  const hp = hpPoints.map((p) => p.hp);
+  const hpMovedNever = hp.length > 1 && hp.every((v) => v === hp[0]);
+  const dmgTotal = Array.isArray(s.damageTaken) ? s.damageTaken.reduce((a, d) => a + (d.amount || 0), 0) : 0;
+  const edges = arr(s.inputEdges);
+  const counts = {};
+  const open = {};
+  let sprintSeconds = 0;
+  let aimSeconds = 0;
+  for (const e of edges) {
+    if (e.action === 'sprint' || e.action === 'aim') {
+      if (e.on) open[e.action] = e.t;
+      else if (open[e.action] != null) {
+        if (e.action === 'sprint') sprintSeconds += e.t - open[e.action]; else aimSeconds += e.t - open[e.action];
+        open[e.action] = null;
+      }
+    }
+    if (e.on) counts[e.action] = (counts[e.action] || 0) + 1;
+  }
   return {
+    result: s.result || null,
+    hpPoints, hpWarning: hpMovedNever && dmgTotal > 0,
+    input: { edges: edges.length, dropped: s.inputEdgesDropped || 0, counts, sprintSeconds, aimSeconds },
+    
     outcome, endReason: s.endReason ?? null, difficulty: s.difficulty ?? null,
     gameVersion: s.gameVersion && typeof s.gameVersion === 'object' ? String(s.gameVersion.sha || '').slice(0, 7) : (s.gameVersion ?? null),
     durationSec: lastT, staleSec,
@@ -108,11 +134,29 @@ export function formatReport(r, file = '') {
   if (r.outcome === 'in-progress' && !r.abandoned) L.push('Run still in progress or just saved; numbers are complete so far.');
   if (r.env) L.push(`Machine: ${r.env.gpu ?? '?'}, screen ${r.env.screen?.w ?? '?'}x${r.env.screen?.h ?? '?'}, dpr ${r.env.devicePixelRatio ?? '?'}`);
   L.push(`Performance: fps median ${f1(r.fpsMedian)}, 5th percentile ${f1(r.fpsP5)}, frame time p95 ${f1(r.frameP95)} ms`);
+  if (r.result) L.push(`Score: ${r.result.score} ${r.result.grade} ${r.result.title}${r.result.tag ? ` (${r.result.tag})` : ''}`);
   L.push(`Health: lowest ${f1(r.minHp)}, damage taken ${Math.round(r.damageTaken ?? 0)}, deaths ${r.deaths.length}`);
+  if (r.hpPoints.length) {
+    const pts = r.hpPoints;
+    const pick = [pts[0]];
+    let next = 30;
+    for (const p of pts) if (p.t >= next) { pick.push(p); next = p.t + 30; }
+    const low = pts.reduce((a, b) => (b.hp < a.hp ? b : a));
+    if (!pick.includes(low)) pick.push(low);
+    pick.sort((a, b) => a.t - b.t);
+    L.push(`HP over time: ${pick.map((p) => `${Math.round(p.hp)}@${mmss(p.t)}`).join(' ')}`);
+  }
+  if (r.hpWarning) L.push('WARNING: hp never changed despite damage taken (telemetry bug, report it).');
   const srcs = Object.entries(r.damageBySource).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${Math.round(v)}`);
   if (srcs.length) L.push(`Damage by source: ${srcs.join(', ')}`);
   if (r.shots) L.push(`Shots: ${r.shots.fired ?? '?'} fired, ${r.shots.hits ?? '?'} hit`);
   if (r.kills != null) L.push(`Kills: ${r.kills}`);
+  const c = r.input.counts;
+  if (!r.input.edges) L.push('Input: none recorded (older version, or no input edges)');
+  else {
+    const n = (k) => c[k] || 0;
+    L.push(`Input: ${n('fireDown')} clicks, ${n('jump')} jumps, ${n('reload')} reloads, ${n('grenadeThrow')} grenades, ${n('melee')} melee, weapon keys ${n('weapon1') + n('weapon2') + n('weapon3') + n('swap') + n('weaponNext') + n('weaponPrev')}; sprint ${Math.round(r.input.sprintSeconds)}s, aim ${Math.round(r.input.aimSeconds)}s (${r.input.edges} edges${r.input.dropped ? `, ${r.input.dropped} edges dropped` : ''})`);
+  }
   L.push(`Waypoints reached: ${r.waypoints.length}${r.waypoints.length ? ` (last at ${mmss(r.waypoints[r.waypoints.length - 1].time ?? r.waypoints[r.waypoints.length - 1].t)})` : ''}`);
   if (r.stalls.length) {
     L.push(`Stalls (${STALL_SECONDS}s+ standing still): ${r.stalls.length}`);

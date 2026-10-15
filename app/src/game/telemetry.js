@@ -56,8 +56,24 @@ export const MAX_ERRORS = 20;
 // swap/grenade throw have no natural "up" - the press IS the event).
 // Sustain actions (firing, aim) are held, so we diff against the previous
 // frame to emit both the down AND the up edge.
-const PULSE_ACTIONS = ['jump', 'reload', 'weapon1', 'weapon2', 'weapon3', 'swap', 'grenadeThrow'];
-const SUSTAIN_ACTIONS = ['firing', 'aim'];
+const PULSE_ACTIONS = ['jump', 'reload', 'weapon1', 'weapon2', 'weapon3', 'swap', 'weaponNext', 'weaponPrev',
+  'grenadeThrow', 'melee', 'interact', 'fireDown'];
+// firing/aim/sprint/grenadeHold are held flags on the intent; the four move
+// directions are derived from moveX/moveZ (see held() below).
+const SUSTAIN_ACTIONS = ['firing', 'aim', 'sprint', 'grenadeHold', 'moveFwd', 'moveBack', 'moveLeft', 'moveRight'];
+// Edge list cap: a normal 10 minute run logs a few hundred edges; the cap
+// only stops a stuck key from growing the file, and the drop count is kept.
+export const MAX_INPUT_EDGES = 3000;
+
+function held(intent, action) {
+  switch (action) {
+    case 'moveFwd': return (intent.moveZ || 0) < 0;
+    case 'moveBack': return (intent.moveZ || 0) > 0;
+    case 'moveLeft': return (intent.moveX || 0) < 0;
+    case 'moveRight': return (intent.moveX || 0) > 0;
+    default: return !!intent[action];
+  }
+}
 
 function round2(n) {
   return Math.round(n * 100) / 100;
@@ -123,6 +139,8 @@ export function createTelemetry() {
       fps: [],                   // {time, fps, frameMs} - sampled every 2s
       path: [],                  // {time, x, z, y, yaw} - sampled every 1s
       // v2 channels (docs/References/Telemetry.md):
+      result: null,              // {score, grade, title, tag} set at run end (result screen scoring)
+      inputEdgesDropped: 0,      // edges beyond MAX_INPUT_EDGES that were not stored
       inputEdges: [],            // {t, action, on} - full fidelity
       inputAggregates: [],       // 1s: {t, distance, pctSprint, aimSeconds, lookSpeedMeanDegPerSec, lookSpeedPeakDegPerSec, shots}
       state: [],                 // 1s: {t, pos, yaw, hp, stamina, ammo, weapon, speedMps, slopeDeg, verticalVel, grounded, enemiesNear, threat, extract, fps, frameMs}
@@ -202,18 +220,19 @@ export function createTelemetry() {
     }
   }
 
-  function recordDeath({ time, pos, cause, enemy, waypoint } = {}) {
+  function recordDeath({ time, pos, cause, enemy, waypoint, hp } = {}) {
     if (!recording || !log) return;
     const t = time ?? nowT();
-    log.deaths.push({ time: t, pos, cause: cause ?? 'unknown', enemy: enemy ?? null, waypoint: waypoint ?? null });
+    log.deaths.push({ time: t, pos, cause: cause ?? 'unknown', enemy: enemy ?? null, waypoint: waypoint ?? null, hp: hp ?? null });
     beginBurst('death', t);
     notify('death');
   }
 
-  function recordDamageTaken({ time, amount, source, pos } = {}) {
+  // hp: the player's hp AFTER this hit (so hp over time is exact even between the 1 s state samples)
+  function recordDamageTaken({ time, amount, source, pos, hp } = {}) {
     if (!recording || !log) return;
     const t = time ?? nowT();
-    log.damageTaken.push({ time: t, amount, source: source ?? 'unknown', pos: pos ?? null });
+    log.damageTaken.push({ time: t, amount, source: source ?? 'unknown', pos: pos ?? null, hp: hp ?? null });
     log.damageTakenBySource[source ?? 'unknown'] = (log.damageTakenBySource[source ?? 'unknown'] || 0) + amount;
     if (amount >= DAMAGE_SPIKE_THRESHOLD) beginBurst('damageSpike', t);
     notify('damage');
@@ -304,6 +323,23 @@ export function createTelemetry() {
     };
   }
 
+  // An immediate state sample outside the 1 s cadence (main.js calls it on a
+  // hard hit and on death) so hp is on record right at the moments that matter.
+  function snapshotState(ctx) {
+    if (!recording || !log || !ctx) return;
+    const s = buildStateSample(ctx.time ?? nowT(), ctx);
+    log.state.push(s);
+    ring.push(s);
+    if (ring.length > BURST_RING_CAP) ring.shift();
+    if (activeBurst) activeBurst.samples.push(s);
+  }
+
+  // Score, grade and rank title from the result screen, so analysis can use them.
+  function setResult(r) {
+    if (!recording || !log || !r) return;
+    log.result = { score: r.score ?? null, grade: r.grade ?? null, title: r.title ?? null, tag: r.tag ?? '' };
+  }
+
   // Called once per frame from the render loop. Internally decides whether
   // this frame lands on a sample boundary (path/fps/state/burst-ring, each
   // on its own cadence) and always checks waypoint arrival cheaply.
@@ -385,13 +421,17 @@ export function createTelemetry() {
     if (!recording || !log) return;
     const time = ctx.time ?? nowT();
 
+    const pushEdge = (action, on) => {
+      if (log.inputEdges.length >= MAX_INPUT_EDGES) { log.inputEdgesDropped += 1; return; }
+      log.inputEdges.push({ t: round2(time), action, on });
+    };
     for (const action of PULSE_ACTIONS) {
-      if (intent[action]) log.inputEdges.push({ t: round2(time), action, on: true });
+      if (intent[action]) pushEdge(action, true);
     }
     for (const action of SUSTAIN_ACTIONS) {
-      const now = !!intent[action];
+      const now = held(intent, action);
       if (now !== !!prevSustain[action]) {
-        log.inputEdges.push({ t: round2(time), action, on: now });
+        pushEdge(action, now);
         prevSustain[action] = now;
       }
     }
@@ -473,7 +513,7 @@ export function createTelemetry() {
     recordShotFired, recordShotHit, recordKill, recordEvent,
     addEncounter, updateEncounter, setSpawned, recordError,
     recordInput,
-    tick,
+    tick, snapshotState, setResult,
     setNotifier(fn) { notifier = fn; },
     get recording() { return recording; },
     get log() { return log; },

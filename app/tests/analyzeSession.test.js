@@ -97,3 +97,57 @@ describe('findSessionFile', () => {
     }
   });
 });
+
+describe('analyse: result, input summary, hp over time', () => {
+  const rich = () => ({
+    ...newRun(),
+    result: { score: 4210, grade: 'B', title: 'SEASONED SCOUT', tag: 'DEAD EYE' },
+    state: [{ t: 0, hp: 100, frameMs: 6 }, { t: 30, hp: 80 }, { t: 60, hp: 55 }, { t: 90, hp: 100 }],
+    damageTaken: [{ time: 40, amount: 30, hp: 50 }, { time: 41, amount: 38, hp: 12 }],
+    inputEdges: [
+      { t: 1, action: 'sprint', on: true }, { t: 11, action: 'sprint', on: false },
+      { t: 2, action: 'fireDown', on: true }, { t: 3, action: 'fireDown', on: true },
+      { t: 4, action: 'jump', on: true }, { t: 5, action: 'reload', on: true },
+      { t: 6, action: 'aim', on: true }, { t: 9, action: 'aim', on: false },
+      { t: 7, action: 'grenadeThrow', on: true }, { t: 8, action: 'melee', on: true },
+      { t: 8, action: 'weapon2', on: true },
+    ],
+    inputEdgesDropped: 3,
+  });
+
+  it('reports score, grade and title', () => {
+    const r = analyse(rich());
+    expect(r.result.grade).toBe('B');
+    const text = formatReport(r);
+    expect(text).toContain('Score: 4210 B SEASONED SCOUT');
+  });
+
+  it('summarises inputs: presses, sprint and aim seconds', () => {
+    const r = analyse(rich());
+    expect(r.input.counts).toMatchObject({ fireDown: 2, jump: 1, reload: 1, grenadeThrow: 1, melee: 1, weapon2: 1 });
+    expect(r.input.sprintSeconds).toBe(10);
+    expect(r.input.aimSeconds).toBe(3);
+    const text = formatReport(r);
+    expect(text).toContain('Input:');
+    expect(text).toContain('2 clicks');
+    expect(text).toContain('3 edges dropped');
+  });
+
+  it('hp over time uses damage hp so the real low point shows between state samples', () => {
+    const r = analyse(rich());
+    expect(r.minHp).toBe(12);
+    expect(formatReport(r)).toMatch(/HP over time: .*100@0:00/);
+    expect(formatReport(r)).toContain('12@0:41');
+  });
+
+  it('flags an hp that never moves despite damage taken', () => {
+    const s = { ...rich(), state: [{ t: 0, hp: 100 }, { t: 30, hp: 100 }], damageTaken: [{ time: 5, amount: 40 }] };
+    expect(formatReport(analyse(s))).toContain('WARNING: hp never changed');
+  });
+
+  it('old files without any of this still report', () => {
+    const text = formatReport(analyse(oldHalfRun()));
+    expect(text).not.toContain('Score:');
+    expect(text).toContain('Input: none recorded');
+  });
+});

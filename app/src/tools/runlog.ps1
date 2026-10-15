@@ -56,6 +56,12 @@ $psi.RedirectStandardError = $true
 $psi.StandardOutputEncoding = [Console]::OutputEncoding
 $psi.StandardErrorEncoding = [Console]::OutputEncoding
 $psi.EnvironmentVariables['DF_LOGGED'] = '1'
+# the .bat appends its own detail lines (old and new version, copy results) to this side file (cmd cannot append to a file
+# this script holds open); the lines are copied into the real log below, just before the exit code
+$detailFile = Join-Path $logs ("$Name-detail.tmp")
+Remove-Item -LiteralPath $detailFile -Force -ErrorAction SilentlyContinue
+$psi.EnvironmentVariables['DF_LOGFILE'] = $detailFile
+$clock = [Diagnostics.Stopwatch]::StartNew()
 $p = [Diagnostics.Process]::Start($psi)
 # stderr is merged into the same stream by the .bat's own redirects; anything left is drained to the log too
 $errTask = $p.StandardError.ReadToEndAsync()
@@ -91,7 +97,12 @@ $rc = $p.ExitCode
 $stderr = ''
 try { if ($errTask.Wait(500)) { $stderr = $errTask.Result } } catch {}
 if ($stderr) { [Console]::Error.Write($stderr); $log.WriteLine($stderr.TrimEnd()) }
-$log.WriteLine("exit code $rc")
+if (Test-Path -LiteralPath $detailFile) {
+    try { foreach ($d in (Get-Content -LiteralPath $detailFile)) { $log.WriteLine($d) } } catch {}
+    Remove-Item -LiteralPath $detailFile -Force -ErrorAction SilentlyContinue
+}
+$secs = [math]::Round($clock.Elapsed.TotalSeconds, 1)
+$log.WriteLine("exit code $rc after $secs s")
 if ($rc -ne 0) {
     $msg = "  The details were saved to: $logFile"
     Write-Host $msg

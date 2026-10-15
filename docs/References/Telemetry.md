@@ -28,6 +28,7 @@ Every file on disk is valid and complete so far. While a run is going, `outcome`
 ## Session JSON fields
 
 - Run metadata: `startedAt`, `endedAt`, `lastSavedAt`, `outcome` (`in-progress`, `extracted`, `died`, `abandoned`), `endReason` (`extracted`, `death`, `quit`, `tab-closed`, `unknown`), difficulty, seed, `gameVersion`.
+- `deaths` and `damageTaken` entries carry `hp` (the player's health after the hit; 0 on the lethal one). The time base of `state` is wall-clock seconds since the run started, while `damageTaken.time` and `deaths.time` use the game clock, which stops while paused, so the two can drift apart after a pause.
 - `deaths`, `damageTaken`, `damageTakenBySource`, `damageDealt`, `damageDealtByTarget`, `shots` (fired, hits), `waypoints` (first arrival), `events`, `fps` (sampled every 2 s).
 - `path`: the route, one point per second `{time, x, z, y, yaw}`. About 60 bytes a point, so a 5 minute run adds roughly 18 KB.
 - `inputEdges`: `{t, action, on}` at full fidelity for key and button presses (jump, reload, weapon 1/2/3, swap, grenade throw, fire and aim start and stop).
