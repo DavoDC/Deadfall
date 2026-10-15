@@ -20,12 +20,16 @@ export function readDeveloperMode(configPath) {
 }
 
 // Handles a POSTed capture. Returns the HTTP status to answer with (204 written,
-// 403 refused), or null when the URL is not a capture route. Throws on a bad body.
+// 403 developer mode off, 409 frame cap reached), or null when the URL is not a
+// capture route. Throws on a bad body.
 export function handleCaptureRoute(url, body, { telemetryDir, configPath }) {
   if (url !== '/telemetry/frame' && url !== '/telemetry/capture') return null;
   if (!readDeveloperMode(configPath)) return 403;
   const payload = JSON.parse(body);
-  if (url === '/telemetry/frame') writeFrame(telemetryDir, payload.startedAt, payload.t, payload.dataURL);
-  else writeCapture(telemetryDir, payload.subdir, payload.filename, payload.dataURL);
+  if (url === '/telemetry/frame') {
+    // 409 when the session's frame cap is reached (see writeFrame); nothing written
+    return writeFrame(telemetryDir, payload.startedAt, payload.t, payload.dataURL) ? 204 : 409;
+  }
+  writeCapture(telemetryDir, payload.subdir, payload.filename, payload.dataURL);
   return 204;
 }

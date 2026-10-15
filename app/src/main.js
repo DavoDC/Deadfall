@@ -17,6 +17,7 @@ import { createInput } from './player/input.js';
 import { startPing, quitGame } from './game/serverLink.js';
 import { loadVersion } from './game/versionInfo.js';
 import { resultView } from './player/resultScreen.js';
+import { FRAME_INTERVAL_S, FRAME_CAP_PER_SESSION } from './game/frameCadence.js';
 import { shouldShowMenu, shouldShowEndScreen, resumeButtonLabel, shouldStepSim, shouldRecordTelemetry } from './player/pauseState.js';
 import { createViewmodel } from './weapons/viewmodel.js';
 import { createEffects } from './weapons/effects.js';
@@ -292,6 +293,9 @@ const developerModeReady = loadDeveloperMode(fetch).then((on) => { developerMode
 // The WebGL canvas reads back black outside the render task, so postFrame only
 // raises a flag and the frame loop sends it right after pipeline.render().
 let framePending = false;
+// frames sent this run; the server caps the session too (telemetryStore.writeFrame)
+let framesSentThisRun = 0;
+let frameCapLogged = false;
 function postFrame() {
   if (!developerMode || !telemetry.recording || !telemetry.log) return;
   framePending = true;
@@ -300,8 +304,16 @@ function sendPendingFrame() {
   if (!framePending) return;
   framePending = false;
   if (!developerMode || !telemetry.recording || !telemetry.log) return;
+  if (framesSentThisRun >= FRAME_CAP_PER_SESSION) {
+    if (!frameCapLogged) {
+      frameCapLogged = true;
+      console.warn(`[deadfall] frame cap ${FRAME_CAP_PER_SESSION} reached; no more frames this run`);
+    }
+    return;
+  }
   const dataURL = captureFrame();
   if (!dataURL) return;
+  framesSentThisRun++;
   const startedAt = telemetry.log.startedAt;
   const t = Math.round(telemetry.elapsed() * 100) / 100;
   fetch('/telemetry/frame', {
@@ -331,7 +343,7 @@ document.addEventListener('visibilitychange', () => {
 // periodic save - covers everything that is not an explicit event (path,
 // state samples, input aggregates accumulating during ordinary play)
 setInterval(() => { if (telemetry.recording) postTelemetrySession(); }, 3000);
-setInterval(() => { if (telemetry.recording) postFrame(); }, 10000);
+setInterval(() => { if (telemetry.recording) postFrame(); }, FRAME_INTERVAL_S * 1000);
 
 const ui = {
   toast: (msg, secs) => hud && hud.toast(msg, secs),
@@ -667,6 +679,8 @@ function startRun() {
   telemetryWasLocked = null;
   telemetryStartPerf = performance.now();
   runHits = 0;
+  framesSentThisRun = 0;
+  frameCapLogged = false;
   encounters.reset();
   telemetry.start({ difficulty: difficultyKey, seed: WORLD.seed, gameVersion, env: collectEnv() });
   menuEl.classList.add('hidden');

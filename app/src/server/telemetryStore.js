@@ -11,6 +11,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { isDelta, applyDelta, lengthsOf } from '../game/telemetryDelta.js';
+import { FRAME_CAP_PER_SESSION } from '../game/frameCadence.js';
 
 export function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
@@ -150,11 +151,31 @@ export function createSessionStore(telemetryDir, { now = Date.now } = {}) {
 
 // Write one screenshot frame, keyed by the session's startedAt and the
 // telemetry timestamp t, so frames line up with the session's own timeline.
-export function writeFrame(telemetryDir, startedAt, t, dataURL) {
+// frames written per run directory, seeded from disk on first sight so a
+// restarted server still honours the cap
+const frameCounts = new Map();
+const frameCapLogged = new Set();
+
+// Returns the written path, or null once the session's cap is reached (nothing
+// is written or deleted then; the first refusal is logged once per session).
+export function writeFrame(telemetryDir, startedAt, t, dataURL, cap = FRAME_CAP_PER_SESSION) {
   const runDir = path.join(telemetryDir, 'frames', String(startedAt));
+  if (!frameCounts.has(runDir)) {
+    frameCounts.set(runDir, fs.existsSync(runDir)
+      ? fs.readdirSync(runDir).filter((f) => f.endsWith('.jpg')).length : 0);
+  }
+  const written = frameCounts.get(runDir);
+  if (written >= cap) {
+    if (!frameCapLogged.has(runDir)) {
+      frameCapLogged.add(runDir);
+      console.warn(`[telemetry] frame cap ${cap} reached for session ${startedAt}; no more frames written`);
+    }
+    return null;
+  }
   ensureDir(runDir);
   const framePath = path.join(runDir, `${t}.jpg`);
   fs.writeFileSync(framePath, decodeDataURL(dataURL));
+  frameCounts.set(runDir, written + 1);
   return framePath;
 }
 
