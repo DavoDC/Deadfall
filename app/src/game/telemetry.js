@@ -79,7 +79,7 @@ function round2(n) {
   return Math.round(n * 100) / 100;
 }
 
-export function createTelemetry() {
+export function createTelemetry({ now = Date.now } = {}) {
   let recording = false;
   let log = null;
   let lastSampleT = -Infinity;
@@ -115,7 +115,7 @@ export function createTelemetry() {
   function blankLog(meta) {
     return {
       version: 2,
-      startedAt: Date.now(),
+      startedAt: now(),
       endedAt: null,
       lastSavedAt: null,         // stamped by the server on every write
       endReason: null,           // 'extracted' | 'death' | 'quit' | 'tab-closed' | 'unknown' (null while running)
@@ -179,7 +179,7 @@ export function createTelemetry() {
       activeBurst = null;
     }
     if (agg) flushInputAgg(nowT());
-    log.endedAt = Date.now();
+    log.endedAt = now();
     log.endReason = reason;
     if (log.outcome === 'in-progress') log.outcome = 'abandoned';
     recording = false;
@@ -190,6 +190,15 @@ export function createTelemetry() {
   function setOutcome(outcome) {
     if (!recording || !log) return;
     log.outcome = outcome;
+  }
+
+  // The one way a run ends by death or extraction: sets the outcome and closes
+  // the session in a single step, so nothing can be recorded after it. A new
+  // run must call start() again, which opens a fresh session with its own startedAt.
+  function finish(outcome, reason) {
+    if (!recording || !log) return null;
+    setOutcome(outcome);
+    return stop(reason);
   }
 
   function nowT() {
@@ -220,9 +229,17 @@ export function createTelemetry() {
     }
   }
 
+  // Seconds since start() on the same wall clock that stop() uses for endedAt.
+  // Deaths, damage and hits default to this, so they sit on the session's own
+  // timeline. (They used to take sim time, which freezes while paused, so a
+  // death after a pause was stamped minutes before the run really ended.)
+  function elapsed() {
+    return log ? (now() - log.startedAt) / 1000 : 0;
+  }
+
   function recordDeath({ time, pos, cause, enemy, waypoint, hp } = {}) {
     if (!recording || !log) return;
-    const t = time ?? nowT();
+    const t = time ?? elapsed();
     log.deaths.push({ time: t, pos, cause: cause ?? 'unknown', enemy: enemy ?? null, waypoint: waypoint ?? null, hp: hp ?? null });
     beginBurst('death', t);
     notify('death');
@@ -231,7 +248,7 @@ export function createTelemetry() {
   // hp: the player's hp AFTER this hit (so hp over time is exact even between the 1 s state samples)
   function recordDamageTaken({ time, amount, source, pos, hp } = {}) {
     if (!recording || !log) return;
-    const t = time ?? nowT();
+    const t = time ?? elapsed();
     log.damageTaken.push({ time: t, amount, source: source ?? 'unknown', pos: pos ?? null, hp: hp ?? null });
     log.damageTakenBySource[source ?? 'unknown'] = (log.damageTakenBySource[source ?? 'unknown'] || 0) + amount;
     if (amount >= DAMAGE_SPIKE_THRESHOLD) beginBurst('damageSpike', t);
@@ -240,7 +257,7 @@ export function createTelemetry() {
 
   function recordDamageDealt({ time, amount, target, headshot, crit } = {}) {
     if (!recording || !log) return;
-    log.damageDealt.push({ time: time ?? nowT(), amount, target: target ?? 'unknown', headshot: !!headshot, crit: !!crit });
+    log.damageDealt.push({ time: time ?? elapsed(), amount, target: target ?? 'unknown', headshot: !!headshot, crit: !!crit });
     log.damageDealtByTarget[target ?? 'unknown'] = (log.damageDealtByTarget[target ?? 'unknown'] || 0) + amount;
   }
 
@@ -508,7 +525,7 @@ export function createTelemetry() {
   }
 
   return {
-    start, stop, setOutcome, delta, touch, download, toJSON, summaryLine,
+    start, stop, finish, setOutcome, elapsed, delta, touch, download, toJSON, summaryLine,
     recordDeath, recordDamageTaken, recordDamageDealt,
     recordShotFired, recordShotHit, recordKill, recordEvent,
     addEncounter, updateEncounter, setSpawned, recordError,

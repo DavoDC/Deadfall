@@ -433,3 +433,98 @@ describe('telemetry v2: incident bursts (10Hz ring buffer)', () => {
     expect(t.log.bursts.length).toBe(1);
   });
 });
+
+describe('telemetry: a death ends the session, a restart opens a new one (DF-143)', () => {
+  it('die, restart: two sessions, first closed at death with outcome died, nothing added to it after', () => {
+    const clock = { t: 1000 };
+    const t = createTelemetry({ now: () => clock.t });
+    t.start({ difficulty: 'normal' });
+    const ctx = (time) => ({ time, pos: { x: time, y: 0, z: 0 }, fps: 60, frameMs: 16, landmarks: [] });
+    for (let s = 1; s <= 5; s++) t.tick(0.5, ctx(s));
+    t.recordKill();
+    clock.t = 43000;
+    t.recordDeath({ time: 42, pos: { x: 1, y: 0, z: 2 }, cause: 'razorfin', hp: 0 });
+    t.snapshotState(ctx(42));
+    const first = t.finish('died', 'death');
+    expect(first).toBe(t.log);
+    expect(t.recording).toBe(false);
+
+    const frozen = {
+      path: first.path.length, fps: first.fps.length, state: first.state.length,
+      waypoints: first.waypoints.length, deaths: first.deaths.length, kills: first.kills,
+      events: first.events.length, inputEdges: first.inputEdges.length,
+    };
+    // player keeps "running" after death: every recorder and tick must be a no-op
+    for (let s = 43; s <= 60; s++) t.tick(0.5, { ...ctx(s), landmarks: [{ name: 'late', x: s, z: 0, r: 5 }] });
+    t.recordKill();
+    t.recordDamageTaken({ time: 50, amount: 30, source: 'ghost', hp: 5 });
+    t.recordDeath({ time: 51, pos: null, cause: 'again', hp: 0 });
+    t.recordEvent('late-event');
+    expect(first.endedAt).toBe(43000);
+    // the death sits on the same clock as the session: its time is how far into the session it happened
+    expect(first.deaths[0].time * 1000).toBe(first.endedAt - first.startedAt);
+    expect(first.endReason).toBe('death');
+    expect(first.outcome).toBe('died');
+    expect({
+      path: first.path.length, fps: first.fps.length, state: first.state.length,
+      waypoints: first.waypoints.length, deaths: first.deaths.length, kills: first.kills,
+      events: first.events.length, inputEdges: first.inputEdges.length,
+    }).toEqual(frozen);
+
+    // restart: a fresh session with its own startedAt
+    clock.t = 50000;
+    t.start({ difficulty: 'normal' });
+    const second = t.log;
+    expect(second).not.toBe(first);
+    expect(second.startedAt).toBe(50000);
+    expect(second.startedAt).not.toBe(first.startedAt);
+    expect(second.outcome).toBe('in-progress');
+    expect(second.deaths).toEqual([]);
+    for (let s = 1; s <= 3; s++) t.tick(0.5, ctx(s));
+    t.recordKill();
+    expect(second.kills).toBe(1);
+    expect(second.state.length).toBeGreaterThan(0);
+    // the first session is untouched by the second run
+    expect({
+      path: first.path.length, fps: first.fps.length, state: first.state.length,
+      waypoints: first.waypoints.length, deaths: first.deaths.length, kills: first.kills,
+      events: first.events.length, inputEdges: first.inputEdges.length,
+    }).toEqual(frozen);
+    expect(first.outcome).toBe('died');
+  });
+
+  it('deaths and damage without an explicit time are stamped on the session clock (same scale as endedAt)', () => {
+    const clock = { t: 1000 };
+    const t = createTelemetry({ now: () => clock.t });
+    t.start({});
+    clock.t = 3500;
+    t.recordDamageTaken({ amount: 10, source: 'acid', hp: 90 });
+    t.recordDamageDealt({ amount: 5, target: 'boar' });
+    clock.t = 43000;
+    t.recordDeath({ hp: 0 });
+    const log = t.finish('died', 'death');
+    expect(log.damageTaken[0].time).toBe(2.5);
+    expect(log.damageDealt[0].time).toBe(2.5);
+    expect(log.deaths[0].time).toBe(42);
+    expect(log.deaths[0].time * 1000).toBe(log.endedAt - log.startedAt);
+  });
+
+  it('finish() outside a run is a safe no-op', () => {
+    const t = createTelemetry();
+    expect(t.finish('died', 'death')).toBe(null);
+    expect(t.log).toBe(null);
+  });
+
+  it('an extraction finishes with outcome extracted and its end reason', () => {
+    const clock = { t: 5 };
+    const t = createTelemetry({ now: () => clock.t });
+    t.start({});
+    clock.t = 9000;
+    t.setResult({ score: 1, grade: 'B', title: 'x', tag: '' });
+    const log = t.finish('extracted', 'extracted');
+    expect(log.outcome).toBe('extracted');
+    expect(log.endReason).toBe('extracted');
+    expect(log.endedAt).toBe(9000);
+    expect(log.result.grade).toBe('B');
+  });
+});

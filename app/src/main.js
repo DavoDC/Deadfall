@@ -296,7 +296,7 @@ function sendPendingFrame() {
   const dataURL = captureFrame();
   if (!dataURL) return;
   const startedAt = telemetry.log.startedAt;
-  const t = Math.round(game.time * 100) / 100;
+  const t = Math.round(telemetry.elapsed() * 100) / 100;
   fetch('/telemetry/frame', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ startedAt, t, dataURL }),
@@ -341,8 +341,9 @@ const ui = {
     vignette = 1;
     lastHurt = { amount, srcPos, source };
     encounters.noteHurt(source, srcPos, amount);
+    // no time: telemetry stamps it on its own wall clock (see telemetry.elapsed)
     telemetry.recordDamageTaken({
-      time: game.time, amount, source, hp: player.p.hp,
+      amount, source, hp: player.p.hp,
       pos: srcPos ? { x: srcPos.x, y: srcPos.y, z: srcPos.z } : null,
     });
     // hp on record right at the hit, not up to 1 s later (throttled to 4 per second)
@@ -355,19 +356,16 @@ const ui = {
   onDeath() {
     sfxStinger('death');
     telemetry.recordDeath({
-      time: game.time,
       pos: { x: player.p.pos.x, y: player.p.pos.y, z: player.p.pos.z },
       cause: lastHurt ? lastHurt.source : 'unknown',
       enemy: lastHurt ? lastHurt.source : null,
       hp: player.p.hp,
     });
     if (telemetry.recording) telemetry.snapshotState(buildTelemetryCtx(performance.now(), 0.016));
-    telemetry.setOutcome('died');
     endRun(false);
   },
   onWin() {
     sfxStinger('win');
-    telemetry.setOutcome('extracted');
     endRun(true);
   },
   onHazard(kind) {
@@ -444,7 +442,7 @@ const { game, player, weapons, grenades, enemyMgr, director, pickups, extraction
   sim.weaponHooks.onEnemyHit = (enemy, dmg, headshot, point, crit) => {
     const res = origOnEnemyHit(enemy, dmg, headshot, point, crit);
     encounters.noteHit(enemy, weapons.state.current, res === 'kill');
-    telemetry.recordDamageDealt({ time: game.time, amount: dmg, target: enemy.type, headshot, crit });
+    telemetry.recordDamageDealt({ amount: dmg, target: enemy.type, headshot, crit });
     return res;
   };
 }
@@ -554,8 +552,9 @@ function endRun(extracted) {
     isRecord,
   });
   telemetry.setResult({ score: view.score.total, grade: view.grade, title: view.rank, tag: view.tag });
-  if (telemetry.recording) {
-    telemetry.stop(extracted ? 'extracted' : 'death');
+  // closes the session: no sample, event or death can land in it after this
+  // (the next startRun opens a fresh session)
+  if (telemetry.finish(extracted ? 'extracted' : 'died', extracted ? 'extracted' : 'death')) {
     console.log(telemetry.summaryLine());
   }
   // guardrail: a died/extracted run always leaves its FINAL state (endedAt,
