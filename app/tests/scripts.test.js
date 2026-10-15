@@ -244,6 +244,42 @@ describe('central logs folder', () => {
     expect(ps).not.toMatch(DASHES);
     expect(ps).not.toMatch(NON_ASCII);
   });
+  it.each(['launch', 'update', 'save-logs'])('%s.bat writes its version and its own detail lines to the run log', (n) => {
+    const text = read(n + '.bat');
+    expect(text).toContain(':dflog');
+    expect(text).toContain('>> "%DF_LOGFILE%" echo %~1');
+    expect(text).toMatch(new RegExp(`call :dflog "\\[${n}\\] (old )?version`));
+  });
+  it('runlog.ps1 logs version, Windows, Node, exit code and duration and hands the log path to the bat', () => {
+    const ps = tool('runlog.ps1');
+    expect(ps).toContain('version $verLine');
+    expect(ps).toContain('Windows $osCaption');
+    expect(ps).toContain('Node.js $nodeVer');
+    expect(ps).toContain('exit code $rc after $secs s');
+    expect(ps).toContain("EnvironmentVariables['DF_LOGFILE']");
+    expect(ps).toContain('Stopwatch');
+  });
+  it('update.bat logs old and new version, method, robocopy result, and the download size and time', () => {
+    const text = read('update.bat');
+    expect(text).toContain('[update] old version');
+    expect(text).toContain('[update] new version');
+    expect(text).toContain('[update] method: git pull');
+    expect(text).toContain('[update] method: ZIP');
+    expect(text).toMatch(/\[update\] robocopy exit code !ROBO_RC!, files listed !ROBO_FILES!/);
+    const ps = tool('download-zip.ps1');
+    expect(ps).toContain('download ok: $bytes bytes in $secs s');
+    expect(ps).toContain('DF_LOGFILE');
+  });
+  it('the download worker shows a dot per second, is PowerShell 5.1 plain ASCII, and update.bat uses it', () => {
+    const ps = tool('download-zip.ps1');
+    expect(ps).toContain("Write-Host -NoNewline '.'");
+    expect(ps).toContain('Start-Job');
+    expect(ps).toContain('Tls12');
+    expect(ps).not.toMatch(DASHES);
+    expect(ps).not.toMatch(NON_ASCII);
+    expect(ps).not.toMatch(/\?\?|\?\.|&&|\|\|/);
+    expect(read('update.bat')).toContain('download-zip.ps1');
+  });
   it('save-logs.ps1 zips the whole logs folder', () => {
     const ps = tool('save-logs.ps1');
     expect(ps).toContain("'logs'");
@@ -269,6 +305,13 @@ describe('launch.bat --no-browser', () => {
     const text = read('launch.bat');
     expect(text).toContain('--no-browser');
     expect(text).toMatch(/:open_browser\r?\nif defined NOBROWSER goto :end_ok/);
+  });
+  it('waits for the server and words the closing banner for a run without a browser', () => {
+    const text = read('launch.bat');
+    const wait = text.slice(text.indexOf(':wait_loop'), text.indexOf(':server_slow'));
+    expect(wait).not.toContain('NOBROWSER');
+    expect(text).toContain('Deadfall is running at:');
+    expect(text).toContain('Deadfall is opening in your browser:');
   });
 });
 

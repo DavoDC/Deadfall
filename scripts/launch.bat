@@ -56,6 +56,7 @@ if "!DF_SHA!"=="unknown" (
     echo   Version: !DF_SHA:~0,7! ^(!DF_DATE:~0,10!^)
 )
 echo.
+call :dflog "[launch] version !DF_SHA! !DF_DATE!, port %PORT%"
 
 if not exist "%APP%\package.json" (
     echo   [PROBLEM] I cannot find the game files next to this launcher.
@@ -101,6 +102,7 @@ echo         Node.js installed.
 
 :node_ready
 echo         Node.js %NODE_VER% OK.
+call :dflog "[launch] Node.js %NODE_VER% ok"
 
 REM ---------- Step 2: game packages ----------
 echo   [2/3] Checking game files...
@@ -138,6 +140,7 @@ REM developer mode runs the Vite dev server with hot reload. See docs\Guides\Lau
 set "DEVMODE="
 findstr /r /c:"\"developerMode\" *: *true" "%APP%\config\launcher.json" >nul 2>nul
 if not errorlevel 1 set "DEVMODE=1"
+if defined DEVMODE (call :dflog "[launch] mode: developer") else call :dflog "[launch] mode: player"
 if not defined DEVMODE call :ensure_build
 if "%BUILD_FAILED%"=="1" goto :fail
 
@@ -157,7 +160,6 @@ set "WAITED=0"
 :wait_loop
 call :server_up
 if "%SERVER_UP%"=="1" goto :open_browser
-if defined NOBROWSER goto :end_ok
 if %WAITED% GEQ 30 goto :server_slow
 REM ping is the wait: timeout.exe refuses to run when input is redirected.
 "%SystemRoot%\System32\ping.exe" -n 2 127.0.0.1 >nul
@@ -173,6 +175,7 @@ goto :fail
 echo         Already running; opening it.
 
 :open_browser
+if defined NOBROWSER goto :end_ok
 REM Prefer Brave; falls back to the system default browser when Brave isn't found.
 set "BRAVE_EXE="
 if exist "%ProgramFiles%\BraveSoftware\Brave-Browser\Application\brave.exe" set "BRAVE_EXE=%ProgramFiles%\BraveSoftware\Brave-Browser\Application\brave.exe"
@@ -185,9 +188,14 @@ if defined BRAVE_EXE (
 )
 
 :end_ok
+call :dflog "[launch] server up: %SERVER_UP%, url %LAUNCH_URL%"
 echo.
 echo   ========================================
-echo     Deadfall is opening in your browser:
+if defined NOBROWSER (
+    echo     Deadfall is running at:
+) else (
+    echo     Deadfall is opening in your browser:
+)
 echo     %LAUNCH_URL%
 echo.
 echo     When you are done, press QUIT in the
@@ -201,6 +209,7 @@ if not defined NOPAUSE (
 exit /b 0
 
 :fail
+call :dflog "[launch] stopped with a problem"
 echo.
 if not defined NOPAUSE (
     echo   Press any key to close this window.
@@ -209,6 +218,12 @@ if not defined NOPAUSE (
 exit /b 1
 
 REM ---------- helpers ----------
+:dflog
+REM Appends one detail line to the run log (set by runlog.ps1 in DF_LOGFILE); does nothing when run without the logger.
+if not defined DF_LOGFILE exit /b 0
+>> "%DF_LOGFILE%" echo %~1
+exit /b 0
+
 :ensure_build
 REM Player mode: build the game only when there is no build yet or the sources are newer than the build stamp (update.bat deletes the stamp).
 set "BUILD_FAILED=0"

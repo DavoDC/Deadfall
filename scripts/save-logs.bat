@@ -20,6 +20,16 @@ for %%A in (%*) do (
 )
 for %%I in ("%~dp0..") do set "ROOT=%%~fI"
 set "TOOL=%ROOT%\app\src\tools\save-logs.ps1"
+set "VERTOOL=%ROOT%\app\src\tools\version.ps1"
+set "DF_SHA=unknown"
+set "DF_DATE="
+if exist "%VERTOOL%" (
+    for /f "tokens=1,2" %%a in ('powershell -NoProfile -ExecutionPolicy Bypass -File "%VERTOOL%" -Root "%ROOT%" 2^>nul') do (
+        set "DF_SHA=%%a"
+        set "DF_DATE=%%b"
+    )
+)
+call :dflog "[save-logs] version !DF_SHA! !DF_DATE!"
 
 echo.
 echo   ========================================
@@ -37,6 +47,7 @@ echo         Your user name and user folder are removed.
 echo.
 powershell -NoProfile -ExecutionPolicy Bypass -File "%TOOL%" -Root "%ROOT%"
 if errorlevel 1 goto :failed
+call :dflog "[save-logs] zip saved"
 
 echo.
 echo   ========================================
@@ -56,6 +67,7 @@ echo             Please open scripts\save-logs.bat from inside the Deadfall fold
 goto :fail
 
 :failed
+call :dflog "[save-logs] could not make the zip"
 echo.
 echo   [PROBLEM] I could not make the ZIP. Please tell me what this window says.
 
@@ -66,3 +78,9 @@ if not defined NOPAUSE (
     pause >nul
 )
 exit /b 1
+
+:dflog
+REM Appends one detail line to the run log (set by runlog.ps1 in DF_LOGFILE); does nothing when run without the logger.
+if not defined DF_LOGFILE exit /b 0
+>> "%DF_LOGFILE%" echo %~1
+exit /b 0

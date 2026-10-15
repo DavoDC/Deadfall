@@ -31,7 +31,7 @@ Safe to run repeatedly. Steps, in order:
 
 `app\config\launcher.json` (tracked) holds `{"developerMode": false}`. In player mode (false, the default) launch.bat builds the game once (`vite build`, output in `app\dist`, details in `app\logs\setup-tools.log`) and serves the built bundle with `vite preview` on the same port. Players need no hot reload, and the built bundle is a single minified file, so the page loads faster. The build runs only when `app\dist\index.html` or the stamp `app\dist\.deadfall-build-stamp` is missing, or anything in `app\src`, `app\assets`, `app\config`, `index.html`, `package-lock.json` or `VERSION` is newer than the stamp; update.bat deletes the stamp after it changes any file so the next launch rebuilds. Preview serves the same lifecycle (`/api/ping`, `/api/quit`, `/api/version`, idle exit, `server.pid`) and the same telemetry endpoints, so telemetry stays on. Set `"developerMode": true` to run the Vite dev server with hot reload instead (for developers editing the code). The port is 5199; `DEADFALL_PORT` overrides it for tests on a machine whose 5199 is busy.
 
-Flags: `--no-pause` (no waiting for a key), `--no-browser` (start the server but do not open a browser; for tests) and `--dry-run` (if Node is missing, print the winget command instead of running it).
+Flags: `--no-pause` (no waiting for a key), `--no-browser` (start the server, wait until it answers, never open a browser, and word the closing banner "Deadfall is running at:"; for tests) and `--dry-run` (if Node is missing, print the winget command instead of running it).
 
 ## Optional CI
 
@@ -50,7 +50,7 @@ Flags: `--no-pause` (no waiting for a key), `--no-browser` (start the server but
 Runs from a temp copy of itself so overwriting `scripts\update.bat` mid-run is safe.
 
 - Git clone (repo has `.git` and `git` exists): `git pull --ff-only`. If git is missing (the normal case for players) it goes straight to the ZIP path, never asking to install anything. If the pull is blocked (local edits, no network) it explains in plain English and uses the ZIP path only after an explicit Y.
-- Downloaded ZIP (no `.git`): downloads `https://github.com/DavoDC/Deadfall/archive/refs/heads/main.zip` with PowerShell (TLS 1.2), extracts to a temp folder, and copies over the repo root with `robocopy /E`. Nothing is deleted, and `node_modules`, `captures`, `logs`, `dist` and `.git` are never touched. The temp folder is removed afterwards.
+- Downloaded ZIP (no `.git`): downloads `https://github.com/DavoDC/Deadfall/archive/refs/heads/main.zip` with PowerShell (TLS 1.2, through `download-zip.ps1`, one dot per second), extracts to a temp folder, and copies over the repo root with `robocopy /E`. Nothing is deleted, and `node_modules`, `captures`, `logs`, `dist` and `.git` are never touched. The temp folder is removed afterwards.
 - If `app\package-lock.json` changed, the install stamp is deleted so the next `launch.bat` reinstalls packages.
 - Flags: `--no-pause` (questions default to No, nothing is started), `--source "<folder>"` or the `DEADFALL_UPDATE_SOURCE` environment variable (copy from a local folder instead of GitHub, for testing).
 
@@ -81,7 +81,13 @@ Privacy scrubbing is done on copies in a temp folder (removed afterwards), never
 
 ### Central logs
 
-`launch.bat`, `update.bat` and `save-logs.bat` each wrap themselves in `app\src\tools\runlog.ps1` (the first run only; `DF_LOGGED=1` stops a second wrap), which shows the output live and also appends it to `app\logs\<script>-<yyyy-MM-dd>.log`. Every run starts with a timestamped header (script, arguments, version, Windows, PowerShell, Node.js) and ends with `exit code N`; on a non-zero exit the window prints `The details were saved to: <path>`. Any log in the folder over about 1 MB is trimmed to its newest half at the start of the next run. The hidden game server writes `server.log` in the same folder. Only built-in tools are used, nothing touches the network, and the folder is gitignored (it lives under `captures`). If PowerShell cannot start the wrapper the scripts still run, just unlogged.
+`launch.bat`, `update.bat` and `save-logs.bat` each wrap themselves in `app\src\tools\runlog.ps1` (the first run only; `DF_LOGGED=1` stops a second wrap), which shows the output live and also appends it to `app\logs\<script>-<yyyy-MM-dd>.log`. Every run starts with a timestamped header (script, arguments, version, Windows, PowerShell, Node.js) and ends with `exit code N after S s` (the run duration); on a non-zero exit the window prints `The details were saved to: <path>`. Any log in the folder over about 1 MB is trimmed to its newest half at the start of the next run. The hidden game server writes `server.log` in the same folder. Only built-in tools are used, nothing touches the network, and the folder is gitignored (it lives under `captures`). If PowerShell cannot start the wrapper the scripts still run, just unlogged.
+
+Detail lines from inside the scripts: each `.bat` has a small `:dflog` helper that appends one line to a side file named in the environment variable `DF_LOGFILE` (`app\logs\<script>-detail.tmp`, which `runlog.ps1` sets). Windows cannot append to a file the logger holds open, hence the side file; `runlog.ps1` copies its lines into the real log just before the `exit code` line and deletes it. Without the logger (`DF_LOGGED` set by hand) the helper does nothing.
+
+What lands in the log besides the screen output: `launch.bat` writes `[launch] version`, the port, the Node.js version, the mode (player or developer), whether the server came up and the URL. `update.bat` writes `[update] old version`, the method (`git pull` or `ZIP`), the download size and seconds, the robocopy exit code and how many files it listed, the new version and the result sentence. `save-logs.bat` writes `[save-logs] version` and whether the ZIP was saved. The header of every run already holds the version, Windows build, PowerShell and Node.js versions.
+
+Download progress: `update.bat` downloads through `app\src\tools\download-zip.ps1`, which runs the download in a background job and prints one dot per second so the window never looks frozen. The same worker unpacks the ZIP and logs `download ok: N bytes in S s`.
 
 ### Version stamping
 

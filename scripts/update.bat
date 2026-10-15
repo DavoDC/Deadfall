@@ -61,6 +61,10 @@ if not exist "%ROOT%\app\package.json" (
 
 call :stop_server
 if "%STOP_FAILED%"=="1" goto :fail
+REM Detail for the log (app\logs\update-<date>.log): the version we start from. The console stays short.
+call :show_version
+set "OLD_SHA=!VSHA!"
+call :dflog "[update] old version !OLD_SHA!"
 call :lock_hash
 set "HASH_BEFORE=%LOCK_HASH%"
 set "CHANGED_LINE="
@@ -72,6 +76,7 @@ where git >nul 2>nul
 if errorlevel 1 goto :zip_mode
 
 REM ---------- git clone path ----------
+call :dflog "[update] method: git pull"
 echo   [1/3] Checking GitHub for the newest version...
 for /f "delims=" %%h in ('git -C "%ROOT%" rev-parse HEAD 2^>nul') do set "OLD_HEAD=%%h"
 git -C "%ROOT%" pull --ff-only > "%TEMP%\deadfall-pull.txt" 2>&1
@@ -101,6 +106,7 @@ goto :after_update
 
 REM ---------- zip path ----------
 :zip_mode
+call :dflog "[update] method: ZIP"
 if exist "%WORK%" rmdir /s /q "%WORK%" >nul 2>nul
 mkdir "%WORK%\extract" >nul 2>nul
 set "NEWDIR="
@@ -114,8 +120,13 @@ if defined SRC (
     set "NEWDIR=!SRC!"
     goto :zip_copy
 )
-echo   [1/3] Downloading the newest version (a minute or so, please wait)... 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference = 'SilentlyContinue'; try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -UseBasicParsing -Uri $env:ZIPURL -OutFile ($env:WORK + '\main.zip'); Expand-Archive -LiteralPath ($env:WORK + '\main.zip') -DestinationPath ($env:WORK + '\extract') -Force } catch { Write-Host $_.Exception.Message; exit 1 }"
+echo   [1/3] Downloading the newest version (a minute or so, a dot appears each second)...
+REM The worker prints one dot per second and logs the download size and seconds.
+if not exist "%ROOT%\app\src\tools\download-zip.ps1" (
+    echo   [PROBLEM] The download helper is missing from the game files. Please download the game again.
+    goto :fail
+)
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\app\src\tools\download-zip.ps1" -Url "%ZIPURL%" -Zip "%WORK%\main.zip" -Extract "%WORK%\extract"
 if errorlevel 1 (
     echo.
     echo   [PROBLEM] The download did not work. Check your internet connection and try again.
@@ -142,6 +153,9 @@ if not "%LOCK_HASH%"=="%HASH_BEFORE%" del "%STAMP%" >nul 2>nul
 echo   [2/3] Updating your files (your installed game stays put)...
 robocopy "%NEWDIR%" "%ROOT%" /E /XD node_modules captures dist .git /NJH /NJS /NDL /NP /NC /NS /R:1 /W:1 > "%WORK%\robocopy.txt"
 set "ROBO_RC=%errorlevel%"
+set "ROBO_FILES=0"
+for /f "delims=" %%c in ('find /c /v "" ^< "%WORK%\robocopy.txt"') do set "ROBO_FILES=%%c"
+call :dflog "[update] robocopy exit code !ROBO_RC!, files listed !ROBO_FILES!"
 if %ROBO_RC% GEQ 8 (
     type "%WORK%\robocopy.txt"
     echo.
@@ -160,6 +174,8 @@ echo   [3/3] Finishing up...
 REM Player mode serves a built bundle: drop its build stamp so the next launch rebuilds from the new files.
 if not "%CHANGED_LINE%"=="You are already up to date." del "%ROOT%\app\dist\.deadfall-build-stamp" >nul 2>nul
 call :show_version
+call :dflog "[update] new version !VSHA! (was !OLD_SHA!)"
+call :dflog "[update] result: %CHANGED_LINE%"
 call :lock_hash
 if not "%HASH_BEFORE%"=="%LOCK_HASH%" (
     del "%STAMP%" >nul 2>nul
@@ -239,6 +255,12 @@ echo   %ASK%
 choice /c YN /n /m "  Press Y for yes or N for no: "
 if errorlevel 2 exit /b 0
 set "ANSWER=Y"
+exit /b 0
+
+:dflog
+REM Appends one detail line to the run log (set by runlog.ps1 in DF_LOGFILE); does nothing when run without the logger.
+if not defined DF_LOGFILE exit /b 0
+>> "%DF_LOGFILE%" echo %~1
 exit /b 0
 
 :lock_hash
