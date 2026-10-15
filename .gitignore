@@ -8,3 +8,6 @@ TEMP/
 # Throwaway capture artifacts (screenshots, video, probe output) - never committed
 app/captures/
 app/logs/
+
+# Per machine: created from app/config/launcher.example.json on first use (developerMode switch)
+app/config/launcher.json

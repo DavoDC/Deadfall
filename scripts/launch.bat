@@ -137,6 +137,8 @@ if defined NEED_INSTALL (
 
 REM Player mode (the default, app\config\launcher.json developerMode false) builds the game once and serves the built bundle;
 REM developer mode runs the Vite dev server with hot reload. See docs\Guides\LaunchAndUpdate.md.
+REM launcher.json is per machine and gitignored: a missing one is created from the tracked launcher.example.json.
+if not exist "%APP%\config\launcher.json" copy /y "%APP%\config\launcher.example.json" "%APP%\config\launcher.json" >nul 2>nul
 set "DEVMODE="
 findstr /r /c:"\"developerMode\" *: *true" "%APP%\config\launcher.json" >nul 2>nul
 if not errorlevel 1 set "DEVMODE=1"

@@ -317,13 +317,14 @@ describe('launch.bat --no-browser', () => {
 
 describe('player mode and developer mode', () => {
   const text = read('launch.bat');
-  const cfg = JSON.parse(readFileSync(join(ROOT, 'app', 'config', 'launcher.json'), 'utf8'));
+  const cfg = JSON.parse(readFileSync(join(ROOT, 'app', 'config', 'launcher.example.json'), 'utf8'));
   const vite = readFileSync(join(ROOT, 'app', 'config', 'vite.config.js'), 'utf8');
-  it('launcher.json defaults to player mode', () => {
+  it('launcher.example.json (the template) defaults to player mode', () => {
     expect(cfg).toEqual({ developerMode: false });
   });
   it('launch.bat reads the setting, builds when stale and serves the build with vite preview in player mode', () => {
     expect(text).toContain('launcher.json');
+    expect(text).toMatch(/if not exist "%APP%\\config\\launcher\.json" copy \/y "%APP%\\config\\launcher\.example\.json"/);
     expect(text).toMatch(/developerMode/);
     expect(text).toContain('.deadfall-build-stamp');
     expect(text).toMatch(/vite\.js build --config/);

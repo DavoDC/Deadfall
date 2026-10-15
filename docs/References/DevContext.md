@@ -26,7 +26,7 @@ Orientation for anyone working on Deadfall: where things live, how to run them, 
 | `app/index.html` | Vite entry page |
 | `app/VERSION` | Build version: the placeholder `$Format:%H %cI$` in git, expanded to the commit sha and date by GitHub's Download ZIP (export-subst) |
 | `.github/workflows/` | Optional CI (`ci.yml`, pull requests and manual runs only) |
-| `app/config/` | Vite and vitest configuration (`vite.config.js`) and the launcher setting `launcher.json` (`developerMode`: false = built bundle via `vite preview`, true = dev server with hot reload) |
+| `app/config/` | Vite and vitest configuration (`vite.config.js`) and the launcher setting `launcher.json` (`developerMode`: false = built bundle via `vite preview`, true = dev server with hot reload). `launcher.json` is gitignored and per machine: it is auto-created from the tracked `launcher.example.json` when missing (`app/src/server/launcherConfig.js`) |
 | `app/assets/` | Static files served at the site root (Vite `publicDir`), currently the CC0 textures |
 | `scripts/` | End-user scripts only: `launch.bat` (idempotent setup + start), `update.bat` (git pull or ZIP download) and `save-logs.bat` (scrubbed log ZIP on the Desktop, version stamping: see "Saving logs and versions"); all idempotent, see the Idempotency section of the LaunchAndUpdate guide |
 | `app/src/` | Game code: `audio`, `capture`, `core`, `enemies`, `game`, `player`, `render`, `server`, `weapons`, `world` |

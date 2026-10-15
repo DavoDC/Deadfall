@@ -3,11 +3,14 @@
 // while config/launcher.json says developerMode true. The file is read on each
 // request, so flipping it takes effect without restarting the dev server.
 // Players (developerMode false, the default) write no captures at all.
+// launcher.json is created from launcher.example.json when missing (launcherConfig.js).
 
 import fs from 'node:fs';
 import { writeFrame, writeCapture } from './telemetryStore.js';
+import { ensureLauncherConfig } from './launcherConfig.js';
 
 export function readDeveloperMode(configPath) {
+  ensureLauncherConfig(configPath);
   try {
     const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
     return !!cfg && cfg.developerMode === true;

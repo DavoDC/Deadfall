@@ -52,8 +52,8 @@ describe('readDeveloperMode', () => {
     expect(readDeveloperMode(configPath)).toBe(false);
   });
 
-  it('the shipped app/config/launcher.json keeps developerMode false by default', () => {
-    expect(readDeveloperMode(fileURLToPath(new URL('../config/launcher.json', import.meta.url)))).toBe(false);
+  it('the tracked app/config/launcher.example.json keeps developerMode false by default', () => {
+    expect(readDeveloperMode(fileURLToPath(new URL('../config/launcher.example.json', import.meta.url)))).toBe(false);
   });
 });
 
