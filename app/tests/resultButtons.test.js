@@ -38,15 +38,13 @@ describe('result buttons (DF-148)', () => {
     expect(panel.indexOf('id="btn-copy"')).toBeGreaterThan(panel.indexOf('class="result-score"'));
   });
 
-  it('the difficulty chooser sits directly under PLAY AGAIN, before QUIT', () => {
+  it('DF-160: the difficulty step sits under PLAY AGAIN and before QUIT (no chooser row on the result)', () => {
     const again = panel.indexOf('id="btn-again"');
-    const label = panel.indexOf('class="result-diff-label">DIFFICULTY');
-    const chooser = panel.indexOf('id="end-difficulty"');
+    const step = panel.indexOf('id="again-step"');
     const quit = panel.indexOf('id="btn-end-quit"');
     expect(again).toBeGreaterThan(-1);
-    expect(label).toBeGreaterThan(again);
-    expect(chooser).toBeGreaterThan(label);
-    expect(quit).toBeGreaterThan(chooser);
-    expect(panel.slice(again, label)).not.toContain('id="btn-copy"');
+    expect(step).toBeGreaterThan(again);
+    expect(quit).toBeGreaterThan(step);
+    expect(panel.slice(again, step)).not.toContain('id="btn-copy"');
   });
 });

@@ -478,37 +478,29 @@ hud = createHud(player, weapons, game, director, grenades, sim);
 // --- difficulty selection ---
 let difficultyKey = localStorage.getItem('deadfall_difficulty') || DEFAULT_DIFFICULTY;
 if (!DIFFICULTIES[difficultyKey]) difficultyKey = DEFAULT_DIFFICULTY;
+// the difficulty of the last run started; PLAY AGAIN preselects it
+let lastPlayedKey = difficultyKey;
 sim.setDifficulty(difficultyKey);
 
+// the same cards on the start screen and in the PLAY AGAIN step (DF-160)
 const diffButtons = {};
-const diffChips = {};
-const endDiffWrap = document.getElementById('end-difficulty');
-const diffWrap = document.getElementById('difficulty');
-for (const key of Object.keys(DIFFICULTIES)) {
-  const d = DIFFICULTIES[key];
-  const btn = document.createElement('button');
-  btn.className = 'diff-btn';
-  btn.innerHTML = `<b>${d.label}</b><span>${d.blurb}</span>`;
-  btn.addEventListener('click', () => selectDifficulty(key));
-  diffWrap.appendChild(btn);
-  diffButtons[key] = btn;
-  // compact selector on the result panel (same selection state)
-  const chip = document.createElement('button');
-  chip.className = 'diff-chip';
-  chip.textContent = d.label;
-  chip.addEventListener('click', () => selectDifficulty(key));
-  endDiffWrap.appendChild(chip);
-  diffChips[key] = chip;
+for (const wrapId of ['difficulty', 'again-difficulty']) {
+  const wrap = document.getElementById(wrapId);
+  for (const key of Object.keys(DIFFICULTIES)) {
+    const btn = document.createElement('button');
+    btn.className = 'diff-btn';
+    btn.innerHTML = `<b>${DIFFICULTIES[key].label}</b><span>${DIFFICULTIES[key].blurb}</span>`;
+    btn.addEventListener('click', () => selectDifficulty(key));
+    wrap.appendChild(btn);
+    (diffButtons[key] ||= []).push(btn);
+  }
 }
 function selectDifficulty(key) {
   difficultyKey = key;
   localStorage.setItem('deadfall_difficulty', key);
   sim.setDifficulty(key);
-  for (const [k, btn] of Object.entries(diffButtons)) {
-    btn.classList.toggle('selected', k === key);
-  }
-  for (const [k, chip] of Object.entries(diffChips)) {
-    chip.classList.toggle('selected', k === key);
+  for (const [k, btns] of Object.entries(diffButtons)) {
+    for (const btn of btns) btn.classList.toggle('selected', k === key);
   }
 }
 selectDifficulty(difficultyKey);
@@ -585,6 +577,7 @@ function endRun(extracted, cause = null) {
 }
 
 function renderResult(view) {
+  setAgainStep(false);
   const title = document.getElementById('end-title');
   title.textContent = view.title;
   title.className = 'title ' + view.titleClass;
@@ -682,6 +675,7 @@ function startRun() {
   framesSentThisRun = 0;
   frameCapLogged = false;
   encounters.reset();
+  lastPlayedKey = difficultyKey;
   telemetry.start({ difficulty: difficultyKey, seed: WORLD.seed, gameVersion, env: collectEnv() });
   menuEl.classList.add('hidden');
   endEl.classList.add('hidden');
@@ -705,7 +699,18 @@ btnStart.addEventListener('click', () => {
     startRun();
   }
 });
-document.getElementById('btn-again').addEventListener('click', startRun);
+// PLAY AGAIN opens the difficulty step with the last played difficulty
+// preselected; DEPLOY in that step starts the run (DF-160)
+function setAgainStep(open) {
+  document.getElementById('btn-again').classList.toggle('hidden', open);
+  document.getElementById('again-step').classList.toggle('hidden', !open);
+}
+document.getElementById('btn-again').addEventListener('click', () => {
+  selectDifficulty(lastPlayedKey);
+  setAgainStep(true);
+});
+document.getElementById('btn-again-back').addEventListener('click', () => setAgainStep(false));
+document.getElementById('btn-deploy-again').addEventListener('click', startRun);
 // Quit stops the hidden local game server (launch.bat starts it with no window).
 function quitFromMenu() {
   // QUIT from the pause menu mid-run: save the ending BEFORE the server stops
