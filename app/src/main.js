@@ -282,7 +282,16 @@ function captureFrame() {
   }
 }
 
+// The WebGL canvas reads back black outside the render task, so postFrame only
+// raises a flag and the frame loop sends it right after pipeline.render().
+let framePending = false;
 function postFrame() {
+  if (!telemetry.recording || !telemetry.log) return;
+  framePending = true;
+}
+function sendPendingFrame() {
+  if (!framePending) return;
+  framePending = false;
   if (!telemetry.recording || !telemetry.log) return;
   const dataURL = captureFrame();
   if (!dataURL) return;
@@ -927,6 +936,7 @@ function tick(now) {
   updateDappleSun(ATMOS.sunPos, sun.color, sun.intensity);
   tickProps(dt);
   pipeline.render();
+  sendPendingFrame();
 }
 
 const _listenerFwd = new THREE.Vector3();
