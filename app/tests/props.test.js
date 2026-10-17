@@ -73,4 +73,16 @@ describe('world props / static colliders', () => {
       ).toBeNull();
     }
   });
+
+  it('the FALLEN GIANT trunk is solid along its whole length, with a clear lane beside it', () => {
+    const c = WORLD.crossings[2];
+    const zg = gorgeZ(c.x);
+    // walking into the trunk from the side is blocked at every sample
+    for (let dz = -22; dz <= 22; dz += 4) {
+      const hit = firstPropBlock(c.x + 8, zg + dz, c.x, zg + dz);
+      expect(hit, `trunk not solid at dz=${dz}`).not.toBeNull();
+    }
+    // and the crossing is still passable on the open flank
+    expect(firstPropBlock(c.x + 8, zg + 26, c.x + 8, zg - 26)).toBeNull();
+  });
 });

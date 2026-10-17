@@ -11,3 +11,4 @@ Geometry, creatures and audio are synthesized at runtime (the only binary assets
 - Spawns are two layers: the reactive threat director (time, noise, progress north) and authored route encounter slots (`src/game/routeEncounters.js`, per-difficulty counts as data) that guarantee every hunter type appears along any main route. `node src/tools/routeCoverage.mjs` walks each route headlessly with seeded randomness and tabulates, per type, how many enemies come within 40 m and 70 m and at what percent of the route each is first met; `tests/routeCoverage.test.js` asserts the guarantee.
 
 Vanilla JS + Three.js + Vite. `npm test` for the unit suite.
+- The FALLEN GIANT trunk (ridge crossing) is solid: `fallenGiantColliders` in app/src/world/props.js lays vertical collider cylinders along its hull, the open flank beside it stays passable (tests/props.test.js), and its bark material is double-sided so it never vanishes from inside.

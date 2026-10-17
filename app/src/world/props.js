@@ -29,6 +29,20 @@ export const RUIN_SITES = [
   { x: 44, z: -252, name: 'mesa gate' },        // last cache before the climb
 ];
 
+// Collision hull of the FALLEN GIANT trunk as vertical cylinders spaced
+// along z (radius tapers 3.4 north to 2.6 south; the trunk's back sits
+// 1.9 below the deck line). Pure data so tests can pin it to the visual.
+export function fallenGiantColliders(cx, zg, hDeck) {
+  const out = [];
+  const HALF = 23;
+  for (let dz = -HALF; dz <= HALF; dz += 2) {
+    const t = (dz + HALF) / (2 * HALF);
+    const r = 3.4 + (2.6 - 3.4) * t;
+    out.push({ x: cx, z: zg + dz, r, base: hDeck - 4, height: 4 + r - 1.9 });
+  }
+  return out;
+}
+
 export function buildProps(scene) {
   const group = new THREE.Group();
   group.name = 'props';
@@ -224,6 +238,11 @@ export function buildProps(scene) {
     roots.castShadow = true;
     group.add(roots);
     addCylinder(c.x + 2, zg + 24, 3.4, 5, hDeck - 1);
+    // the trunk itself is solid: a row of cylinders along its length that
+    // matches the visible hull. Without it the player walked inside the
+    // mesh and, with back faces culled, it vanished.
+    for (const col of fallenGiantColliders(c.x, zg, hDeck)) addCylinder(col.x, col.z, col.r, col.height, col.base);
+    barkMat.side = THREE.DoubleSide; // never vanish if a camera ends up inside
   }
 
   // THE RAPIDS (river): stepping boulders scattered along the sill
