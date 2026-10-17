@@ -13,8 +13,11 @@ export const SCORE = {
   extraction: 2000,
   damagePenalty: 4,       // points lost per hp of damage taken
   multipliers: { easy: 0.75, normal: 1, hard: 1.3 },
-  // total score (after the difficulty multiplier) needed for each grade; K.I.A. is always F
+  // total score (after the difficulty multiplier) needed for each grade
   grades: { S: 6500, A: 5000, B: 3500, C: 2200 },
+  // K.I.A. runs have no speed or extraction points, so they grade on their own
+  // scale and never rise above C: F is only for a very poor death
+  deathGrades: { C: 1500, D: 600 },
 };
 
 const TITLES = {
@@ -26,7 +29,11 @@ const TITLES = {
 };
 
 export function gradeFor(total, extracted) {
-  if (!extracted) return 'F';
+  if (!extracted) {
+    const d = SCORE.deathGrades;
+    if (total >= d.C) return 'C';
+    return total >= d.D ? 'D' : 'F';
+  }
   const g = SCORE.grades;
   if (total >= g.S) return 'S';
   if (total >= g.A) return 'A';
@@ -35,8 +42,8 @@ export function gradeFor(total, extracted) {
   return 'D';
 }
 
-function titleFor(grade, kills) {
-  if (grade !== 'F') return TITLES[grade];
+function titleFor(grade, kills, extracted) {
+  if (extracted) return TITLES[grade];
   if (kills <= 0) return 'FOOD FOR THE JUNGLE';
   return kills < 8 ? 'FALLEN SCOUT' : 'FALLEN PREDATOR';
 }
@@ -75,7 +82,7 @@ export function scoreRun(run) {
   const subtotal = lines.reduce((a, l) => a + l.points, 0);
   const total = Math.max(0, Math.round(subtotal * multiplier));
   const grade = gradeFor(total, extracted);
-  const title = titleFor(grade, kills);
+  const title = titleFor(grade, kills, extracted);
   const tag = tagFor({ damage, accuracy, kills, time, extracted });
   const mm = `${Math.floor(time / 60)}:${String(Math.floor(time % 60)).padStart(2, '0')}`;
   const diffName = run.difficultyLabel || String(run.difficulty || 'normal').toUpperCase();

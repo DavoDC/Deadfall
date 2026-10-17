@@ -39,9 +39,9 @@ describe('resultView', () => {
     expect(v.rows.at(-1)[1]).toBe(v.total);
   });
 
-  it('K.I.A. view grades F and has no extraction line', () => {
+  it('K.I.A. view grades by score and has no extraction line', () => {
     const v = resultView({ ...base, difficulty: 'hard', hits: 10, extracted: false });
-    expect(v.grade).toBe('F');
+    expect(v.grade).toBe('D');
     expect(v.breakdown.map((b) => b[0])).not.toContain('EXTRACTION');
     expect(v.multiplierLabel).toMatch(/^x1\.30/);
   });
@@ -77,12 +77,12 @@ describe('copy text carries everything the result screen shows', () => {
     expect(t).toContain('NEW RECORD');
   });
 
-  it('K.I.A. with no tag and no record: title, grade F, no tag brackets, no record', () => {
+  it('K.I.A. with no tag and no record: title, grade, no tag brackets, no record', () => {
     const v = resultView({ ...base, difficulty: 'easy', hits: 0, extracted: false, isRecord: false });
     const t = v.copyText;
     expect(v.tag).toBe('');
     expect(t).toContain('K.I.A.');
-    expect(t).toContain(`F ${v.rank}`);
+    expect(t).toContain(`${v.grade} ${v.rank}`);
     expect(t).toContain(`${v.total} PTS`);
     for (const [label, value] of v.breakdown) expect(t).toContain(`${label} ${value}`);
     expect(t).not.toContain('[');

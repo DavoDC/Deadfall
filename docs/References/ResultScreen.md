@@ -24,8 +24,8 @@ The maths is a small pure module, `app/src/player/scoring.js` (`scoreRun`, `grad
 - Earns: kills (100 each), accuracy (up to 800, scaled by hits over shots), and on EXTRACTED only a speed bonus (2 points per second under a 600 second par, up to 1000) and the extraction bonus (2000).
 - Costs: damage taken (4 points per hp).
 - The subtotal is multiplied by the difficulty (RECRUIT x0.75, HUNTER x1.00, DEADFALL x1.30) and floored at 0.
-- Grade (extracted only): S from 6500, A from 5000, B from 3500, C from 2200, otherwise D. K.I.A. is always F and earns no speed or extraction lines.
-- Rank titles: S JUNGLE LEGEND, A APEX HUNTER, B SEASONED SCOUT, C LUCKY SURVIVOR, D LIMPING HOME; for F, FOOD FOR THE JUNGLE (no kills), FALLEN SCOUT (under 8) or FALLEN PREDATOR.
+- Grade for an extraction: S from 6500, A from 5000, B from 3500, C from 2200, otherwise D. A K.I.A. run earns no speed or extraction lines and is graded on its own scale by score, capped at C: C from 1500, D from 600, F only below that (a very poor death).
+- Rank titles: S JUNGLE LEGEND, A APEX HUNTER, B SEASONED SCOUT, C LUCKY SURVIVOR, D LIMPING HOME; for any K.I.A. run (whatever its grade), FOOD FOR THE JUNGLE (no kills), FALLEN SCOUT (under 8) or FALLEN PREDATOR.
 - Style tags (first that applies): UNTOUCHED, DEAD EYE, SWIFT AS A STORM, TROPHY HUNTER, IRON HIDE.
 - The copy button puts a one-line summary on the clipboard (`copyText`) for pasting to friends.
 - The score, grade, title and tag are written to the telemetry session as `result` ([Telemetry.md](Telemetry.md)), so `analyzeSession.mjs` prints them.

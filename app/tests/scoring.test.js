@@ -18,12 +18,12 @@ describe('scoreRun', () => {
     expect(s.total).toBe(s.lines.reduce((a, l) => a + l.points, 0));
   });
 
-  it('K.I.A.: no extraction or speed bonus, grade F, still scores kills', () => {
+  it('K.I.A.: no extraction or speed bonus, graded on its own scale, still scores kills', () => {
     const s = scoreRun(run({ extracted: false }));
     const keys = s.lines.map((l) => l.key);
     expect(keys).not.toContain('extraction');
     expect(keys).not.toContain('speed');
-    expect(s.grade).toBe('F');
+    expect(s.grade).toBe('C');
     expect(s.total).toBeGreaterThan(0);
     expect(s.title).toMatch(/\S/);
   });
@@ -92,8 +92,24 @@ describe('gradeFor boundaries', () => {
     expect(gradeFor(g.C - 1, true)).toBe('D');
     expect(gradeFor(0, true)).toBe('D');
   });
-  it('K.I.A. is always F', () => {
-    expect(gradeFor(1e9, false)).toBe('F');
+  it('K.I.A. grades by score on its own scale and never rises above C', () => {
+    const d = SCORE.deathGrades;
+    expect(gradeFor(1e9, false)).toBe('C');
+    expect(gradeFor(d.C, false)).toBe('C');
+    expect(gradeFor(d.C - 1, false)).toBe('D');
+    expect(gradeFor(d.D, false)).toBe('D');
+    expect(gradeFor(d.D - 1, false)).toBe('F');
+    expect(gradeFor(0, false)).toBe('F');
+  });
+  it('the playtest death (HUNTER, 3:11, 21 kills, 109 shots, 2090 PTS) is a C, not an F', () => {
+    expect(gradeFor(2090, false)).toBe('C');
+    expect(scoreRun(run({ extracted: false, kills: 21, shots: 109, hits: 40, time: 191, damage: 100 })).grade).not.toBe('F');
+  });
+  it('a very poor death is still F, with a fallen title rather than an extraction title', () => {
+    const s = scoreRun(run({ extracted: false, kills: 2, shots: 60, hits: 6, damage: 100 }));
+    expect(s.grade).toBe('F');
+    const mid = scoreRun(run({ extracted: false, kills: 21, shots: 109, hits: 40, damage: 100 }));
+    expect(mid.title).toBe('FALLEN PREDATOR');
   });
 });
 
