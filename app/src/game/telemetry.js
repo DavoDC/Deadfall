@@ -51,6 +51,13 @@ const BURST_RING_CAP = Math.ceil(BURST_PRE_SEC / BURST_INTERVAL); // 50 samples
 export const DAMAGE_SPIKE_THRESHOLD = 15;
 export const MAX_ERRORS = 20;
 
+// DF-158: damage whose srcPos is not an attacker (the victim's own spot, the water sample, a self-hit)
+export const NO_ATTACKER_SOURCES = new Set(['flood', 'razorfin', 'grenade-self', 'unknown']);
+export function attackerPosFor(source, srcPos) {
+  if (!srcPos || NO_ATTACKER_SOURCES.has(source)) return null;
+  return { x: srcPos.x, y: srcPos.y, z: srcPos.z };
+}
+
 // Discrete input actions worth full-fidelity edges. Pulse actions are
 // already one-frame-true pulses from input.sample() (jump/reload/weapon
 // swap/grenade throw have no natural "up" - the press IS the event).
@@ -247,11 +254,13 @@ export function createTelemetry({ now = Date.now } = {}) {
 
   // hp: the player's hp AFTER this hit (so hp over time is exact even between the 1 s state samples)
   // flood hits (DF-164) also carry feetY, waterY, depth, onCrown
-  function recordDamageTaken({ time, amount, source, pos, hp, feetY, waterY, depth, onCrown } = {}) {
+  function recordDamageTaken({ time, amount, source, pos, hp, feetY, waterY, depth, onCrown, attackerPos } = {}) {
     if (!recording || !log) return;
     const t = time ?? elapsed();
     const entry = { time: t, amount, source: source ?? 'unknown', pos: pos ?? null, hp: hp ?? null };
     if (Number.isFinite(feetY)) Object.assign(entry, { feetY, waterY, depth, onCrown: !!onCrown });
+    // DF-158: where the attacker was (enemy, trap or projectile), so unseen enemies below the camera can be listed
+    if (attackerPos) entry.attackerPos = { x: attackerPos.x, y: attackerPos.y, z: attackerPos.z };
     log.damageTaken.push(entry);
     log.damageTakenBySource[source ?? 'unknown'] = (log.damageTakenBySource[source ?? 'unknown'] || 0) + amount;
     if (amount >= DAMAGE_SPIKE_THRESHOLD) beginBurst('damageSpike', t);

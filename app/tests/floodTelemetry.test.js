@@ -75,3 +75,33 @@ describe('flood hit telemetry (DF-164)', () => {
     expect(formatReport(analyse(s))).toContain('Flood death: feet 5.1 m, water 7.3 m, depth 2.2 m, wading, not on a crown');
   });
 });
+
+describe('attacker position on damage events (DF-158)', () => {
+  it('an enemy hit carries the attacker position; flood, razorfin and self hits do not', async () => {
+    const { attackerPosFor } = await import('../src/game/telemetry.js');
+    expect(attackerPosFor('prowler', { x: 1, y: -4, z: 3 })).toEqual({ x: 1, y: -4, z: 3 });
+    expect(attackerPosFor('stingerwing', { x: 9, y: 0, z: 2 })).toEqual({ x: 9, y: 0, z: 2 });
+    expect(attackerPosFor('flood', { x: 1, y: 2, z: 3 })).toBeNull();
+    expect(attackerPosFor('razorfin', { x: 1, y: 2, z: 3 })).toBeNull();
+    expect(attackerPosFor('grenade-self', { x: 1, y: 2, z: 3 })).toBeNull();
+    expect(attackerPosFor('prowler', null)).toBeNull();
+  });
+
+  it('telemetry stores attackerPos on the damage entry', () => {
+    const t = createTelemetry();
+    t.start({});
+    t.recordDamageTaken({ amount: 8, source: 'acid', pos: { x: 0, y: 0, z: 0 }, hp: 70, attackerPos: { x: 4, y: -6, z: 2 } });
+    t.recordDamageTaken({ amount: 3, source: 'flood', hp: 67 });
+    const [a, f] = t.log.damageTaken;
+    expect(a.attackerPos).toEqual({ x: 4, y: -6, z: 2 });
+    expect(f).not.toHaveProperty('attackerPos');
+  });
+
+  it('a real enemy-sourced sim hit reports the srcPos it was given', () => {
+    const hurts = [];
+    const sim = makeSim(hurts);
+    sim.player.p.alive = true;
+    sim.damagePlayer(5, { x: 10, y: -7, z: 4 }, 'prowler');
+    expect(hurts.at(-1).srcPos).toEqual({ x: 10, y: -7, z: 4 });
+  });
+});

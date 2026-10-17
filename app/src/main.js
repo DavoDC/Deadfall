@@ -41,7 +41,7 @@ import { makeViewer } from './game/viewer.js';
 import { createRecorderAPI } from './capture/recorder.js';
 import { createCinematic } from './game/cinematic.js';
 import { createPipeline } from './render/pipeline.js';
-import { createTelemetry, DAMAGE_SPIKE_THRESHOLD } from './game/telemetry.js';
+import { createTelemetry, DAMAGE_SPIKE_THRESHOLD, attackerPosFor } from './game/telemetry.js';
 import { loadDeveloperMode } from './game/developerMode.js';
 import { createSessionFlusher } from './game/telemetrySender.js';
 import { createEncounterTracker } from './game/encounters.js';
@@ -364,6 +364,7 @@ const ui = {
     telemetry.recordDamageTaken({
       amount, source, hp: player.p.hp,
       pos: srcPos ? { x: srcPos.x, y: srcPos.y, z: srcPos.z } : null,
+      attackerPos: attackerPosFor(source, srcPos),
       ...(detail || {}),
     });
     // hp on record right at the hit, not up to 1 s later (throttled to 4 per second)

@@ -6,9 +6,9 @@ The flood is the gorge's time-pressured hazard (`app/src/game/flood.js`). Its ge
 
 There is no separate "safe zone" definition. The only dry standing spots at flood height are the gorge roost crowns, built by `app/src/world/roosts.js` and registered as standable discs in `app/src/world/platforms.js`.
 
-- Physics disc: centre `top.x, top.z`, radius 2.4 m, top surface at `top.y` (`i === r.steps ? 2.4 : STEP_R`).
+- Physics disc: centre `top.x, top.z`, radius `CROWN_R` = 2.5 m, top surface at `top.y` (`i === r.steps ? CROWN_R : STEP_R`).
 - Visual crown: a cylinder with top radius 2.5 m, centred 0.25 m below `top.y` (so its top face sits at `top.y`), ember-lit (`emissive 0xff5a2a`). This is the orange the player sees.
-- Mismatch: the visual is 0.1 m wider than the physics disc. At 2.45 m from the centre the player drops to the tread below (platform ground 6.42 m instead of 7.66 m).
+- Cause of the DF-158 "died on the platform" report: the physics disc was 2.4 m while the crown is drawn 2.5 m wide, so a player at the visible edge (2.45 m from the centre) dropped to the tread below (platform ground 6.42 m instead of 7.66 m) and into the water. Fixed: the disc is now `CROWN_R` = 2.5 m, the same constant the visual uses, so the two cannot drift apart.
 
 ## Heights (measured)
 
@@ -19,12 +19,8 @@ There is no separate "safe zone" definition. The only dry standing spots at floo
 
 ## Test
 
-`app/tests/floodSafePlatform.test.js` builds the real roost platforms, drives the real flood phase machine to `peak`, stands the player on each roost crown, steps the sim at 60 Hz for 4 s and asserts zero flood damage. A control player in the water 12 m off the crown takes damage. Result at the time of writing: both pass, so no flood code was changed.
+`app/tests/floodSafePlatform.test.js` builds the real roost platforms, drives the real flood phase machine to `peak`, stands the player on each roost crown, steps the sim at 60 Hz for 4 s and asserts zero flood damage. A control player in the water 12 m off the crown takes damage. A third test stands 2.45 m from each crown centre at peak flood and asserts the crown disc is under the feet and zero flood damage (it fails with a 2.4 m disc).
 
 ## Telemetry
 
 Each flood hit in `damageTaken` carries `feetY` (the player's feet), `waterY` (the water surface at that spot), `depth` (`waterY - feetY`) and `onCrown` (feet standing on a registered platform disc). `damagePlayer` (`app/src/game/sim.js`, flood branch) passes the water sample point `{x, y: waterY, z}` as `srcPos` plus these values as a `detail` argument that `main.js` `onHurt` spreads into the telemetry entry. `analyzeSession.mjs` prints them as a "Flood death" line when the run ended in the flood. Pinned by `app/tests/floodTelemetry.test.js`.
-
-## Open
-
-The death line shows only the last hit's source. Damage taken while wading before reaching a crown is not separated from the final tick, so the death in DF-158 cannot be proven to occur on the crown from telemetry alone.

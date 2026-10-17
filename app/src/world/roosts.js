@@ -22,6 +22,7 @@ import { addCylinder } from './colliders.js';
 const STEP_RISE = 0.62;   // < platforms.STEP (0.78): every step walkable
 const STEP_RUN = 1.05;    // metres forward per step
 const STEP_R = 1.25;      // disc radius - overlapping treads, no gaps
+const CROWN_R = 2.5;     // crown disc radius = the visible orange crown (DF-158: was 2.4)
 const BANK_OFF = 34;      // roost line: outside the rift, inside the band
 const DRY_TOP_MARGIN = 1.6; // crown clearance above the full flood
 
@@ -136,7 +137,7 @@ export function buildRoosts(scene, opts = {}) {
         r.base.x + r.dir * i * STEP_RUN,
         r.base.z,
         r.firstY + i * STEP_RISE,
-        i === r.steps ? 2.4 : STEP_R
+        i === r.steps ? CROWN_R : STEP_R
       );
     }
     // the snag trunk the bole leans on: solid, just past the crown so it
@@ -160,7 +161,7 @@ export function buildRoosts(scene, opts = {}) {
     bole.castShadow = true;
     group.add(bole);
 
-    const crown = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 1.9, 0.5, 10), crownMat);
+    const crown = new THREE.Mesh(new THREE.CylinderGeometry(CROWN_R, 1.9, 0.5, 10), crownMat);
     crown.position.set(r.top.x, r.top.y - 0.25, r.top.z);
     crown.castShadow = true;
     group.add(crown);
@@ -177,4 +178,4 @@ export function buildRoosts(scene, opts = {}) {
   return meshes;
 }
 
-export { STEP_RISE, STEP_RUN, STEP_R };
+export { STEP_RISE, STEP_RUN, STEP_R, CROWN_R };

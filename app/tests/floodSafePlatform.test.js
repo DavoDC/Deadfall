@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import * as THREE from 'three';
 import { createSim } from '../src/game/sim.js';
-import { ROOSTS, buildRoosts } from '../src/world/roosts.js';
+import { ROOSTS, buildRoosts, CROWN_R } from '../src/world/roosts.js';
 import { clearPlatforms, platformGroundAt } from '../src/world/platforms.js';
 import { FLOOD, terrainHeight, waterLevelAt } from '../src/world/heightmap.js';
 
@@ -90,3 +90,24 @@ describe('flood safe platform (DF-158)', () => {
   });
 });
 
+
+describe('crown physics covers the visible crown (DF-158)', () => {
+  it('standing 2.45 m from the centre at peak flood takes zero flood damage', () => {
+    buildRoosts(new THREE.Scene(), { collidersOnly: true });
+    expect(CROWN_R).toBeGreaterThanOrEqual(2.5);
+    for (const crown of ROOSTS) {
+      const sim = makeSim();
+      floodToPeak(sim);
+      const ctrl = sim.player;
+      ctrl.p.alive = true;
+      ctrl.p.hp = 100;
+      // 2.45 m from the centre, away from the ramp side (the ramp climbs from -dir)
+      const x = crown.top.x + crown.dir * 2.45;
+      expect(platformGroundAt(x, crown.top.z, crown.top.y), crown.name).toBe(crown.top.y);
+      standAt(ctrl, x, crown.top.z, crown.top.y);
+      runHazardTicks(sim, 4);
+      expect(sim.game.dmgBySource.flood || 0, crown.name).toBe(0);
+      expect(ctrl.p.hp, crown.name).toBe(100);
+    }
+  });
+});
