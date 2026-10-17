@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
 import {
-  shouldShowMenu, shouldShowEndScreen, isResultState, resumeButtonLabel, shouldStepSim, shouldRecordTelemetry,
+  shouldShowMenu, statsAboveMenu, shouldShowEndScreen, isResultState, resumeButtonLabel, shouldStepSim, shouldRecordTelemetry,
 } from '../src/player/pauseState.js';
 
 describe('pauseState (freeze regression - 2026-07-19 playtest)', () => {
@@ -90,5 +91,23 @@ describe('shouldStepSim / shouldRecordTelemetry (broken telemetry P0 - 2026-08-2
     // DOES record telemetry.
     expect(shouldStepSim('RUNNING', false)).toBe(false);
     expect(shouldRecordTelemetry('RUNNING', false)).toBe(true);
+  });
+});
+
+describe('paused HUD stats stay bright (2026-10-17 playtest)', () => {
+  it('lifts the stats only while a run is paused', () => {
+    expect(statsAboveMenu('RUNNING', false)).toBe(true);
+    expect(statsAboveMenu('RUNNING', true)).toBe(false);
+    expect(statsAboveMenu('MENU', false)).toBe(false);
+    expect(statsAboveMenu('DEAD', false)).toBe(false);
+  });
+
+  it('index.html lifts #hud above the menu overlay and keeps run-info and coords visible', () => {
+    const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+    const z = (re) => Number(re.exec(html)?.[1]);
+    const hudZ = z(/#hud\.over-menu\s*\{[^}]*z-index:\s*(\d+)/);
+    const overlayZ = z(/\.overlay\s*\{[^}]*z-index:\s*(\d+)/);
+    expect(hudZ).toBeGreaterThan(overlayZ);
+    expect(html).toContain('#hud.over-menu > :not(#run-info):not(#coords) { visibility: hidden; }');
   });
 });

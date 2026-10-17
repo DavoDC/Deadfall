@@ -131,6 +131,10 @@
     /* ---------- HUD ---------- */
     #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
     #hud.hidden { display: none; }
+    /* paused: lift the HUD above the menu overlay (z-index 20) and show only the top-left stats at full brightness */
+    #hud.over-menu { z-index: 25; }
+    #hud.over-menu > :not(#run-info):not(#coords) { visibility: hidden; }
+    #hud.over-menu #run-info, #hud.over-menu #coords { color: var(--hud); text-shadow: 0 1px 3px #000; }
 
     #crosshair {
       position: absolute; left: 50%; top: 50%; width: 4px; height: 4px;

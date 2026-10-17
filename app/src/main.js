@@ -18,7 +18,7 @@ import { startPing, quitGame } from './game/serverLink.js';
 import { loadVersion } from './game/versionInfo.js';
 import { resultView } from './player/resultScreen.js';
 import { FRAME_INTERVAL_S, FRAME_CAP_PER_SESSION } from './game/frameCadence.js';
-import { shouldShowMenu, shouldShowEndScreen, resumeButtonLabel, shouldStepSim, shouldRecordTelemetry } from './player/pauseState.js';
+import { shouldShowMenu, statsAboveMenu, shouldShowEndScreen, resumeButtonLabel, shouldStepSim, shouldRecordTelemetry } from './player/pauseState.js';
 import { createViewmodel } from './weapons/viewmodel.js';
 import { createEffects } from './weapons/effects.js';
 import { createHud } from './game/hud.js';
@@ -768,6 +768,7 @@ input.state.onLockChange = () => syncPauseMenu();
 window.addEventListener('keydown', (e) => {
   if (e.code !== 'Escape' || game.state !== 'RUNNING') return;
   input.exitLock();
+  hudEl.classList.toggle('over-menu', statsAboveMenu(game.state, input.state.locked));
   syncPauseMenu();
 });
 

@@ -18,6 +18,14 @@ export function shouldShowMenu(gameState, locked) {
   return !locked; // running but not locked = paused (blur/alt-tab/ESC/etc.)
 }
 
+// While a run is paused the menu overlay covers the HUD, dimming the top-left
+// stats (timer, difficulty, beacon distance, cycle, seed). In that state the
+// HUD is lifted above the overlay and everything but those stats is hidden
+// (#hud.over-menu in index.html), so a paused screenshot still reads them.
+export function statsAboveMenu(gameState, locked) {
+  return gameState === 'RUNNING' && !locked;
+}
+
 // A finished run: the result panel shows, the title menu does not.
 export function isResultState(gameState) {
   return gameState === 'WIN' || gameState === 'DEAD';
