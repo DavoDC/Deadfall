@@ -42,6 +42,7 @@ import { createRecorderAPI } from './capture/recorder.js';
 import { createCinematic } from './game/cinematic.js';
 import { createPipeline } from './render/pipeline.js';
 import { createTelemetry, DAMAGE_SPIKE_THRESHOLD, attackerPosFor } from './game/telemetry.js';
+import { CONTROLS, shouldShowControlsOnLaunch, markControlsSeen } from './player/controlsOverlay.js';
 import { loadDeveloperMode } from './game/developerMode.js';
 import { createSessionFlusher } from './game/telemetrySender.js';
 import { createEncounterTracker } from './game/encounters.js';
@@ -720,6 +721,29 @@ function quitFromMenu() {
   sessionFlusher.drain().then(() => quitGame(fetch, document));
 }
 document.getElementById('btn-quit').addEventListener('click', quitFromMenu);
+
+// Controls reminder (DF-106): shown once on a fresh profile, reopened from the menu
+const controlsEl = document.getElementById('controls');
+const controlsList = document.getElementById('controls-list');
+for (const c of CONTROLS) {
+  const li = document.createElement('li');
+  const keys = document.createElement('b');
+  keys.textContent = c.keys;
+  li.append(keys, c.label);
+  controlsList.appendChild(li);
+}
+function setControlsOpen(open) { controlsEl.classList.toggle('hidden', !open); }
+document.getElementById('btn-controls').addEventListener('click', () => setControlsOpen(true));
+document.getElementById('btn-controls-close').addEventListener('click', () => setControlsOpen(false));
+{
+  // reading the localStorage global itself can throw when site data is blocked
+  let store = null;
+  try { store = localStorage; } catch { /* blocked: shouldShow treats null as unseen */ }
+  if (shouldShowControlsOnLaunch(store)) {
+    setControlsOpen(true);
+    markControlsSeen(store);
+  }
+}
 document.getElementById('btn-end-quit').addEventListener('click', quitFromMenu);
 startPing(fetch);
 // Build version: console line + title-screen footer; kept for the telemetry session header.

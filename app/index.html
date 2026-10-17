@@ -52,6 +52,10 @@
       transition: background 0.15s, box-shadow 0.15s;
     }
     .cta:hover { background: rgba(120, 190, 110, 0.25); box-shadow: 0 0 18px rgba(90, 200, 90, 0.25); }
+    #controls { z-index: 30; }
+    .controls-title { font-size: clamp(32px, 6vw, 56px); animation: none; margin-bottom: 18px; }
+    #controls-list { list-style: none; margin: 0 0 26px; padding: 0 20px; font-size: 17px; line-height: 1.9; color: var(--hud-dim); text-align: left; }
+    #controls-list b { display: inline-block; min-width: 190px; color: var(--hud); font-weight: 600; letter-spacing: 0.06em; }
     .cta.quit { margin-top: 12px; padding: 8px 30px; font-size: 13px; opacity: 0.8; }
     #difficulty, #again-difficulty { display: flex; gap: 12px; margin-bottom: 26px; }
     #again-difficulty { margin-bottom: 14px; }
@@ -345,11 +349,18 @@
     </div>
     <div id="difficulty"></div>
     <button class="cta" id="btn-start">DEPLOY</button>
+    <button class="cta quit" id="btn-controls">CONTROLS</button>
     <button class="cta quit" id="btn-quit">QUIT</button>
     <div class="controls-hint">
       WASD MOVE &nbsp;·&nbsp; MOUSE LOOK &nbsp;·&nbsp; LMB FIRE &nbsp;·&nbsp; R RELOAD &nbsp;·&nbsp; ESC PAUSE
     </div>
     <div id="version-tag"></div>
+  </div>
+
+  <div id="controls" class="overlay hidden">
+    <div class="title controls-title">CONTROLS</div>
+    <ul id="controls-list"></ul>
+    <button class="cta" id="btn-controls-close">GOT IT</button>
   </div>
 
   <div id="endscreen" class="overlay hidden">

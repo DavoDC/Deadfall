@@ -17,3 +17,4 @@
 The first README intro, kept verbatim:
 
 One run, one question: which way north? Insert at the southern treeline and pick your way through a world that is all walls and choices - a mountain Palisade with three gates, a flooded razorfin gorge with three sills, a highlands cliff with two ways up - while storms, fog banks and the threat director hunt you. At the end, a flooded moat, the thing that lives in it, and one drowned stair to the extraction beacon. Die or extract - either way the run is a complete story.
+- **A controls reminder.** On a fresh profile a one-time overlay lists every bound control (wheel weapon switch, V melee, reload, sprint, jump, pause); the menu's CONTROLS button reopens it (`app/src/player/controlsOverlay.js`).
