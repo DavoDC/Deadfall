@@ -46,6 +46,10 @@ import { CONTROLS, shouldShowControlsOnLaunch, markControlsSeen } from './player
 import { loadDeveloperMode } from './game/developerMode.js';
 import { createSessionFlusher } from './game/telemetrySender.js';
 import { createEncounterTracker } from './game/encounters.js';
+import { createBootTimer, bootProfileEnabled } from './game/bootTiming.js';
+
+const boot = createBootTimer();
+boot.mark('imports loaded');
 
 const app = document.getElementById('app');
 
@@ -84,14 +88,22 @@ function applyMood(mood) {
 }
 // round-6 rendering pipeline - every render (game loop, shots rig,
 // legibility probe, cinematic) goes through this
+boot.mark('renderer+sky');
 const pipeline = createPipeline({ renderer, scene, camera, sun });
+boot.mark('pipeline');
 const renderFrame = () => pipeline.render();
 buildTerrain(scene);
+boot.mark('terrain');
 const water = buildWater(scene);
+boot.mark('water');
 buildVegetation(scene);
+boot.mark('vegetation');
 buildMedusae(scene); // round 7: the lantern medusae live (pulse/drift/trail)
+boot.mark('medusae');
 const { tickProps, igniteBeacon, ringPulse } = buildProps(scene);
+boot.mark('props');
 buildRoosts(scene); // the flood's vertical retreat (round 5)
+boot.mark('roosts');
 const motes = createMotes(scene);
 const drizzle = createDrizzle(scene);
 let razorfins = null; // needs effects; created after the sim below
@@ -99,6 +111,7 @@ console.log('[deadfall] world built in', Math.round(performance.now() - t0), 'ms
   colliderCount(), 'colliders');
 // round-6: first water reflection capture (moods re-capture via applyMood)
 water.userData.updateEnvMap(renderer, scene, camera.position);
+boot.mark('water env map');
 
 // --- presentation elements the sim reports into ---
 const vignetteEl = document.getElementById('vignette');
@@ -447,7 +460,9 @@ const ui = {
 // --- the game itself ---
 const effects = createEffects(scene);
 razorfins = createRazorfins(scene, effects);
+boot.mark('effects');
 const sim = createSim({ scene, camera, effects, ui });
+boot.mark('sim');
 const { game, player, weapons, grenades, enemyMgr, director, pickups, extraction } = sim;
 
 // telemetry: wrap the two weaponHooks that carry per-shot detail sim.js
@@ -753,6 +768,7 @@ loadVersion(fetch, document).then((v) => { gameVersion = v ? { sha: v.sha, date:
 function syncPauseMenu() {
   const show = shouldShowMenu(game.state, input.state.locked);
   menuEl.classList.toggle('hidden', !show);
+  hudEl.classList.toggle('over-menu', statsAboveMenu(game.state, input.state.locked));
   endEl.classList.toggle('hidden', !shouldShowEndScreen(game.state));
   btnStart.textContent = resumeButtonLabel(game.state);
 }
@@ -768,7 +784,6 @@ input.state.onLockChange = () => syncPauseMenu();
 window.addEventListener('keydown', (e) => {
   if (e.code !== 'Escape' || game.state !== 'RUNNING') return;
   input.exitLock();
-  hudEl.classList.toggle('over-menu', statsAboveMenu(game.state, input.state.locked));
   syncPauseMenu();
 });
 
@@ -793,6 +808,22 @@ let frames = 0;
 let fpsTimer = 0;
 let fps = 0;
 
+let bootFirstFrame = true;
+// dev server or ?bootprofile only: print where the startup time went and keep
+// it on window.__bootProfile; a second table covers the next few frames
+function reportBootProfile() {
+  if (!bootProfileEnabled(location.search, import.meta.env?.DEV === true)) return;
+  const rows = boot.report();
+  window.__bootProfile = rows;
+  console.log('[deadfall] boot profile', JSON.stringify(rows));
+  const longTasks = [];
+  try {
+    new PerformanceObserver((list) => {
+      for (const en of list.getEntries()) longTasks.push({ at: Math.round(en.startTime), ms: Math.round(en.duration) });
+    }).observe({ type: 'longtask', buffered: true });
+  } catch { /* longtask unsupported */ }
+  window.__bootLongTasks = longTasks;
+}
 function tick(now) {
   requestAnimationFrame(tick);
   const dt = Math.min(0.05, (now - last) / 1000);
@@ -1011,7 +1042,13 @@ function tick(now) {
   tickDapple(now / 1000);
   updateDappleSun(ATMOS.sunPos, sun.color, sun.intensity);
   tickProps(dt);
+  if (bootFirstFrame) boot.mark('first frame: before render');
   pipeline.render();
+  if (bootFirstFrame) {
+    bootFirstFrame = false;
+    boot.mark('first frame: render done (shader compile)');
+    reportBootProfile();
+  }
   sendPendingFrame();
 }
 
@@ -1045,6 +1082,7 @@ function computeEnemiesNear(pos) {
 }
 
 requestAnimationFrame(tick);
+boot.mark('script end');
 
 // --- debug / automated-playtest API (documented in README) ---
 const bot = createBot({ sim, startRun: () => sim.resetRun() });
