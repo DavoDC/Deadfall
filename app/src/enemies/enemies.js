@@ -176,6 +176,21 @@ const PLAYER_RADIUS = 0.42;
 const JUGG_BOIL_BASE_EMISSIVE = 2.6;
 const JUGG_BOIL_TELEGRAPH_GAIN = 4;
 
+// Shortest signed angle step from `cur` toward `want`, capped at maxStep.
+export function stepYawToward(cur, want, maxStep) {
+  let d = want - cur;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return cur + Math.max(-maxStep, Math.min(maxStep, d));
+}
+
+// Yaw the model is drawn at. Most enemies face where they walk (heading);
+// a spitter that backs away or winds up keeps its face on the player, so
+// faceYaw (set by updateSpitter) wins when present.
+export function visualHeading(e) {
+  return e.faceYaw === undefined ? e.heading : e.faceYaw;
+}
+
 export function createEnemyManager(scene, playerHelpers, effects, hooks) {
   // playerHelpers: { nearestPlayer(pos), players[] }
   // hooks: { damagePlayer(amount, srcPos), onKill(type, pos),
@@ -263,6 +278,7 @@ export function createEnemyManager(scene, playerHelpers, effects, hooks) {
     e.maxHp = def.hp * tuning.hpMult;
     e.hp = e.maxHp;
     e.dead = false;
+    e.faceYaw = undefined; // pooled: drop the last life's spitter facing
     e.dying = 0;
     e.state = 'hunt';
     e.stateT = 0;
@@ -561,6 +577,10 @@ export function createEnemyManager(scene, playerHelpers, effects, hooks) {
     creatureCall(e, dt, dist);
     e.attackCd = Math.max(0, e.attackCd - dt);
     const speed = e.def.speed * (1 + e.def.rageSpeed * e.rage);
+    // Engaged (in spit range with LOS, backing off, or winding up): the face
+    // tracks the player. Otherwise it follows its walk heading. Backing away
+    // moves AWAY from the player, so heading alone would show its back.
+    const engaged = e.state === 'windup' || (dist < e.def.attackRange && e.hasLOS);
 
     if (e.state === 'hunt') {
       if (dist > e.def.attackRange * 0.8 || !e.hasLOS) {
@@ -593,6 +613,9 @@ export function createEnemyManager(scene, playerHelpers, effects, hooks) {
         e.attackCd = spitterCooldown(e);
       }
     }
+
+    const wantYaw = engaged ? Math.atan2(pp.x - e.pos.x, pp.z - e.pos.z) : e.heading;
+    e.faceYaw = stepYawToward(e.faceYaw === undefined ? e.heading : e.faceYaw, wantYaw, e.def.turnRate * 2 * dt);
   }
 
   function updateJuggernaut(e, dt) {
@@ -1242,7 +1265,7 @@ export function createEnemyManager(scene, playerHelpers, effects, hooks) {
 
     // +PI: models face -Z, heading moves along +Z (see spawn comment) -
     // without it every creature walks backwards, eyes trailing
-    g.rotation.y = e.heading + Math.PI;
+    g.rotation.y = visualHeading(e) + Math.PI;
     g.rotation.z = 0;
 
     // hit flash: scale pulse (cheap, no shared-material writes)
@@ -1421,7 +1444,7 @@ export function createEnemyManager(scene, playerHelpers, effects, hooks) {
 
       const testSphere = (off, r, zone, mult) => {
         _sph.copy(off).multiplyScalar(s);
-        rotateY(_sph, e.heading + Math.PI); // matches the render flip above
+        rotateY(_sph, visualHeading(e) + Math.PI); // matches the render flip above
         _sph.add(e.pos);
         const t = raySphere(origin.x, origin.y, origin.z, dir.x, dir.y, dir.z,
           _sph.x, _sph.y, _sph.z, r * s);
