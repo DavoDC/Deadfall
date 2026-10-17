@@ -41,6 +41,7 @@ A folder is searched (and its `telemetry` subfolder) for the newest `session-*.j
 - `damageTakenBySource`, `damageDealtByTarget`, `shots`, `kills`, `waypoints`, `events` (pause, tab hidden, extraction, start).
 - `inputEdges` and `inputAggregates`: presses and per-second input summaries (sprint share, look speed, aim time).
 - `errors`: uncaught errors, first 20.
+- Pauses: the report prints `Length 5:48 (play 4:48, paused 0:59)`. Paused time comes from the `paused` and `resumed` events and is left out of stalls and frame times, so a stall is only standing still while the game was running. Older files without `playSeconds` still work because the report derives it from the events.
 
 `node src/tools/analyzeSession.mjs` prints `Score: N G TITLE (tag)`, `HP over time` (state samples plus the hp on each damage entry), `Input:` (counts per action, sprint and aim seconds, edges kept and dropped) and a WARNING when HP stays flat although damage was taken (the HP bug the log once had). Files from before these fields print `Input: none recorded` and no score.
 

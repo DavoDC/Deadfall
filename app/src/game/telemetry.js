@@ -124,6 +124,9 @@ export function createTelemetry({ now = Date.now } = {}) {
   let ring = [];
   let activeBurst = null;
 
+  // pause tracking: pausedSince is the run time the open pause began (null when playing)
+  let pausedSince = null;
+
   // v2: human-input aggregation window + sustained-action edge tracking.
   let prevSustain = {};
   let agg = null;
@@ -150,6 +153,8 @@ export function createTelemetry({ now = Date.now } = {}) {
       gameVersion: meta.gameVersion ?? null, // {sha, date} of the build that produced this run (the `version` field is the schema number)
       outcome: 'in-progress',    // 'in-progress' | 'extracted' | 'died' | 'abandoned'
       env: meta.env ?? null,     // browser, GPU, screen, quality settings (collected once by main.js)
+      playSeconds: 0,            // run time with the game unpaused (wall minus paused), final at stop()
+      pausedSeconds: 0,          // total time paused (menu, alt-tab, controls overlay), kept current on resume and at stop()
       kills: 0,
       killsByType: {},           // enemy type -> kills (sums to kills)
       spawned: {},               // enemy type -> number spawned this run
@@ -185,6 +190,7 @@ export function createTelemetry({ now = Date.now } = {}) {
     lastInputAggT = -Infinity;
     ring = [];
     activeBurst = null;
+    pausedSince = null;
     prevSustain = {};
     agg = null;
     visitedWaypoints = new Set();
@@ -207,6 +213,8 @@ export function createTelemetry({ now = Date.now } = {}) {
     }
     if (agg) flushInputAgg(nowT());
     log.endedAt = now();
+    closePause(elapsed());
+    log.playSeconds = round2(Math.max(0, (log.endedAt - log.startedAt) / 1000 - log.pausedSeconds));
     log.endReason = reason;
     if (log.outcome === 'in-progress') log.outcome = 'abandoned';
     recording = false;
@@ -350,8 +358,17 @@ export function createTelemetry({ now = Date.now } = {}) {
     notify('error');
   }
 
+  // a pause still open at t ends there; pausedSeconds accumulates, rounded to 10 ms
+  function closePause(t) {
+    if (pausedSince == null) return;
+    log.pausedSeconds = round2(log.pausedSeconds + Math.max(0, t - pausedSince));
+    pausedSince = null;
+  }
+
   function recordEvent(kind, detail = null) {
     if (!recording || !log) return;
+    if (kind === 'paused' && pausedSince == null) pausedSince = nowT();
+    else if (kind === 'resumed') closePause(nowT());
     log.events.push({ time: nowT(), kind, detail });
     notify('event');
   }
@@ -378,6 +395,7 @@ export function createTelemetry({ now = Date.now } = {}) {
       extract: ctx.extract != null ? round2(ctx.extract) : null,
       fps: ctx.fps != null ? Math.round(ctx.fps) : null,
       frameMs: ctx.frameMs != null ? round2(ctx.frameMs) : null,
+      ...(pausedSince != null ? { paused: true } : {}),
     };
   }
 

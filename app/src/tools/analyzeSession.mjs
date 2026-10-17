@@ -31,15 +31,35 @@ export function findSessionFile(target) {
   return null;
 }
 
-// Stretches where the player stayed within STALL_RADIUS for STALL_SECONDS or more.
-export function findStalls(pathPoints) {
+// Paused ranges [{from, to}] from the paused and resumed events. A pause with no
+// resume runs to endT. A resume with no pause (the one at the start of a run) is ignored.
+export function pausedRanges(events, endT = Infinity) {
+  const out = [];
+  let from = null;
+  for (const e of arr(events)) {
+    if (e.kind === 'paused' && from == null) from = e.time;
+    else if (e.kind === 'resumed' && from != null) { out.push({ from, to: e.time }); from = null; }
+  }
+  if (from != null && endT > from) out.push({ from, to: endT });
+  return out;
+}
+
+const pausedBefore = (ranges, t) => ranges.reduce((a, r) => a + Math.max(0, Math.min(t, r.to) - r.from), 0);
+const inPause = (ranges, t) => ranges.some((r) => t >= r.from && t < r.to);
+
+// Stretches where the player stayed within STALL_RADIUS for STALL_SECONDS or more
+// of PLAY time: points inside a pause are dropped and paused time is not counted,
+// so a pause is never a stall. from and to stay wall-clock for the report.
+export function findStalls(pathPoints, paused = []) {
   const stalls = [];
-  const pts = arr(pathPoints);
+  const pts = arr(pathPoints)
+    .filter((p) => !inPause(paused, p.time))
+    .map((p) => ({ ...p, play: p.time - pausedBefore(paused, p.time) }));
   let i = 0;
   while (i < pts.length) {
     let j = i;
     while (j + 1 < pts.length && Math.hypot(pts[j + 1].x - pts[i].x, pts[j + 1].z - pts[i].z) <= STALL_RADIUS) j++;
-    if (pts[j].time - pts[i].time >= STALL_SECONDS) {
+    if (pts[j].play - pts[i].play >= STALL_SECONDS) {
       stalls.push({ from: pts[i].time, to: pts[j].time, x: pts[i].x, z: pts[i].z });
       i = j + 1;
     } else i++;
@@ -63,11 +83,14 @@ export function analyse(s, { nowMs = Date.now() } = {}) {
   const pts = arr(s.path);
   const lastT = Math.max(0, pts.length ? pts[pts.length - 1].time : 0, ...arr(s.state).map((x) => x.t || 0));
   const outcome = s.outcome || (s.endedAt ? 'unknown' : 'unfinished (old format)');
+  const wallSec = Number.isFinite(s.endedAt) && Number.isFinite(s.startedAt) ? (s.endedAt - s.startedAt) / 1000 : lastT;
+  const paused = pausedRanges(s.events, wallSec);
+  const pausedSec = paused.reduce((a, r) => a + (r.to - r.from), 0);
   const toMs = (v) => (typeof v === 'number' ? v : Date.parse(v || ''));
   const savedAt = toMs(s.lastSavedAt ?? s.endedAt);
   const staleSec = Number.isFinite(savedAt) ? (nowMs - savedAt) / 1000 : null;
   const fps = arr(s.fps).map((x) => x.fps ?? x.value ?? x).filter(Number.isFinite).sort((a, b) => a - b);
-  const frameMs = arr(s.state).map((x) => x.frameMs).filter(Number.isFinite).sort((a, b) => a - b);
+  const frameMs = arr(s.state).filter((x) => !x.paused).map((x) => x.frameMs).filter(Number.isFinite).sort((a, b) => a - b);
   const enc = arr(s.encounters);
   const byType = {};
   for (const e of enc) {
@@ -109,9 +132,9 @@ export function analyse(s, { nowMs = Date.now() } = {}) {
     
     outcome, endReason: s.endReason ?? null, difficulty: s.difficulty ?? null,
     gameVersion: s.gameVersion && typeof s.gameVersion === 'object' ? String(s.gameVersion.sha || '').slice(0, 7) : (s.gameVersion ?? null),
-    durationSec: lastT, staleSec,
+    durationSec: lastT, pausedSec, playSec: Math.max(0, lastT - pausedSec), staleSec,
     abandoned: outcome === 'abandoned' || (!s.outcome && !s.endedAt) || (outcome === 'in-progress' && staleSec != null && staleSec > STALE_SECONDS),
-    pathPoints: pts.length, distance: pathLength(pts), stalls: findStalls(pts),
+    pathPoints: pts.length, distance: pathLength(pts), stalls: findStalls(pts, paused),
     waypoints: arr(s.waypoints), deaths: arr(s.deaths),
     // DF-164: the last flood hit (feet, water, depth, crown) when the run ended in the flood
     floodDeath: arr(s.deaths).some((d) => d.cause === 'flood')
@@ -133,7 +156,7 @@ export function formatReport(r, file = '') {
   const L = [];
   L.push(`PLAYTEST REPORT ${file ? `(${path.basename(file)})` : ''}`.trim());
   L.push(`Outcome: ${r.outcome}${r.endReason ? ` (${r.endReason})` : ''}   difficulty: ${r.difficulty ?? '?'}   version: ${r.gameVersion ?? '?'}`);
-  L.push(`Length: ${mmss(r.durationSec)}   route: ${r.pathPoints} points, ${Math.round(r.distance)} m`);
+  L.push(`Length: ${mmss(r.durationSec)}${r.pausedSec > 0 ? ` (play ${mmss(r.playSec)}, paused ${mmss(r.pausedSec)})` : ''}   route: ${r.pathPoints} points, ${Math.round(r.distance)} m`);
   if (r.abandoned) L.push(`WARNING: run did not finish cleanly (abandoned or crashed); data stops at ${mmss(r.durationSec)}.`);
   if (r.outcome === 'in-progress' && !r.abandoned) L.push('Run still in progress or just saved; numbers are complete so far.');
   if (r.env) L.push(`Machine: ${r.env.gpu ?? '?'}, screen ${r.env.screen?.w ?? '?'}x${r.env.screen?.h ?? '?'}, dpr ${r.env.devicePixelRatio ?? '?'}`);

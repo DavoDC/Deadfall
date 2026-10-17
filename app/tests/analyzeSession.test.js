@@ -6,7 +6,7 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { analyse, formatReport, findStalls, findSessionFile, pathLength } from '../src/tools/analyzeSession.mjs';
+import { analyse, formatReport, findStalls, findSessionFile, pathLength, pausedRanges } from '../src/tools/analyzeSession.mjs';
 
 const walk = (n, x0 = 0) => Array.from({ length: n }, (_, i) => ({ time: i, x: x0 + i * 5, z: 0, y: 0, yaw: 0 }));
 
@@ -149,5 +149,57 @@ describe('analyse: result, input summary, hp over time', () => {
     const text = formatReport(analyse(oldHalfRun()));
     expect(text).not.toContain('Score:');
     expect(text).toContain('Input: none recorded');
+  });
+});
+
+describe('pauses are not play time', () => {
+  // stands still at x=0 the whole run, with a 60 s pause in the middle
+  const still = (n) => Array.from({ length: n }, (_, i) => ({ time: i, x: 0, z: 0, y: 0, yaw: 0 }));
+  const pausedRun = () => ({
+    ...oldHalfRun(), startedAt: 1000, endedAt: 1000 + 100000, path: still(100),
+    events: [{ time: 20, kind: 'paused', detail: null }, { time: 80, kind: 'resumed', detail: null }],
+    state: [{ t: 0, hp: 100, frameMs: 6 }, { t: 50, hp: 100, frameMs: 900, paused: true }],
+  });
+
+  it('pausedRanges pairs events, closes an open pause at the end and ignores a leading resume', () => {
+    expect(pausedRanges([{ time: 0, kind: 'resumed' }, { time: 5, kind: 'paused' }, { time: 9, kind: 'resumed' }, { time: 20, kind: 'paused' }], 30))
+      .toEqual([{ from: 5, to: 9 }, { from: 20, to: 30 }]);
+  });
+
+  it('a pause with almost no play around it is not a stall', () => {
+    // standing 0..38 s on the wall clock, but paused from 2 to 38: only 2 s were played
+    const r = analyse({ ...pausedRun(), path: still(39), events: [{ time: 2, kind: 'paused' }, { time: 38, kind: 'resumed' }] });
+    expect(r.stalls).toEqual([]);
+    // the same path with no pause event is one long stall (the old, wrong reading)
+    expect(analyse({ ...pausedRun(), path: still(39), events: [] }).stalls).toHaveLength(1);
+  });
+
+  it('standing before and after a pause is judged on play time only', () => {
+    const r = analyse(pausedRun()); // 20 s + 20 s played standing around a 60 s pause
+    expect(r.stalls).toHaveLength(1);
+    expect(r.stalls[0].to - r.stalls[0].from).toBeGreaterThan(90); // wall span, includes the pause
+  });
+
+  it('reports play time versus wall clock and ignores paused frame times', () => {
+    const r = analyse(pausedRun());
+    expect(r.pausedSec).toBe(60);
+    expect(r.playSec).toBe(r.durationSec - 60);
+    expect(formatReport(r)).toMatch(/Length: 1:39 \(play 0:39, paused 1:00\)/);
+    expect(r.frameP95).toBe(6);
+  });
+
+  it('a session with no pauses prints the old Length line', () => {
+    expect(formatReport(analyse(oldHalfRun()))).not.toContain('paused');
+  });
+
+  it('recorded sessions: paused time from events is below the session length', async () => {
+    const dir = new URL('../captures/telemetry/', import.meta.url);
+    const names = fs.existsSync(dir) ? fs.readdirSync(dir).filter((n) => /^session-.*\.json$/.test(n)) : [];
+    for (const n of names) {
+      const s = JSON.parse(fs.readFileSync(new URL(n, dir), 'utf8'));
+      const r = analyse(s);
+      expect(r.pausedSec).toBeGreaterThanOrEqual(0);
+      expect(r.pausedSec).toBeLessThanOrEqual(r.durationSec + 1);
+    }
   });
 });

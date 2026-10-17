@@ -558,3 +558,35 @@ describe('telemetry: kills per enemy death', () => {
     expect(t.log.kills).toBe(2);
   });
 });
+
+describe('telemetry: play time versus paused time', () => {
+  it('accumulates pausedSeconds on resume, flags paused state samples and sets playSeconds at stop', () => {
+    let clock = 1000;
+    const t = createTelemetry({ now: () => clock });
+    t.start({});
+    t.tick(0.016, { time: 10, pos: { x: 0, y: 0, z: 0 }, fps: 60, frameMs: 16 });
+    t.recordEvent('paused');
+    t.snapshotState({ time: 12, pos: { x: 0, y: 0, z: 0 } });
+    t.tick(0.016, { time: 40, pos: { x: 0, y: 0, z: 0 }, fps: 60, frameMs: 16 });
+    t.recordEvent('resumed');
+    expect(t.log.pausedSeconds).toBe(30);
+    t.snapshotState({ time: 41, pos: { x: 0, y: 0, z: 0 } });
+    expect(t.log.state.find((s) => s.t === 12).paused).toBe(true);
+    expect(t.log.state.find((s) => s.t === 41)).not.toHaveProperty('paused');
+    clock = 1000 + 100000;
+    t.stop('death');
+    expect(t.log.playSeconds).toBe(70);
+  });
+
+  it('a pause still open at stop is closed at the end', () => {
+    let clock = 1000;
+    const t = createTelemetry({ now: () => clock });
+    t.start({});
+    t.tick(0.016, { time: 10, pos: { x: 0, y: 0, z: 0 }, fps: 60, frameMs: 16 });
+    t.recordEvent('paused');
+    clock = 1000 + 50000;
+    t.stop('quit');
+    expect(t.log.pausedSeconds).toBe(40);
+    expect(t.log.playSeconds).toBe(10);
+  });
+});
