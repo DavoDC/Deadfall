@@ -369,6 +369,7 @@ const ui = {
     telemetry.recordShotHit();
   },
   onEnemyKill: (type) => telemetry.recordKill(type),
+  onSpit: (pos, yaw, target) => telemetry.recordSpit(pos, yaw, target),
   onHurt(amount, srcPos, source, detail) {
     sfxHurt();
     vignette = 1;
@@ -551,6 +552,7 @@ function saveBest(extracted) {
 
 let runHits = 0;
 let lastHurtSnapPerf = 0;
+let lastRawFrameMs = 0; // unclamped wall time of the last frame (dt is capped at 50 ms)
 
 function buildTelemetryCtx(now, dt) {
   const telemetryElapsedT = telemetryStartPerf ? (now - telemetryStartPerf) / 1000 : 0;
@@ -558,7 +560,7 @@ function buildTelemetryCtx(now, dt) {
   const slopeDeg = Math.acos(Math.min(1, Math.max(-1, _slopeNormal.y))) * RAD2DEG;
   const wst = weapons.state;
   return {
-    time: telemetryElapsedT, pos: player.p.pos, fps, frameMs: dt * 1000,
+    time: telemetryElapsedT, pos: player.p.pos, fps, frameMs: dt * 1000, rawFrameMs: lastRawFrameMs,
     landmarks: TELEMETRY_LANDMARKS,
     yaw: player.p.yaw, hp: player.p.hp, stamina: player.p.stamina,
     ammo: { mag: wst.mag[wst.current], reserve: wst.reserve[wst.current] },
@@ -832,6 +834,7 @@ function reportBootProfile() {
 function tick(now) {
   requestAnimationFrame(tick);
   const dt = Math.min(0.05, (now - last) / 1000);
+  lastRawFrameMs = now - last;
   last = now;
 
   frames++;

@@ -610,7 +610,9 @@ export function createEnemyManager(scene, playerHelpers, effects, hooks) {
       if (e.stateT >= windup) {
         for (const sac of e.model.refs.sacs) sac.material.emissiveIntensity = 1.6 + e.rage * 0.7;
         _v2.set(e.pos.x, e.pos.y + 1.35, e.pos.z);
-        throwGlob(_v2, nearestPlayer(e.pos).pos, e);
+        const spitTarget = nearestPlayer(e.pos).pos;
+        if (hooks.onSpit) hooks.onSpit(e.pos, e.faceYaw === undefined ? e.heading : e.faceYaw, spitTarget);
+        throwGlob(_v2, spitTarget, e);
         e.state = 'hunt';
         e.attackCd = spitterCooldown(e);
       }

@@ -42,6 +42,7 @@ A folder is searched (and its `telemetry` subfolder) for the newest `session-*.j
 - `inputEdges` and `inputAggregates`: presses and per-second input summaries (sprint share, look speed, aim time).
 - `errors`: uncaught errors, first 20.
 - Pauses: the report prints `Length 5:48 (play 4:48, paused 0:59)`. Paused time comes from the `paused` and `resumed` events and is left out of stalls and frame times, so a stall is only standing still while the game was running. Older files without `playSeconds` still work because the report derives it from the events.
+- Long frames and spits: the report lists the five worst frames over 25 ms with the time and x,z of the player (look there for pop-in, culling or load spikes), and counts spitter shots fired with the bearing over 90 degrees (a spitter shooting with its back turned).
 
 `node src/tools/analyzeSession.mjs` prints `Score: N G TITLE (tag)`, `HP over time` (state samples plus the hp on each damage entry), `Input:` (counts per action, sprint and aim seconds, edges kept and dropped) and a WARNING when HP stays flat although damage was taken (the HP bug the log once had). Files from before these fields print `Input: none recorded` and no score.
 

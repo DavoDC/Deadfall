@@ -38,6 +38,8 @@ Every file on disk is valid and complete so far. While a run is going, `outcome`
 - `bursts`: on a death or a hit of 15 hp or more, 10 Hz state samples from the 5 s before to the 2 s after, so an unfair death can be explained.
 - `kills` and `killsByType`: one count per enemy death (the sim death callback), so `kills` equals the sum of `killsByType` and the number of encounters with fate `killed`. Before 2026-10-17 kills were counted per hitmarker, so a volley that killed two enemies counted one.
 - `playSeconds` and `pausedSeconds`: run time with the game unpaused and total paused time (menu, alt-tab, controls overlay). `pausedSeconds` updates on every resume, `playSeconds` is final at the end of the run. `state` samples taken while paused carry `paused: true`. The `paused` and `resumed` events bracket each pause.
+- `longFrames`: `{t, frameMs, pos}` for every frame slower than 25 ms, using the raw wall time (the game caps its own step at 50 ms, so the log can show 400 ms freezes). The worst 50 are kept. Not logged while paused or on the first frame after a pause. The one-second `state` samples miss these spikes.
+- `events` of kind `spit`: one per spitter shot (first 200) with `detail` `{x, z, yawDeg, bearingDeg, dist}`. `bearingDeg` is the signed angle from the spitter facing to the player: 0 means it faced the player, 180 means its back was turned. This answers whether spitters shoot while facing away.
 
 Raw per-frame input is never logged. A died or partial run still leaves a complete file because the session is flushed continuously.
 

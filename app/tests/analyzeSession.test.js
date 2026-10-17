@@ -203,3 +203,27 @@ describe('pauses are not play time', () => {
     }
   });
 });
+
+describe('long frames and spitter shots in the report', () => {
+  it('lists the worst long frames with positions and counts spits fired facing away', () => {
+    const s = {
+      ...oldHalfRun(),
+      longFrames: [{ t: 12, frameMs: 33, pos: { x: 5, y: 0, z: 6 } }, { t: 70, frameMs: 120, pos: { x: -40, y: 2, z: 80 } }],
+      events: [
+        { time: 10, kind: 'spit', detail: { bearingDeg: 5 } },
+        { time: 20, kind: 'spit', detail: { bearingDeg: -170 } },
+        { time: 30, kind: 'spit', detail: { bearingDeg: 120 } },
+      ],
+    };
+    const out = formatReport(analyse(s));
+    expect(out).toContain('Long frames (over 25 ms): 2, worst:');
+    expect(out).toMatch(/120 ms at 1:10 at -40,80/);
+    expect(out).toContain('Spitter shots: 3, 2 fired facing away');
+  });
+
+  it('prints neither section for a file without them', () => {
+    const out = formatReport(analyse(oldHalfRun()));
+    expect(out).not.toContain('Long frames');
+    expect(out).not.toContain('Spitter shots');
+  });
+});

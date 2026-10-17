@@ -146,6 +146,8 @@ export function analyse(s, { nowMs = Date.now() } = {}) {
     neverSeen: enc.filter((e) => e.firstSeenT == null && e.fate !== 'alive').length,
     fpsMedian: percentile(fps, 0.5), fpsP5: percentile(fps, 0.05), frameP95: percentile(frameMs, 0.95),
     minHp: hp.length ? Math.min(...hp) : null,
+    longFrames: [...arr(s.longFrames)].sort((a, b) => b.frameMs - a.frameMs),
+    spits: arr(s.events).filter((e) => e.kind === 'spit' && e.detail && Number.isFinite(e.detail.bearingDeg)).map((e) => e.detail),
     errors: arr(s.errors), env: s.env || null,
     events: arr(s.events).length,
     hasEncounters: enc.length > 0,
@@ -161,6 +163,14 @@ export function formatReport(r, file = '') {
   if (r.outcome === 'in-progress' && !r.abandoned) L.push('Run still in progress or just saved; numbers are complete so far.');
   if (r.env) L.push(`Machine: ${r.env.gpu ?? '?'}, screen ${r.env.screen?.w ?? '?'}x${r.env.screen?.h ?? '?'}, dpr ${r.env.devicePixelRatio ?? '?'}`);
   L.push(`Performance: fps median ${f1(r.fpsMedian)}, 5th percentile ${f1(r.fpsP5)}, frame time p95 ${f1(r.frameP95)} ms`);
+  if (r.longFrames.length) {
+    L.push(`Long frames (over 25 ms): ${r.longFrames.length}, worst:`);
+    for (const f of r.longFrames.slice(0, 5)) L.push(`  ${f.frameMs} ms at ${mmss(f.t)}${f.pos ? ` at ${Math.round(f.pos.x)},${Math.round(f.pos.z)}` : ''}`);
+  }
+  if (r.spits.length) {
+    const away = r.spits.filter((d) => Math.abs(d.bearingDeg) > 90).length;
+    L.push(`Spitter shots: ${r.spits.length}, ${away} fired facing away (bearing over 90 degrees)`);
+  }
   if (r.result) L.push(`Score: ${r.result.score} ${r.result.grade} ${r.result.title}${r.result.tag ? ` (${r.result.tag})` : ''}`);
   L.push(`Health: lowest ${f1(r.minHp)}, damage taken ${Math.round(r.damageTaken ?? 0)}, deaths ${r.deaths.length}`);
   if (r.hpPoints.length) {

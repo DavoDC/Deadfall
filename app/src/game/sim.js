@@ -38,6 +38,7 @@ export function createSim({ scene, camera, effects, ui = {} }) {
     hitmarker: ui.hitmarker || noop,
     onHurt: ui.onHurt || noop,
     onEnemyKill: ui.onEnemyKill || noop,
+    onSpit: ui.onSpit || noop,
     onDeath: ui.onDeath || noop,
     onWin: ui.onWin || noop,
     onHazard: ui.onHazard || noop,
@@ -207,6 +208,7 @@ export function createSim({ scene, camera, effects, ui = {} }) {
   const boss = { ref: null, spawned: false, maxHp: 1, name: 'THE MIREMOTHER' };
   const enemyMgr = createEnemyManager(scene, { nearestPlayer, players }, effects, {
     damagePlayer,
+    onSpit: (pos, yaw, target) => U.onSpit(pos, yaw, target),
     onKill(type, pos) {
       game.kills += 1;
       U.onEnemyKill(type); // telemetry counts here: one call per enemy death, not per hitmarker

@@ -50,6 +50,20 @@ const BURST_RING_CAP = Math.ceil(BURST_PRE_SEC / BURST_INTERVAL); // 50 samples
 // prowler pokes) so normal combat does not flood log.bursts.
 export const DAMAGE_SPIKE_THRESHOLD = 15;
 export const MAX_ERRORS = 20;
+export const LONG_FRAME_MS = 25;     // a frame slower than this is logged with where the player was
+export const MAX_LONG_FRAMES = 50;   // the worst ones are kept
+export const MAX_SPITS = 200;
+const LONG_FRAME_NOTIFY_S = 5;       // long frames save at most this often
+
+// Signed angle in degrees from a spitter's facing to the direction of the player:
+// 0 = looking straight at the player, 180 = back turned. Yaw convention of the
+// enemies: forward is (sin yaw, cos yaw) on x and z.
+export function spitBearingDeg(spitterPos, facingYaw, playerPos) {
+  const want = Math.atan2(playerPos.x - spitterPos.x, playerPos.z - spitterPos.z);
+  let d = want - facingYaw;
+  d = Math.atan2(Math.sin(d), Math.cos(d));
+  return Math.round(d * 180 / Math.PI * 10) / 10;
+}
 
 // DF-158: damage whose srcPos is not an attacker (the victim's own spot, the water sample, a self-hit)
 export const NO_ATTACKER_SOURCES = new Set(['flood', 'razorfin', 'grenade-self', 'unknown']);
@@ -126,6 +140,9 @@ export function createTelemetry({ now = Date.now } = {}) {
 
   // pause tracking: pausedSince is the run time the open pause began (null when playing)
   let pausedSince = null;
+  let prevTickPaused = false;
+  let lastLongFrameNotifyT = -Infinity;
+  let spitCount = 0;
 
   // v2: human-input aggregation window + sustained-action edge tracking.
   let prevSustain = {};
@@ -155,6 +172,7 @@ export function createTelemetry({ now = Date.now } = {}) {
       env: meta.env ?? null,     // browser, GPU, screen, quality settings (collected once by main.js)
       playSeconds: 0,            // run time with the game unpaused (wall minus paused), final at stop()
       pausedSeconds: 0,          // total time paused (menu, alt-tab, controls overlay), kept current on resume and at stop()
+      longFrames: [],            // {t, frameMs, pos}: frames over LONG_FRAME_MS (raw wall time), worst MAX_LONG_FRAMES kept
       kills: 0,
       killsByType: {},           // enemy type -> kills (sums to kills)
       spawned: {},               // enemy type -> number spawned this run
@@ -191,6 +209,9 @@ export function createTelemetry({ now = Date.now } = {}) {
     ring = [];
     activeBurst = null;
     pausedSince = null;
+    prevTickPaused = false;
+    lastLongFrameNotifyT = -Infinity;
+    spitCount = 0;
     prevSustain = {};
     agg = null;
     visitedWaypoints = new Set();
@@ -416,6 +437,38 @@ export function createTelemetry({ now = Date.now } = {}) {
     log.result = { score: r.score ?? null, grade: r.grade ?? null, title: r.title ?? null, tag: r.tag ?? '' };
   }
 
+  function recordLongFrame(time, frameMs, pos) {
+    const entry = { t: round2(time), frameMs: round2(frameMs), pos: pos ? { x: round2(pos.x), y: round2(pos.y ?? 0), z: round2(pos.z) } : null };
+    const lf = log.longFrames;
+    if (lf.length < MAX_LONG_FRAMES) {
+      lf.push(entry);
+      touch('longFrames', lf.length - 1);
+    } else {
+      let min = 0;
+      for (let i = 1; i < lf.length; i++) if (lf[i].frameMs < lf[min].frameMs) min = i;
+      if (lf[min].frameMs >= entry.frameMs) return;
+      lf[min] = entry;
+      touch('longFrames', min);
+    }
+    if (time - lastLongFrameNotifyT >= LONG_FRAME_NOTIFY_S) {
+      lastLongFrameNotifyT = time;
+      notify('longFrame');
+    }
+  }
+
+  // A spitter fired: where it stood, its facing and the signed angle from its facing to the player
+  // (spitBearingDeg). Capped at MAX_SPITS. Lets "spitters shoot while facing away" be checked.
+  function recordSpit(spitterPos, facingYaw, playerPos) {
+    if (!recording || !log || spitCount >= MAX_SPITS) return;
+    spitCount += 1;
+    recordEvent('spit', {
+      x: round2(spitterPos.x), z: round2(spitterPos.z),
+      yawDeg: Math.round(facingYaw * 180 / Math.PI * 10) / 10,
+      bearingDeg: spitBearingDeg(spitterPos, facingYaw, playerPos),
+      dist: round2(Math.hypot(playerPos.x - spitterPos.x, playerPos.z - spitterPos.z)),
+    });
+  }
+
   // Called once per frame from the render loop. Internally decides whether
   // this frame lands on a sample boundary (path/fps/state/burst-ring, each
   // on its own cadence) and always checks waypoint arrival cheaply.
@@ -423,6 +476,13 @@ export function createTelemetry({ now = Date.now } = {}) {
     if (!recording || !log) return;
     const { time, pos, fps, frameMs, landmarks } = ctx;
     lastSampleT = time;
+
+    // long frames: raw wall time (ctx.rawFrameMs, unclamped) with the player position. Not while paused,
+    // and not on the first frame after a pause (a hidden tab does not draw at all).
+    const raw = ctx.rawFrameMs ?? frameMs;
+    const paused = pausedSince != null;
+    if (raw > LONG_FRAME_MS && !paused && !prevTickPaused) recordLongFrame(time, raw, pos);
+    prevTickPaused = paused;
 
     if (time - lastPathSampleT >= PATH_INTERVAL) {
       lastPathSampleT = time;
@@ -586,7 +646,7 @@ export function createTelemetry({ now = Date.now } = {}) {
   return {
     start, stop, finish, setOutcome, elapsed, delta, touch, download, toJSON, summaryLine,
     recordDeath, recordDamageTaken, recordDamageDealt,
-    recordShotFired, recordShotHit, recordKill, recordEvent,
+    recordShotFired, recordShotHit, recordKill, recordEvent, recordSpit,
     addEncounter, updateEncounter, setSpawned, recordError,
     recordInput,
     tick, snapshotState, setResult,

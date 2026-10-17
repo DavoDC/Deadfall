@@ -4,7 +4,7 @@
 // to a session file, Claude ingests it to find issues.
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { createTelemetry, DAMAGE_SPIKE_THRESHOLD } from '../src/game/telemetry.js';
+import { createTelemetry, DAMAGE_SPIKE_THRESHOLD, spitBearingDeg, MAX_LONG_FRAMES, MAX_SPITS } from '../src/game/telemetry.js';
 
 describe('telemetry: recording lifecycle', () => {
   it('starts idle (not recording, no log)', () => {
@@ -588,5 +588,64 @@ describe('telemetry: play time versus paused time', () => {
     t.stop('quit');
     expect(t.log.pausedSeconds).toBe(40);
     expect(t.log.playSeconds).toBe(10);
+  });
+});
+
+describe('telemetry: long frames', () => {
+  const at = { x: 3, y: 1, z: 4 };
+  it('a 40 ms frame is logged with the player position, a 10 ms frame is not', () => {
+    const t = createTelemetry();
+    t.start({});
+    t.tick(0.016, { time: 1, pos: at, fps: 60, frameMs: 10 });
+    t.tick(0.016, { time: 2, pos: at, fps: 25, frameMs: 40 });
+    expect(t.log.longFrames).toEqual([{ t: 2, frameMs: 40, pos: at }]);
+  });
+
+  it('uses the raw unclamped frame time when given (dt is capped at 50 ms in the game)', () => {
+    const t = createTelemetry();
+    t.start({});
+    t.tick(0.05, { time: 2, pos: at, fps: 5, frameMs: 50, rawFrameMs: 400 });
+    expect(t.log.longFrames[0].frameMs).toBe(400);
+  });
+
+  it('100 spikes keep the worst MAX_LONG_FRAMES', () => {
+    const t = createTelemetry();
+    t.start({});
+    for (let i = 0; i < 100; i++) t.tick(0.016, { time: i + 1, pos: at, fps: 20, frameMs: 26 + i });
+    expect(t.log.longFrames).toHaveLength(MAX_LONG_FRAMES);
+    expect(Math.min(...t.log.longFrames.map((f) => f.frameMs))).toBe(26 + 50);
+  });
+
+  it('does not log frames while paused or the frame right after a pause', () => {
+    const t = createTelemetry();
+    t.start({});
+    t.tick(0.016, { time: 1, pos: at, fps: 60, frameMs: 10 });
+    t.recordEvent('paused');
+    t.tick(0.016, { time: 2, pos: at, fps: 5, frameMs: 200 });
+    t.recordEvent('resumed');
+    t.tick(0.016, { time: 3, pos: at, fps: 1, frameMs: 90000 });
+    expect(t.log.longFrames).toEqual([]);
+    t.tick(0.016, { time: 4, pos: at, fps: 20, frameMs: 60 });
+    expect(t.log.longFrames).toHaveLength(1);
+  });
+});
+
+describe('telemetry: spitter aim sample', () => {
+  it('bearing is 0 facing the player and 180 facing away (spitter at origin, player on +x)', () => {
+    const player = { x: 10, y: 0, z: 0 };
+    expect(spitBearingDeg({ x: 0, z: 0 }, Math.PI / 2, player)).toBe(0);
+    expect(Math.abs(spitBearingDeg({ x: 0, z: 0 }, -Math.PI / 2, player))).toBe(180);
+    expect(spitBearingDeg({ x: 0, z: 0 }, 0, player)).toBe(90);
+  });
+
+  it('recordSpit stores an event with yaw, bearing and distance, capped at MAX_SPITS', () => {
+    const t = createTelemetry();
+    t.start({});
+    t.recordSpit({ x: 0, z: 0 }, -Math.PI / 2, { x: 10, y: 0, z: 0 });
+    const ev = t.log.events.find((e) => e.kind === 'spit');
+    expect(ev.detail).toMatchObject({ x: 0, z: 0, yawDeg: -90, dist: 10 });
+    expect(Math.abs(ev.detail.bearingDeg)).toBe(180);
+    for (let i = 0; i < MAX_SPITS + 20; i++) t.recordSpit({ x: 0, z: 0 }, 0, { x: 1, y: 0, z: 0 });
+    expect(t.log.events.filter((e) => e.kind === 'spit')).toHaveLength(MAX_SPITS);
   });
 });
