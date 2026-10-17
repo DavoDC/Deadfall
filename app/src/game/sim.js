@@ -12,7 +12,8 @@
 //   onHazard(kind), onExtractTone(progress), onSurge(), onBuff()
 
 import * as THREE from 'three';
-import { WORLD, razorfinHazard } from '../world/heightmap.js';
+import { WORLD, razorfinHazard, waterLevelAt } from '../world/heightmap.js';
+import { platformGroundAt } from '../world/platforms.js';
 import { createPlayer } from '../player/controller.js';
 import { createWeapons } from '../weapons/weapons.js';
 import { createGrenades } from '../weapons/grenades.js';
@@ -127,7 +128,7 @@ export function createSim({ scene, camera, effects, ui = {} }) {
   weaponsList.push(weapons);
 
   // damagePlayer with multi-player bleedout logic
-  function damagePlayer(amount, srcPos, source = 'unknown', targetPlayer = null) {
+  function damagePlayer(amount, srcPos, source = 'unknown', targetPlayer = null, detail = null) {
     if (game.state !== 'RUNNING') return;
 
     // Determine target: explicit target, or nearest alive player for multi-player
@@ -179,7 +180,7 @@ export function createSim({ scene, camera, effects, ui = {} }) {
     if (inHold && !BURST_GRACE_EXCLUDED_SOURCES.has(source)) target.p.lastBurstHitAt = game.time;
     // source forwarded for telemetry (main.js records damage-by-source and
     // reuses the last hit's source/pos as the death cause when hp hits 0)
-    U.onHurt(scaled, srcPos, source);
+    U.onHurt(scaled, srcPos, source, detail);
 
     if (!target.p.alive && target.p.hp <= 0) {
       // Player went down - check if this is the last alive player
@@ -487,7 +488,15 @@ export function createSim({ scene, camera, effects, ui = {} }) {
         if (!pp.alive) continue;
         const fh = flood.hazardAt(pp.pos.x, pp.pos.z, pp.pos.y - ctrl.EYE_HEIGHT);
         if (fh <= 0) continue;
-        damagePlayer(difficulty.razorfinDps * fh * 0.5, pp.pos, 'flood', ctrl);
+        // DF-164: the hit records where the water was, not just the victim
+        const feetY = pp.pos.y - ctrl.EYE_HEIGHT;
+        const waterY = waterLevelAt(pp.pos.x, pp.pos.z);
+        const crownY = platformGroundAt(pp.pos.x, pp.pos.z, feetY);
+        const detail = {
+          feetY, waterY, depth: waterY - feetY,
+          onCrown: Number.isFinite(crownY) && feetY - crownY < 0.1,
+        };
+        damagePlayer(difficulty.razorfinDps * fh * 0.5, { x: pp.pos.x, y: waterY, z: pp.pos.z }, 'flood', ctrl, detail);
         anyBitten = true;
         effects.burst(
           new THREE.Vector3(pp.pos.x, pp.pos.y - ctrl.EYE_HEIGHT + 0.6, pp.pos.z),

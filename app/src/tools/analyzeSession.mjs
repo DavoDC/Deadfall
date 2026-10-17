@@ -113,6 +113,10 @@ export function analyse(s, { nowMs = Date.now() } = {}) {
     abandoned: outcome === 'abandoned' || (!s.outcome && !s.endedAt) || (outcome === 'in-progress' && staleSec != null && staleSec > STALE_SECONDS),
     pathPoints: pts.length, distance: pathLength(pts), stalls: findStalls(pts),
     waypoints: arr(s.waypoints), deaths: arr(s.deaths),
+    // DF-164: the last flood hit (feet, water, depth, crown) when the run ended in the flood
+    floodDeath: arr(s.deaths).some((d) => d.cause === 'flood')
+      ? ([...arr(s.damageTaken)].reverse().find((d) => d.source === 'flood' && Number.isFinite(d.feetY)) || null)
+      : null,
     damageTaken: Array.isArray(s.damageTaken) ? s.damageTaken.reduce((a, d) => a + (d.amount || 0), 0) : (s.damageTaken ?? null), damageBySource: s.damageTakenBySource || {},
     shots: s.shots || null, kills: s.kills ?? null,
     spawned: s.spawned || {}, byType, killsByWeapon, encounters: enc.length,
@@ -149,6 +153,10 @@ export function formatReport(r, file = '') {
   if (r.hpWarning) L.push('WARNING: hp never changed despite damage taken (telemetry bug, report it).');
   const srcs = Object.entries(r.damageBySource).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${Math.round(v)}`);
   if (srcs.length) L.push(`Damage by source: ${srcs.join(', ')}`);
+  if (r.floodDeath) {
+    const d = r.floodDeath;
+    L.push(`Flood death: feet ${f1(d.feetY)} m, water ${f1(d.waterY)} m, depth ${f1(d.depth)} m, ${d.onCrown ? 'on a crown' : 'wading, not on a crown'}`);
+  }
   if (r.shots) L.push(`Shots: ${r.shots.fired ?? '?'} fired, ${r.shots.hits ?? '?'} hit`);
   if (r.kills != null) L.push(`Kills: ${r.kills}`);
   const c = r.input.counts;

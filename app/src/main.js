@@ -355,7 +355,7 @@ const ui = {
     telemetry.recordShotHit();
     if (kill) telemetry.recordKill();
   },
-  onHurt(amount, srcPos, source) {
+  onHurt(amount, srcPos, source, detail) {
     sfxHurt();
     vignette = 1;
     lastHurt = { amount, srcPos, source };
@@ -364,6 +364,7 @@ const ui = {
     telemetry.recordDamageTaken({
       amount, source, hp: player.p.hp,
       pos: srcPos ? { x: srcPos.x, y: srcPos.y, z: srcPos.z } : null,
+      ...(detail || {}),
     });
     // hp on record right at the hit, not up to 1 s later (throttled to 4 per second)
     if (telemetry.recording && performance.now() - lastHurtSnapPerf > 250) {

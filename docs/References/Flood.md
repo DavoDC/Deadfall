@@ -23,7 +23,7 @@ There is no separate "safe zone" definition. The only dry standing spots at floo
 
 ## Telemetry
 
-`damagePlayer` (`app/src/game/sim.js`, flood branch) passes `pp.pos`, the victim's own position, as `srcPos`. `main.js` `onHurt` then records that as the damage `pos`. The hazard position and the player's feet are not recorded; `pos` is the eye position of the player who was hit. A future fix would record the feet and the flood sample position.
+Each flood hit in `damageTaken` carries `feetY` (the player's feet), `waterY` (the water surface at that spot), `depth` (`waterY - feetY`) and `onCrown` (feet standing on a registered platform disc). `damagePlayer` (`app/src/game/sim.js`, flood branch) passes the water sample point `{x, y: waterY, z}` as `srcPos` plus these values as a `detail` argument that `main.js` `onHurt` spreads into the telemetry entry. `analyzeSession.mjs` prints them as a "Flood death" line when the run ended in the flood. Pinned by `app/tests/floodTelemetry.test.js`.
 
 ## Open
 

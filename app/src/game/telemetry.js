@@ -129,7 +129,7 @@ export function createTelemetry({ now = Date.now } = {}) {
       encounters: [],            // one per enemy spawn, see encounters.js (entries are updated in place)
       errors: [],                // uncaught errors / unhandled rejections, capped at MAX_ERRORS
       deaths: [],                // {time, pos, cause, enemy, waypoint}
-      damageTaken: [],           // {time, amount, source, pos}
+      damageTaken: [],           // {time, amount, source, pos, hp, +feetY/waterY/depth/onCrown on flood hits}
       damageTakenBySource: {},   // source -> total
       damageDealt: [],           // {time, amount, target, headshot, crit}
       damageDealtByTarget: {},   // target -> total
@@ -246,10 +246,13 @@ export function createTelemetry({ now = Date.now } = {}) {
   }
 
   // hp: the player's hp AFTER this hit (so hp over time is exact even between the 1 s state samples)
-  function recordDamageTaken({ time, amount, source, pos, hp } = {}) {
+  // flood hits (DF-164) also carry feetY, waterY, depth, onCrown
+  function recordDamageTaken({ time, amount, source, pos, hp, feetY, waterY, depth, onCrown } = {}) {
     if (!recording || !log) return;
     const t = time ?? elapsed();
-    log.damageTaken.push({ time: t, amount, source: source ?? 'unknown', pos: pos ?? null, hp: hp ?? null });
+    const entry = { time: t, amount, source: source ?? 'unknown', pos: pos ?? null, hp: hp ?? null };
+    if (Number.isFinite(feetY)) Object.assign(entry, { feetY, waterY, depth, onCrown: !!onCrown });
+    log.damageTaken.push(entry);
     log.damageTakenBySource[source ?? 'unknown'] = (log.damageTakenBySource[source ?? 'unknown'] || 0) + amount;
     if (amount >= DAMAGE_SPIKE_THRESHOLD) beginBurst('damageSpike', t);
     notify('damage');
