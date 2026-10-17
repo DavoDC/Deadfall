@@ -36,6 +36,7 @@ Every file on disk is valid and complete so far. While a run is going, `outcome`
 - `inputAggregates`: once per second `{t, distance, pctSprint, aimSeconds, lookSpeedMeanDegPerSec, lookSpeedPeakDegPerSec, shots}`.
 - `state`: once per second `{t, pos, yaw, hp, stamina, ammo, weapon, speedMps, slopeDeg, verticalVel, grounded, enemiesNear, threat, fps, frameMs}`.
 - `bursts`: on a death or a hit of 15 hp or more, 10 Hz state samples from the 5 s before to the 2 s after, so an unfair death can be explained.
+- `kills` and `killsByType`: one count per enemy death (the sim death callback), so `kills` equals the sum of `killsByType` and the number of encounters with fate `killed`. Before 2026-10-17 kills were counted per hitmarker, so a volley that killed two enemies counted one.
 
 Raw per-frame input is never logged. A died or partial run still leaves a complete file because the session is flushed continuously.
 

@@ -37,6 +37,7 @@ export function createSim({ scene, camera, effects, ui = {} }) {
     showExtract: ui.showExtract || noop,
     hitmarker: ui.hitmarker || noop,
     onHurt: ui.onHurt || noop,
+    onEnemyKill: ui.onEnemyKill || noop,
     onDeath: ui.onDeath || noop,
     onWin: ui.onWin || noop,
     onHazard: ui.onHazard || noop,
@@ -208,6 +209,7 @@ export function createSim({ scene, camera, effects, ui = {} }) {
     damagePlayer,
     onKill(type, pos) {
       game.kills += 1;
+      U.onEnemyKill(type); // telemetry counts here: one call per enemy death, not per hitmarker
       if (type === 'miremother') {
         // APEX SLAIN: the moat is yours - a feast of loot, and the jungle
         // holds its breath for a while

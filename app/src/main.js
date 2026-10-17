@@ -367,8 +367,8 @@ const ui = {
     hud && hud.hitmarker(kill, crit);
     runHits += 1;
     telemetry.recordShotHit();
-    if (kill) telemetry.recordKill();
   },
+  onEnemyKill: (type) => telemetry.recordKill(type),
   onHurt(amount, srcPos, source, detail) {
     sfxHurt();
     vignette = 1;

@@ -528,3 +528,33 @@ describe('telemetry: a death ends the session, a restart opens a new one (DF-143
     expect(log.result.grade).toBe('B');
   });
 });
+
+describe('telemetry: kills per enemy death', () => {
+  it('recordKill(type) keeps kills equal to the sum of killsByType', () => {
+    const t = createTelemetry();
+    t.start({});
+    t.recordKill('prowler');
+    t.recordKill('prowler');
+    t.recordKill('spitter');
+    expect(t.log.kills).toBe(3);
+    expect(t.log.killsByType).toEqual({ prowler: 2, spitter: 1 });
+  });
+
+  it('one volley killing two enemies counts two (the hitmarker no longer counts kills)', async () => {
+    const THREE = await import('three');
+    const { createSim } = await import('../src/game/sim.js');
+    const t = createTelemetry();
+    t.start({});
+    const effects = { spawnTracer() {}, burst() {}, update() {} };
+    // the same wiring main.js uses: onEnemyKill feeds telemetry, hitmarker does not
+    const ui = { onEnemyKill: (type) => t.recordKill(type), hitmarker: () => {} };
+    const sim = createSim({ scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(), effects, ui });
+    sim.resetRun();
+    expect(typeof sim.enemyMgr.spawn).toBe('function');
+    const a = sim.enemyMgr.spawn('prowler', 0, 0);
+    const b = sim.enemyMgr.spawn('prowler', 3, 0);
+    for (const e of [a, b]) { e.hp = 1; sim.enemyMgr.applyDamage(e, 500, false, null, false); }
+    expect(sim.game.kills).toBe(2);
+    expect(t.log.kills).toBe(2);
+  });
+});

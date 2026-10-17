@@ -151,6 +151,7 @@ export function createTelemetry({ now = Date.now } = {}) {
       outcome: 'in-progress',    // 'in-progress' | 'extracted' | 'died' | 'abandoned'
       env: meta.env ?? null,     // browser, GPU, screen, quality settings (collected once by main.js)
       kills: 0,
+      killsByType: {},           // enemy type -> kills (sums to kills)
       spawned: {},               // enemy type -> number spawned this run
       encounters: [],            // one per enemy spawn, see encounters.js (entries are updated in place)
       errors: [],                // uncaught errors / unhandled rejections, capped at MAX_ERRORS
@@ -308,9 +309,12 @@ export function createTelemetry({ now = Date.now } = {}) {
     log.shots.hits += 1;
   }
 
-  function recordKill() {
+  // One call per enemy death (sim onKill). It used to ride the hitmarker, which fires once per
+  // volley, so a shotgun volley killing two enemies counted one (kills 34 vs 35 encounters killed).
+  function recordKill(type) {
     if (!recording || !log) return;
     log.kills += 1;
+    if (type) log.killsByType[type] = (log.killsByType[type] || 0) + 1;
     notify('kill');
   }
 
