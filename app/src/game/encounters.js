@@ -11,6 +11,8 @@
 // Pure logic, fed by main.js; the telemetry object is only used through
 // addEncounter() / updateEncounter().
 
+import { attackerTypeFor } from './telemetry.js';
+
 // A sighting needs the enemy in front of the player (within SIGHT_HALF_ARC of
 // the look direction), within SIGHT_RANGE metres, and with line of sight (the
 // enemy AI's own player-LOS result, no extra raycasts).
@@ -19,8 +21,6 @@ export const SIGHT_HALF_ARC = 1.05; // radians, about 60 degrees
 const UPDATE_INTERVAL = 0.2;        // seconds between tracker passes (5 Hz)
 const ATTRIBUTION_RADIUS = 40;      // metres, damage source position to enemy
 
-// damage-source names that are not an enemy type but belong to one
-const SOURCE_TO_TYPE = { acid: 'spitter' };
 
 function r2(n) { return Math.round(n * 100) / 100; }
 
@@ -101,20 +101,26 @@ export function createEncounterTracker(telemetry) {
   }
 
   // Damage the player took from `source` (an enemy type, or 'acid' etc.) at
-  // srcPos. Attributed to the nearest open encounter of that type. Approximate
-  // by design: the sim reports a source name and position, not an enemy id.
-  function noteHurt(source, srcPos, amount) {
-    const type = SOURCE_TO_TYPE[source] || source;
-    let best = null;
-    let bestD = Infinity;
-    for (const [e, rec] of open) {
-      if (e.type !== type) continue;
-      const d = srcPos ? Math.hypot(e.pos.x - srcPos.x, e.pos.z - srcPos.z) : 0;
-      if (d < bestD) { bestD = d; best = rec; }
+  // srcPos. `attacker` (the enemy object, when the sim knows it, e.g. the
+  // spitter behind an acid glob) is matched exactly; otherwise the nearest open
+  // encounter of that type within ATTRIBUTION_RADIUS. Returns the encounter id
+  // or null (flood, traps and other non-enemy sources).
+  function noteHurt(source, srcPos, amount, attacker = null) {
+    let best = attacker ? open.get(attacker) || null : null;
+    const type = attackerTypeFor(source);
+    let bestD = 0;
+    if (!best && type) {
+      bestD = Infinity;
+      for (const [e, rec] of open) {
+        if (e.type !== type) continue;
+        const d = srcPos ? Math.hypot(e.pos.x - srcPos.x, e.pos.z - srcPos.z) : 0;
+        if (d < bestD) { bestD = d; best = rec; }
+      }
     }
-    if (!best || (srcPos && bestD > ATTRIBUTION_RADIUS)) return;
+    if (!best || (srcPos && bestD > ATTRIBUTION_RADIUS)) return null;
     const entry = telemetry.log.encounters[best.index];
     telemetry.updateEncounter(best.index, { dmgToPlayer: r2((entry.dmgToPlayer || 0) + amount) });
+    return entry.id;
   }
 
   // true when update() would do work this frame (lets the caller skip building the alive list)

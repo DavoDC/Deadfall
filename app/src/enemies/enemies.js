@@ -217,16 +217,18 @@ export function createEnemyManager(scene, playerHelpers, effects, hooks) {
     const m = new THREE.Mesh(globGeo, globMat);
     m.visible = false;
     scene.add(m);
-    globs.push({ mesh: m, vel: new THREE.Vector3(), alive: false, age: 0 });
+    globs.push({ mesh: m, vel: new THREE.Vector3(), alive: false, age: 0, by: null, from: null });
   }
 
-  function throwGlob(from, target) {
+  function throwGlob(from, target, shooter = null) {
     const g = globs.find((x) => !x.alive);
     if (!g) return;
     g.alive = true;
     g.age = 0;
     g.mesh.visible = true;
     g.mesh.position.copy(from);
+    g.by = shooter;
+    g.from = { x: from.x, y: from.y, z: from.z };
     // lob: aim at target with lead + upward arc
     const d = _v.subVectors(target, from);
     const dist = Math.hypot(d.x, d.z);
@@ -255,7 +257,7 @@ export function createEnemyManager(scene, playerHelpers, effects, hooks) {
           const splash = _v.subVectors(nearPlayer.pos, p).length();
           if (splash < def.splashRadius) {
             const frac = directHit ? 1 : 1 - splash / def.splashRadius * 0.6;
-            hooks.damagePlayer(def.spitDamage * frac, p, 'acid');
+            hooks.damagePlayer(def.spitDamage * frac, p, 'acid', null, { attacker: g.by, attackerPos: g.from });
           }
         }
         g.alive = false;
@@ -608,7 +610,7 @@ export function createEnemyManager(scene, playerHelpers, effects, hooks) {
       if (e.stateT >= windup) {
         for (const sac of e.model.refs.sacs) sac.material.emissiveIntensity = 1.6 + e.rage * 0.7;
         _v2.set(e.pos.x, e.pos.y + 1.35, e.pos.z);
-        throwGlob(_v2, nearestPlayer(e.pos).pos);
+        throwGlob(_v2, nearestPlayer(e.pos).pos, e);
         e.state = 'hunt';
         e.attackCd = spitterCooldown(e);
       }

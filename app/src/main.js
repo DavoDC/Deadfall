@@ -41,7 +41,7 @@ import { makeViewer } from './game/viewer.js';
 import { createRecorderAPI } from './capture/recorder.js';
 import { createCinematic } from './game/cinematic.js';
 import { createPipeline } from './render/pipeline.js';
-import { createTelemetry, DAMAGE_SPIKE_THRESHOLD, attackerPosFor } from './game/telemetry.js';
+import { createTelemetry, DAMAGE_SPIKE_THRESHOLD, hurtPositions } from './game/telemetry.js';
 import { CONTROLS, shouldShowControlsOnLaunch, markControlsSeen } from './player/controlsOverlay.js';
 import { loadDeveloperMode } from './game/developerMode.js';
 import { createSessionFlusher } from './game/telemetrySender.js';
@@ -372,14 +372,17 @@ const ui = {
   onHurt(amount, srcPos, source, detail) {
     sfxHurt();
     vignette = 1;
-    lastHurt = { amount, srcPos, source };
-    encounters.noteHurt(source, srcPos, amount);
+    // detail: flood fields, or for acid {attacker, attackerPos} (the spitter that fired the glob)
+    const { attacker, attackerPos: _firedFrom, ...extra } = detail || {};
+    const where = hurtPositions(player.p.pos, srcPos, source, detail);
+    const attackerId = encounters.noteHurt(source, srcPos, amount, attacker);
+    lastHurt = { amount, srcPos, source, attackerType: where.attackerType, attackerId };
     // no time: telemetry stamps it on its own wall clock (see telemetry.elapsed)
+    // pos is the PLAYER (srcPos is the attacker or impact point and goes to attackerPos)
     telemetry.recordDamageTaken({
       amount, source, hp: player.p.hp,
-      pos: srcPos ? { x: srcPos.x, y: srcPos.y, z: srcPos.z } : null,
-      attackerPos: attackerPosFor(source, srcPos),
-      ...(detail || {}),
+      ...where, attackerId,
+      ...extra,
     });
     // hp on record right at the hit, not up to 1 s later (throttled to 4 per second)
     if (telemetry.recording && performance.now() - lastHurtSnapPerf > 250) {
@@ -394,6 +397,8 @@ const ui = {
       pos: { x: player.p.pos.x, y: player.p.pos.y, z: player.p.pos.z },
       cause: lastHurt ? lastHurt.source : 'unknown',
       enemy: lastHurt ? lastHurt.source : null,
+      killerType: lastHurt ? lastHurt.attackerType : null,
+      killerId: lastHurt ? lastHurt.attackerId : null,
       hp: player.p.hp,
     });
     if (telemetry.recording) telemetry.snapshotState(buildTelemetryCtx(performance.now(), 0.016));

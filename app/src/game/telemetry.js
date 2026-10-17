@@ -53,9 +53,28 @@ export const MAX_ERRORS = 20;
 
 // DF-158: damage whose srcPos is not an attacker (the victim's own spot, the water sample, a self-hit)
 export const NO_ATTACKER_SOURCES = new Set(['flood', 'razorfin', 'grenade-self', 'unknown']);
+// damage source label -> the enemy type that dealt it (acid is a spitter's glob)
+const SOURCE_ATTACKER_TYPE = { acid: 'spitter', 'spitter-bite': 'spitter', 'jugg-charge': 'juggernaut' };
+export function attackerTypeFor(source) {
+  if (!source || NO_ATTACKER_SOURCES.has(source)) return null;
+  return SOURCE_ATTACKER_TYPE[source] || source;
+}
 export function attackerPosFor(source, srcPos) {
   if (!srcPos || NO_ATTACKER_SOURCES.has(source)) return null;
   return { x: srcPos.x, y: srcPos.y, z: srcPos.z };
+}
+
+// The positional part of a damageTaken entry: pos is the PLAYER, attackerPos the
+// attacker (srcPos is the enemy, trap or impact point, never the victim).
+// DF-158 shipped with pos and attackerPos both taken from srcPos, so the player
+// position was lost and attackerPos only looked like data.
+// detail may carry attackerPos (acid: where the spitter stood when it fired).
+export function hurtPositions(playerPos, srcPos, source, detail = null) {
+  return {
+    pos: playerPos ? { x: playerPos.x, y: playerPos.y, z: playerPos.z } : null,
+    attackerPos: (detail && detail.attackerPos) || attackerPosFor(source, srcPos),
+    attackerType: attackerTypeFor(source),
+  };
 }
 
 // Discrete input actions worth full-fidelity edges. Pulse actions are
@@ -136,7 +155,7 @@ export function createTelemetry({ now = Date.now } = {}) {
       encounters: [],            // one per enemy spawn, see encounters.js (entries are updated in place)
       errors: [],                // uncaught errors / unhandled rejections, capped at MAX_ERRORS
       deaths: [],                // {time, pos, cause, enemy, waypoint}
-      damageTaken: [],           // {time, amount, source, pos, hp, +feetY/waterY/depth/onCrown on flood hits}
+      damageTaken: [],           // {time, amount, source, pos (the player), hp, +attackerPos/attackerType/attackerId on enemy hits, +feetY/waterY/depth/onCrown on flood hits}
       damageTakenBySource: {},   // source -> total
       damageDealt: [],           // {time, amount, target, headshot, crit}
       damageDealtByTarget: {},   // target -> total
@@ -244,23 +263,29 @@ export function createTelemetry({ now = Date.now } = {}) {
     return log ? (now() - log.startedAt) / 1000 : 0;
   }
 
-  function recordDeath({ time, pos, cause, enemy, waypoint, hp } = {}) {
+  // killerType / killerId: the enemy type and encounter id behind the last hit (enemy is only the damage label, e.g. acid)
+  function recordDeath({ time, pos, cause, enemy, waypoint, hp, killerType, killerId } = {}) {
     if (!recording || !log) return;
     const t = time ?? elapsed();
-    log.deaths.push({ time: t, pos, cause: cause ?? 'unknown', enemy: enemy ?? null, waypoint: waypoint ?? null, hp: hp ?? null });
+    const row = { time: t, pos, cause: cause ?? 'unknown', enemy: enemy ?? null, waypoint: waypoint ?? null, hp: hp ?? null };
+    if (killerType) row.killerType = killerType;
+    if (killerId != null) row.killerId = killerId;
+    log.deaths.push(row);
     beginBurst('death', t);
     notify('death');
   }
 
   // hp: the player's hp AFTER this hit (so hp over time is exact even between the 1 s state samples)
   // flood hits (DF-164) also carry feetY, waterY, depth, onCrown
-  function recordDamageTaken({ time, amount, source, pos, hp, feetY, waterY, depth, onCrown, attackerPos } = {}) {
+  function recordDamageTaken({ time, amount, source, pos, hp, feetY, waterY, depth, onCrown, attackerPos, attackerType, attackerId } = {}) {
     if (!recording || !log) return;
     const t = time ?? elapsed();
     const entry = { time: t, amount, source: source ?? 'unknown', pos: pos ?? null, hp: hp ?? null };
     if (Number.isFinite(feetY)) Object.assign(entry, { feetY, waterY, depth, onCrown: !!onCrown });
     // DF-158: where the attacker was (enemy, trap or projectile), so unseen enemies below the camera can be listed
     if (attackerPos) entry.attackerPos = { x: attackerPos.x, y: attackerPos.y, z: attackerPos.z };
+    if (attackerType) entry.attackerType = attackerType;
+    if (attackerId != null) entry.attackerId = attackerId;
     log.damageTaken.push(entry);
     log.damageTakenBySource[source ?? 'unknown'] = (log.damageTakenBySource[source ?? 'unknown'] || 0) + amount;
     if (amount >= DAMAGE_SPIKE_THRESHOLD) beginBurst('damageSpike', t);

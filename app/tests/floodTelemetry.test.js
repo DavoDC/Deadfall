@@ -105,3 +105,63 @@ describe('attacker position on damage events (DF-158)', () => {
     expect(hurts.at(-1).srcPos).toEqual({ x: 10, y: -7, z: 4 });
   });
 });
+
+describe('real attacker data on damage events', () => {
+  it('hurtPositions keeps the player in pos and the attacker in attackerPos', async () => {
+    const { hurtPositions } = await import('../src/game/telemetry.js');
+    const w = hurtPositions({ x: 0, y: 1, z: 0 }, { x: 9, y: 2, z: 9 }, 'prowler');
+    expect(w.pos).toEqual({ x: 0, y: 1, z: 0 });
+    expect(w.attackerPos).toEqual({ x: 9, y: 2, z: 9 });
+    expect(w.attackerType).toBe('prowler');
+  });
+
+  it('acid maps to spitter and uses the firing position, not the impact', async () => {
+    const { hurtPositions } = await import('../src/game/telemetry.js');
+    const w = hurtPositions({ x: 0, y: 1, z: 0 }, { x: 1, y: 0, z: 1 }, 'acid', { attackerPos: { x: 20, y: 3, z: 5 } });
+    expect(w.attackerType).toBe('spitter');
+    expect(w.attackerPos).toEqual({ x: 20, y: 3, z: 5 });
+    expect(hurtPositions({ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 1 }, 'spitter-bite').attackerType).toBe('spitter');
+  });
+
+  it('environmental hits have no attacker', async () => {
+    const { hurtPositions } = await import('../src/game/telemetry.js');
+    const w = hurtPositions({ x: 0, y: 1, z: 0 }, { x: 0, y: 5, z: 0 }, 'flood');
+    expect(w.attackerPos).toBeNull();
+    expect(w.attackerType).toBeNull();
+  });
+
+  it('stores attackerType and attackerId on the hit and killerType on the death', () => {
+    const t = createTelemetry();
+    t.start({});
+    t.recordDamageTaken({ amount: 8, source: 'acid', pos: { x: 0, y: 0, z: 0 }, hp: 70, attackerPos: { x: 4, y: 0, z: 2 }, attackerType: 'spitter', attackerId: 7 });
+    t.recordDeath({ cause: 'acid', enemy: 'acid', killerType: 'spitter', killerId: 7 });
+    expect(t.log.damageTaken[0]).toMatchObject({ attackerType: 'spitter', attackerId: 7 });
+    expect(t.log.deaths[0]).toMatchObject({ enemy: 'acid', killerType: 'spitter', killerId: 7 });
+  });
+
+  it('noteHurt returns the encounter id, matches an exact attacker, and attributes bites and charges', async () => {
+    const { createEncounterTracker } = await import('../src/game/encounters.js');
+    const t = createTelemetry();
+    t.start({});
+    const enc = createEncounterTracker(t);
+    const a = { type: 'spitter', pos: { x: 50, z: 0 }, hasLOS: false, hp: 5, state: 'hunt' };
+    const b = { type: 'spitter', pos: { x: 5, z: 0 }, hasLOS: false, hp: 5, state: 'hunt' };
+    enc.update(1, [a, b], { x: 0, z: 0, yaw: 0 });
+    expect(enc.noteHurt('acid', { x: 5, z: 0 }, 4, a)).toBe(1);
+    expect(enc.noteHurt('spitter-bite', { x: 5, z: 0 }, 4)).toBe(2);
+    expect(enc.noteHurt('flood', { x: 0, z: 0 }, 4)).toBeNull();
+  });
+
+  it('recorded sessions: no enemy hit has attackerPos equal to pos', async () => {
+    const fs = await import('node:fs');
+    const dir = new URL('../captures/telemetry/', import.meta.url);
+    const names = fs.existsSync(dir) ? fs.readdirSync(dir).filter((n) => /^session-.*\.json$/.test(n)) : [];
+    for (const n of names) {
+      const s = JSON.parse(fs.readFileSync(new URL(n, dir), 'utf8'));
+      // only sessions recorded after this fix carry attackerType
+      for (const d of (s.damageTaken || []).filter((x) => x.attackerType && x.attackerPos && x.pos)) {
+        expect(d.attackerPos).not.toEqual(d.pos);
+      }
+    }
+  });
+});
